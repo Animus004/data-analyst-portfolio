@@ -124,3 +124,77 @@ export async function executeWithTimeout<T>(
     throw err;
   }
 }
+
+/**
+ * Categorizes Supabase storage errors to accurately distinguish root causes.
+ */
+export type StorageErrorCategory = 
+  | "bucket_not_found"
+  | "permission_denied"
+  | "invalid_path"
+  | "network_error"
+  | "object_not_found"
+  | "unknown";
+
+export function categorizeStorageError(error: any): { category: StorageErrorCategory; message: string } {
+  if (!error) {
+    return { category: "unknown", message: "Unknown error" };
+  }
+
+  const rawMessage = typeof error === "string" ? error : error.message || JSON.stringify(error);
+  const msg = rawMessage.toLowerCase();
+  const statusCode = String(error.statusCode || error.status || error.code || "").toLowerCase();
+
+  // Bucket does not exist
+  if (
+    msg.includes("bucket not found") ||
+    msg.includes("bucket does not exist") ||
+    (statusCode === "404" && msg.includes("bucket"))
+  ) {
+    return { category: "bucket_not_found", message: rawMessage };
+  }
+
+  // Permission denied / RLS
+  if (
+    msg.includes("row-level security") ||
+    msg.includes("permission denied") ||
+    msg.includes("access denied") ||
+    msg.includes("unauthorized") ||
+    statusCode === "401" ||
+    statusCode === "403" ||
+    statusCode === "42501"
+  ) {
+    return { category: "permission_denied", message: rawMessage };
+  }
+
+  // Invalid storage path
+  if (
+    msg.includes("invalid path") ||
+    msg.includes("invalid key") ||
+    msg.includes("key name invalid") ||
+    (msg.includes("path") && msg.includes("invalid"))
+  ) {
+    return { category: "invalid_path", message: rawMessage };
+  }
+
+  // Network error
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("econnrefused") ||
+    msg.includes("network request failed")
+  ) {
+    return { category: "network_error", message: rawMessage };
+  }
+
+  // Object not found
+  if (
+    msg.includes("object not found") ||
+    msg.includes("not_found") ||
+    (statusCode === "404" && (msg.includes("object") || msg.includes("file") || msg.includes("resource")))
+  ) {
+    return { category: "object_not_found", message: rawMessage };
+  }
+
+  return { category: "unknown", message: rawMessage };
+}

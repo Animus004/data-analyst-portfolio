@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { parseUploadedPackage, compileSourceCodeToProject, compileProjectPackage } from "../_lib/compiler/index";
 import { getAiClient } from "../_lib/ai/index";
 import { getSupabaseClient } from "../_lib/storage/index";
-import { validateFileBuffer, isAllowedFileType } from "../_lib/utils/security";
+import { validateFileBuffer, isAllowedFileType, categorizeStorageError } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -57,10 +57,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   const arrayBuffer = await data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
                 } else if (error) {
-                  console.warn(`Supabase storage download failed for path '${fileMeta.storagePath}':`, error.message);
+                  const { category, message } = categorizeStorageError(error);
+                  console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
                 }
               } catch (downloadErr: any) {
-                console.warn(`Error downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                console.warn(`[ai-package-parse] Exception downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
               }
             }
           }

@@ -26,10 +26,84 @@ export interface PackageUploadProgress {
 
 const STORAGE_BUCKET = "portfolio-uploads";
 
+export type StorageErrorCategory = 
+  | "bucket_not_found"
+  | "permission_denied"
+  | "invalid_path"
+  | "network_error"
+  | "object_not_found"
+  | "unknown";
+
 /**
- * Verifies if the dedicated Supabase Storage bucket exists and is accessible.
- * Note: Storage buckets must be created beforehand in Supabase (via Dashboard or SQL migration)
- * because client-side 'anon' keys do not have administrative privileges to create buckets via API.
+ * Categorizes Supabase storage errors to accurately distinguish root causes.
+ */
+export function categorizeStorageError(error: any): { category: StorageErrorCategory; message: string } {
+  if (!error) {
+    return { category: "unknown", message: "Unknown error" };
+  }
+
+  const rawMessage = typeof error === "string" ? error : error.message || JSON.stringify(error);
+  const msg = rawMessage.toLowerCase();
+  const statusCode = String(error.statusCode || error.status || error.code || "").toLowerCase();
+
+  // Bucket does not exist
+  if (
+    msg.includes("bucket not found") ||
+    msg.includes("bucket does not exist") ||
+    (statusCode === "404" && msg.includes("bucket"))
+  ) {
+    return { category: "bucket_not_found", message: rawMessage };
+  }
+
+  // Permission denied / RLS
+  if (
+    msg.includes("row-level security") ||
+    msg.includes("permission denied") ||
+    msg.includes("access denied") ||
+    msg.includes("unauthorized") ||
+    statusCode === "401" ||
+    statusCode === "403" ||
+    statusCode === "42501"
+  ) {
+    return { category: "permission_denied", message: rawMessage };
+  }
+
+  // Invalid storage path
+  if (
+    msg.includes("invalid path") ||
+    msg.includes("invalid key") ||
+    msg.includes("key name invalid") ||
+    (msg.includes("path") && msg.includes("invalid"))
+  ) {
+    return { category: "invalid_path", message: rawMessage };
+  }
+
+  // Network error
+  if (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("econnrefused") ||
+    msg.includes("network request failed")
+  ) {
+    return { category: "network_error", message: rawMessage };
+  }
+
+  // Object not found
+  if (
+    msg.includes("object not found") ||
+    msg.includes("not_found") ||
+    (statusCode === "404" && (msg.includes("object") || msg.includes("file") || msg.includes("resource")))
+  ) {
+    return { category: "object_not_found", message: rawMessage };
+  }
+
+  return { category: "unknown", message: rawMessage };
+}
+
+/**
+ * Verifies if the dedicated Supabase Storage bucket is operational and accessible.
+ * Uses a non-administrative operational read (client.storage.from().list('', { limit: 1 }))
+ * instead of client.storage.listBuckets(), which is intentionally restricted for client 'anon' keys.
  */
 export async function verifyUploadBucket(): Promise<{ exists: boolean; message?: string }> {
   const client = getSupabaseClient();
@@ -38,24 +112,36 @@ export async function verifyUploadBucket(): Promise<{ exists: boolean; message?:
   }
 
   try {
-    const { data: buckets, error } = await client.storage.listBuckets();
-    if (error) {
-      console.warn("packageUploadService: listBuckets verification notice:", error.message);
-      // Even if listBuckets is restricted by RLS, we attempt direct bucket access
-      return { exists: true };
-    }
+    const { error } = await client.storage
+      .from(STORAGE_BUCKET)
+      .list("", { limit: 1 });
 
-    const bucketExists = buckets?.some((b: any) => b.name === STORAGE_BUCKET);
-    if (!bucketExists) {
-      return { 
-        exists: false, 
-        message: `Storage bucket '${STORAGE_BUCKET}' was not found. Please create it in your Supabase Dashboard under Storage -> New Bucket (Public, 50MB limit) or run the provided SQL setup script.` 
+    if (error) {
+      const { category, message } = categorizeStorageError(error);
+      console.warn(`[packageUploadService] Storage bucket '${STORAGE_BUCKET}' validation notice [${category}]: ${message}`);
+
+      if (category === "bucket_not_found") {
+        return {
+          exists: false,
+          message: `Storage bucket '${STORAGE_BUCKET}' was not found. Please create it in your Supabase Dashboard under Storage -> New Bucket (Public, 50MB limit) or run the provided SQL setup script.`
+        };
+      }
+
+      if (category === "permission_denied") {
+        console.info(`[packageUploadService] Root listing restricted by RLS for '${STORAGE_BUCKET}'. Direct file operations will be attempted.`);
+        return { exists: true };
+      }
+
+      return {
+        exists: false,
+        message: `Storage validation warning (${category}): ${message}`
       };
     }
+
     return { exists: true };
   } catch (err: any) {
-    console.error("packageUploadService: exception checking storage bucket:", err);
-    return { exists: false, message: err.message };
+    console.error(`[packageUploadService] Exception checking storage bucket '${STORAGE_BUCKET}':`, err);
+    return { exists: false, message: err.message || "Unexpected exception during storage bucket check." };
   }
 }
 
@@ -144,7 +230,8 @@ export async function uploadProjectPackage(
         });
 
       if (error) {
-        console.warn(`Supabase Storage upload fallback triggered for ${f.name}:`, error.message);
+        const { category, message } = categorizeStorageError(error);
+        console.warn(`[packageUploadService] Storage upload fallback triggered for '${f.name}' [Category: ${category}]: ${message}`);
         
         progressMap[f.name].status = "completed";
         if (onProgress) onProgress({ ...progressMap });

@@ -573,6 +573,30 @@ async function executeWithTimeout(taskName, fn, timeoutMs = 15e3) {
     throw err;
   }
 }
+function categorizeStorageError(error) {
+  if (!error) {
+    return { category: "unknown", message: "Unknown error" };
+  }
+  const rawMessage = typeof error === "string" ? error : error.message || JSON.stringify(error);
+  const msg = rawMessage.toLowerCase();
+  const statusCode = String(error.statusCode || error.status || error.code || "").toLowerCase();
+  if (msg.includes("bucket not found") || msg.includes("bucket does not exist") || statusCode === "404" && msg.includes("bucket")) {
+    return { category: "bucket_not_found", message: rawMessage };
+  }
+  if (msg.includes("row-level security") || msg.includes("permission denied") || msg.includes("access denied") || msg.includes("unauthorized") || statusCode === "401" || statusCode === "403" || statusCode === "42501") {
+    return { category: "permission_denied", message: rawMessage };
+  }
+  if (msg.includes("invalid path") || msg.includes("invalid key") || msg.includes("key name invalid") || msg.includes("path") && msg.includes("invalid")) {
+    return { category: "invalid_path", message: rawMessage };
+  }
+  if (msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("econnrefused") || msg.includes("network request failed")) {
+    return { category: "network_error", message: rawMessage };
+  }
+  if (msg.includes("object not found") || msg.includes("not_found") || statusCode === "404" && (msg.includes("object") || msg.includes("file") || msg.includes("resource"))) {
+    return { category: "object_not_found", message: rawMessage };
+  }
+  return { category: "unknown", message: rawMessage };
+}
 
 // src/api/_lib/compiler/index.ts
 import crypto2 from "crypto";
@@ -1123,10 +1147,11 @@ async function handler(req, res) {
                   const arrayBuffer = await data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
                 } else if (error) {
-                  console.warn(`Supabase storage download failed for path '${fileMeta.storagePath}':`, error.message);
+                  const { category, message } = categorizeStorageError(error);
+                  console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
                 }
               } catch (downloadErr) {
-                console.warn(`Error downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                console.warn(`[ai-package-parse] Exception downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
               }
             }
           }
