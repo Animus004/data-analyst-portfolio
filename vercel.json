@@ -1,0 +1,22 @@
+{
+  "rewrites": [
+    { "source": "/api/portfolio/save", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/load", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/backup", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/backups", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/publish", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/diagnostics", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/config", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio", "destination": "/api/portfolio/index" },
+    { "source": "/api/portfolio/ai-package-parse", "destination": "/api/portfolio/ai" },
+    { "source": "/api/portfolio/ai-parse", "destination": "/api/portfolio/ai" },
+    { "source": "/api/copilot/refine", "destination": "/api/portfolio/ai" },
+    { "source": "/api/sql/import", "destination": "/api/import" },
+    { "source": "/api/python/import", "destination": "/api/import" },
+    { "source": "/api/powerbi/import", "destination": "/api/import" },
+    { "source": "/api/github/import", "destination": "/api/import" },
+    { "source": "/api/resume/generate", "destination": "/api/generate" },
+    { "source": "/api/linkedin/generate", "destination": "/api/generate" },
+    { "source": "/api/readme/generate", "destination": "/api/generate" }
+  ]
+}

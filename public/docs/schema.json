@@ -1,0 +1,387 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PortfolioOS_Backup_Schema",
+  "description": "Strict schema describing a complete Portfolio OS data payload, containing creator identity and professional case studies.",
+  "type": "object",
+  "required": [
+    "version",
+    "profile",
+    "projects"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Version of the schema backup payload.",
+      "enum": [
+        "1.0.0"
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "description": "The professional identity and profile of the portfolio creator.",
+      "required": [
+        "name",
+        "title",
+        "bio",
+        "email",
+        "location",
+        "lookingForJob"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The full name of the developer/analyst."
+        },
+        "title": {
+          "type": "string",
+          "description": "Primary professional heading (e.g. 'Lead Data Analyst')."
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "A high-level strategic subtitle explaining value proposition."
+        },
+        "bio": {
+          "type": "string",
+          "description": "Detailed recruiter narrative and biography."
+        },
+        "location": {
+          "type": "string",
+          "description": "City and Country location."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Standard timezone offset or designation."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email address."
+        },
+        "resumeUrl": {
+          "type": "string",
+          "description": "URL or local asset path to professional Resume."
+        },
+        "githubUrl": {
+          "type": "string",
+          "description": "URL to GitHub profile."
+        },
+        "linkedinUrl": {
+          "type": "string",
+          "description": "URL to LinkedIn profile."
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "URL or path to avatar image."
+        },
+        "lookingForJob": {
+          "type": "boolean",
+          "description": "Whether currently open to employment."
+        },
+        "statusBadge": {
+          "type": "string",
+          "description": "Text displayed on the availability status badge."
+        },
+        "heroCtaText": {
+          "type": "string",
+          "description": "Text of the main Hero Call To Action button."
+        },
+        "quickStackSkills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Core technology chips displayed in the snapshot panel."
+        },
+        "currentFocus": {
+          "type": "string",
+          "description": "The main sector currently focused on (e.g., 'Data Analytics')."
+        },
+        "targetRole": {
+          "type": "string",
+          "description": "The primary role sought after."
+        },
+        "currentlyLearning": {
+          "type": "string",
+          "description": "Active area of technical learning."
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "description": "List of case study records compiled in this portfolio.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "summary",
+          "status",
+          "difficulty",
+          "objective",
+          "methodology",
+          "tags",
+          "categories",
+          "metrics",
+          "storyBlocks"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A unique, URL-safe project identifier (e.g., 'superstore-sales')."
+          },
+          "title": {
+            "type": "string",
+            "description": "High-impact analytical project title."
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL slug for routing (e.g. 'superstore-sales-dashboard-analysis')."
+          },
+          "subtitle": {
+            "type": "string",
+            "description": "Secondary explanatory subtitle describing the high-level objective."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Short executive summary for project preview cards."
+          },
+          "industry": {
+            "type": "string",
+            "description": "The targeted industry sector (e.g., 'E-Commerce', 'Fintech')."
+          },
+          "role": {
+            "type": "string",
+            "description": "Your designated title/role in this project."
+          },
+          "duration": {
+            "type": "string",
+            "description": "Project duration string (e.g. '3 Months')."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ],
+            "description": "Current workflow status of the case study."
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced",
+              "expert"
+            ],
+            "description": "Technical depth categorization."
+          },
+          "objective": {
+            "type": "string",
+            "description": "Strategic business objective / problem statement."
+          },
+          "datasetDesc": {
+            "type": "string",
+            "description": "Details regarding parsed datasets and programmatic systems."
+          },
+          "methodology": {
+            "type": "string",
+            "description": "Numbered steps or comprehensive workflow description."
+          },
+          "overviewText": {
+            "type": "string",
+            "description": "Brief initial overview of the project."
+          },
+          "businessProblem": {
+            "type": "string",
+            "description": "Detailed business context and the problem being solved."
+          },
+          "dataCleaning": {
+            "type": "string",
+            "description": "Steps taken to clean, profile, and transform raw tables."
+          },
+          "analysisText": {
+            "type": "string",
+            "description": "Core descriptive analysis and execution narrative."
+          },
+          "findings": {
+            "type": "string",
+            "description": "Primary high-value diagnostic insights uncovered."
+          },
+          "recommendations": {
+            "type": "string",
+            "description": "Strategic, data-driven suggestions for business stakeholders."
+          },
+          "challengesText": {
+            "type": "string",
+            "description": "Technical obstacles or analytical blockers faced."
+          },
+          "lessonsLearned": {
+            "type": "string",
+            "description": "Post-project retrospectives and systems lessons."
+          },
+          "tags": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific tools or languages used (e.g. 'Python', 'SQL')."
+          },
+          "categories": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Broader categories of study (e.g. 'Data Analytics', 'Machine Learning')."
+          },
+          "metrics": {
+            "type": "array",
+            "description": "List of high-impact numbers showing business outcomes.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "label",
+                "value",
+                "description"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Unique KPI record identifier."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Metric name (e.g., 'Identified Cash Bleeds')."
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Numerical or formatted value (e.g., '22%', '$32.5k')."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Explains how the metric was computed or what it improved."
+                },
+                "iconName": {
+                  "type": "string",
+                  "description": "Optional Lucide React icon name (e.g. 'TrendingUp')."
+                }
+              }
+            }
+          },
+          "storyBlocks": {
+            "type": "array",
+            "description": "Interactive, chronological blocks making up the case study narrative.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "bodyContent"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Unique story block identifier."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "code_snippet",
+                    "chart_data",
+                    "image_gallery",
+                    "quote"
+                  ],
+                  "description": "Type of storytelling visual asset."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Optional section header."
+                },
+                "bodyContent": {
+                  "type": "string",
+                  "description": "Raw markdown text, code payload, or valid JSON chart data string."
+                },
+                "language": {
+                  "type": "string",
+                  "description": "Programming language for code syntax highlighting."
+                },
+                "imageUrl": {
+                  "type": "string",
+                  "description": "Path or URL to narrative screenshot."
+                },
+                "caption": {
+                  "type": "string",
+                  "description": "Visual descriptive label below the screenshot or chart."
+                }
+              }
+            }
+          },
+          "githubUrl": {
+            "type": "string",
+            "description": "URL to project code repository."
+          },
+          "liveUrl": {
+            "type": "string",
+            "description": "URL to active web application or dashboard."
+          },
+          "documentationUrl": {
+            "type": "string",
+            "description": "URL to external research reports, sheets, or PDF files."
+          },
+          "date": {
+            "type": "string",
+            "description": "Project completion date (e.g. '2026-07-20')."
+          },
+          "timeSpent": {
+            "type": "string",
+            "description": "Duration spent on development (e.g. '30 hours')."
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific core skill areas exercised."
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of supporting screenshot file paths."
+          },
+          "featured": {
+            "type": "boolean",
+            "description": "Whether to pin the project to the top of the public homepage."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "private",
+              "unlisted"
+            ],
+            "description": "Privacy access constraints."
+          },
+          "order": {
+            "type": "integer",
+            "description": "Sort order placement in listing views."
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO timestamp of creation."
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "ISO timestamp of last update."
+          }
+        }
+      }
+    }
+  }
+}

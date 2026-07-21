@@ -1,0 +1,6 @@
+{
+  "name": "Portfolio OS",
+  "description": "A portfolio platform featuring a premium recruiter-facing public view and a private management dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
