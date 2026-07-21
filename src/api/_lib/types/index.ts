@@ -165,15 +165,24 @@ export interface StructuredPortfolioProject {
   subtitle: FieldWithEvidence<string>;
   executiveSummary: FieldWithEvidence<string>;
   businessProblem: FieldWithEvidence<string>;
+  businessObjective: FieldWithEvidence<string>;
   stakeholders: FieldWithEvidence<string[]>;
+  datasetDescription: FieldWithEvidence<string>;
   methodology: FieldWithEvidence<string>;
+  dataCleaning: FieldWithEvidence<string>;
+  analysisProcess: FieldWithEvidence<string>;
   industry: FieldWithEvidence<string>;
   role: FieldWithEvidence<string>;
   duration: FieldWithEvidence<string>;
   findings: FieldWithEvidence<string>;
   recommendations: FieldWithEvidence<string>;
+  challenges: FieldWithEvidence<string>;
+  lessonsLearned: FieldWithEvidence<string>;
+  technologyStack: FieldWithEvidence<string[]>;
+  skillsDemonstrated: FieldWithEvidence<string[]>;
   resumeBullets: FieldWithEvidence<string[]>;
   linkedInSummary: FieldWithEvidence<string>;
+  gitHubReadmeSummary: FieldWithEvidence<string>;
   starStory: FieldWithEvidence<{
     situation: string;
     task: string;
