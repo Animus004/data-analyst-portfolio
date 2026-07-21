@@ -756,8 +756,9 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.project) {
-          setAiParsedResult(data.project);
+        const projectPayload = data.project || data.rawProject;
+        if (data.success && projectPayload) {
+          setAiParsedResult(projectPayload);
           setProjectType(data.projectType);
           setSourceAttributions(data.sourceAttributions);
           setConfidenceScores(data.confidenceScores);
@@ -770,7 +771,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           setOriginalTexts(data.originalTexts || {});
           setRecommendationValidation(data.recommendationValidation || []);
           setDatasetTraceability(data.datasetTraceability || []);
-          setFileCoverageReport(data.fileCoverageReport || []);
+          setFileCoverageReport(data.fileCoverageReport || data.fileCoverage || []);
           setCompletenessReport(data.completenessReport || []);
           setConflicts(data.conflicts || []);
           setResolvedConflictFields({});
