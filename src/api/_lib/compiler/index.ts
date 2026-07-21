@@ -4,8 +4,15 @@
  */
 
 import { PARSER_REGISTRY, unpackZipFile } from "../parsers/registry";
-import { ExtractedProject, ConflictRecord, UniversalCompilerOutput } from "../types/index";
+import {
+  ExtractedProject,
+  ConflictRecord,
+  UniversalCompilerOutput,
+  ParserEvidenceNode
+} from "../types/index";
 import { validateFileSignature, computeSha256, executeWithTimeout } from "../utils/security";
+import { mergeToEvidenceGraph, detectEvidenceConflicts } from "../evidence/graph";
+import { compilePortfolioWithGemini } from "../ai/portfolioCompiler";
 import crypto from "crypto";
 
 // Helper to normalize strings for metric matching
@@ -162,7 +169,8 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
 }
 
 /**
- * Standard Compiler Pipeline Entry Point
+ * AI Portfolio Compiler Main Entry Point
+ * Flow: Raw Files -> Specialized Parsers -> Evidence Extraction -> Evidence Graph -> Gemini Reasoning Engine -> Structured Portfolio Project
  */
 export async function compileProjectPackage(
   rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>
@@ -228,8 +236,9 @@ export async function compileProjectPackage(
     }
   }
 
-  // Stage 2: Sandboxed Parser Selection & Execution
+  // Stage 2: Sandboxed Parser Selection & Evidence Extraction
   const parsedProjects: ExtractedProject[] = [];
+  const evidenceNodes: ParserEvidenceNode[] = [];
 
   for (const file of allFiles) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -238,12 +247,14 @@ export async function compileProjectPackage(
     if (parser) {
       try {
         // Sandboxed execution with 15 second threshold
-        const parsed = await executeWithTimeout(
+        const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
           15000
         );
-        parsedProjects.push(parsed);
+        parsedProjects.push(result.project);
+        evidenceNodes.push(result.evidenceNode);
+
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
@@ -282,30 +293,67 @@ export async function compileProjectPackage(
     else if (ext === "pbix" || ext === "dax") projectType = "Power BI";
   }
 
-  // Stage 3: Normalization & Merge
+  // Stage 3: Build Canonical Evidence Graph
+  const evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
+  evidenceGraph.projectDomain = projectType;
+
+  // Stage 4: Deterministic Validation & Conflict Detection
+  const conflicts = [
+    ...validateAndDetectConflicts(parsedProjects),
+    ...detectEvidenceConflicts(evidenceGraph)
+  ];
+
+  // Stage 5: Baseline Merged Raw Project
   const rawProject = mergeExtractedProjects(parsedProjects);
 
-  // Stage 4: Deterministic Validation & Conflict Resolution Identification
-  const conflicts = validateAndDetectConflicts(parsedProjects);
+  // Stage 6: AI Synthesis via Gemini Engine (Operates ONLY on Evidence Graph)
+  const synthesized = await compilePortfolioWithGemini(evidenceGraph, conflicts, rawProject);
 
   // Generate Master Package SHA-256 evidence hash
   const packageEvidenceHash = crypto.createHash("sha256")
     .update(allFiles.map(f => f.sha256).sort().join(":"))
     .digest("hex");
 
+  // Construct source attributions and confidence map
+  const sourceAttributions: Record<string, string[]> = {};
+  const confidenceScores: Record<string, number> = {};
+
+  if (synthesized.structured) {
+    confidenceScores.title = synthesized.structured.title.confidence;
+    confidenceScores.summary = synthesized.structured.executiveSummary.confidence;
+    confidenceScores.businessProblem = synthesized.structured.businessProblem.confidence;
+    confidenceScores.methodology = synthesized.structured.methodology.confidence;
+    confidenceScores.findings = synthesized.structured.findings.confidence;
+    confidenceScores.recommendations = synthesized.structured.recommendations.confidence;
+
+    sourceAttributions.title = synthesized.structured.title.evidence.map(e => e.sourceFile);
+    sourceAttributions.summary = synthesized.structured.executiveSummary.evidence.map(e => e.sourceFile);
+    sourceAttributions.businessProblem = synthesized.structured.businessProblem.evidence.map(e => e.sourceFile);
+    sourceAttributions.methodology = synthesized.structured.methodology.evidence.map(e => e.sourceFile);
+    sourceAttributions.findings = synthesized.structured.findings.evidence.map(e => e.sourceFile);
+    sourceAttributions.recommendations = synthesized.structured.recommendations.evidence.map(e => e.sourceFile);
+  }
+
   return {
     projectType,
     rawProject: {
-      ...rawProject,
+      ...synthesized.raw,
       sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
     },
+    evidenceGraph,
+    portfolioProject: synthesized.structured,
     conflicts,
     fileCoverage,
+    confidenceScores,
+    sourceAttributions,
+    starStory: synthesized.structured.starStory.value,
+    resumeBullets: synthesized.structured.resumeBullets.value,
+    linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: new Date().toISOString(),
-      parserVersions: "PortfolioOS Parser Engine v2.0 (Sandboxed)",
+      parserVersions: "Portfolio OS AI Compiler Engine v3.0 (Evidence Graph + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v1",
+      projectVersion: "v3",
       totalFilesProcessed: allFiles.length
     }
   };

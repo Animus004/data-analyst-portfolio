@@ -38,51 +38,72 @@ var SQLParser = {
     proj.role = "Database Analyst";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
-    const tablesReferenced = /* @__PURE__ */ new Set();
+    const sqlEvidence = {
+      sourceFile: fileName,
+      parser: "SQLParser",
+      confidence: 95,
+      tables: [],
+      joins: [],
+      aggregations: [],
+      windowFunctions: [],
+      businessQuestions: [],
+      calculatedMetrics: []
+    };
+    const tablesSet = /* @__PURE__ */ new Set();
+    const joinsSet = /* @__PURE__ */ new Set();
+    const aggSet = /* @__PURE__ */ new Set();
+    const windowSet = /* @__PURE__ */ new Set();
     const cleanName = fileName.replace(/\.sql$/i, "").replace(/[-_]+/g, " ");
     proj.title = `SQL Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
       const fromMatch = trimmed.match(/\bFROM\s+([a-zA-Z0-9_\.]+)/i);
-      if (fromMatch && fromMatch[1]) tablesReferenced.add(fromMatch[1]);
-      const joinMatch = trimmed.match(/\bJOIN\s+([a-zA-Z0-9_\.]+)/i);
-      if (joinMatch && joinMatch[1]) tablesReferenced.add(joinMatch[1]);
-      if (trimmed.startsWith("--")) {
-        const comment = trimmed.slice(2).trim();
+      if (fromMatch && fromMatch[1]) tablesSet.add(fromMatch[1]);
+      const joinMatch = trimmed.match(/\b(LEFT|RIGHT|INNER|FULL|CROSS)?\s*JOIN\s+([a-zA-Z0-9_\.]+)/i);
+      if (joinMatch && joinMatch[2]) {
+        tablesSet.add(joinMatch[2]);
+        joinsSet.add(joinMatch[0].trim());
+      }
+      const aggMatch = trimmed.match(/\b(SUM|COUNT|AVG|MAX|MIN)\s*\([^)]+\)/gi);
+      if (aggMatch) {
+        aggMatch.forEach((a) => aggSet.add(a.trim()));
+      }
+      if (/OVER\s*\(/i.test(trimmed)) {
+        windowSet.add(trimmed);
+      }
+      const aliasMatch = trimmed.match(/(SUM|COUNT|AVG|MAX|MIN)\([^)]+\)\s+AS\s+([a-zA-Z0-9_]+)/i);
+      if (aliasMatch && aliasMatch[2]) {
+        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: aliasMatch[1] });
+      }
+      if (trimmed.startsWith("--") || trimmed.startsWith("/*")) {
+        const comment = trimmed.replace(/^(--|\/\*|\*\/)/, "").trim();
         const lower = comment.toLowerCase();
         if (lower.startsWith("kpi:") || lower.startsWith("metric:")) {
           const parts = comment.substring(comment.indexOf(":") + 1).split("=");
           if (parts.length >= 2) {
             const mLabel = parts[0].trim();
             const rest = parts[1].trim();
-            let mVal = rest;
-            let mDesc = "";
-            const descIndex = rest.indexOf("(");
-            if (descIndex !== -1) {
-              mVal = rest.substring(0, descIndex).trim();
-              mDesc = rest.substring(descIndex + 1, rest.length - 1).trim();
-            }
             proj.metrics.push({
               id: `sql-metric-${proj.metrics.length}-${Date.now()}`,
               label: mLabel,
-              value: mVal,
-              description: mDesc || `Extracted from SQL script ${fileName}`,
+              value: rest,
+              description: `Extracted from SQL script ${fileName}`,
               iconName: mLabel.toLowerCase().includes("revenue") ? "DollarSign" : "Activity",
               sourceFile: fileName,
               sourceLocation: `Line ${lineIdx + 1}`
             });
           }
-        } else if (lower.startsWith("title:")) {
-          proj.title = comment.substring(6).trim();
-        } else if (lower.startsWith("subtitle:")) {
-          proj.subtitle = comment.substring(9).trim();
-        } else if (lower.startsWith("objective:")) {
-          proj.objective = comment.substring(10).trim();
+        } else if (comment.endsWith("?")) {
+          sqlEvidence.businessQuestions.push(comment);
         }
       }
     });
-    if (tablesReferenced.size > 0) {
-      proj.datasetDesc = `Relational tables referenced: ${Array.from(tablesReferenced).join(", ")}.`;
+    sqlEvidence.tables = Array.from(tablesSet);
+    sqlEvidence.joins = Array.from(joinsSet);
+    sqlEvidence.aggregations = Array.from(aggSet);
+    sqlEvidence.windowFunctions = Array.from(windowSet);
+    if (tablesSet.size > 0) {
+      proj.datasetDesc = `Relational tables referenced: ${sqlEvidence.tables.join(", ")}.`;
     }
     proj.storyBlocks.push({
       id: `sql-query-sb-${Date.now()}`,
@@ -92,7 +113,10 @@ var SQLParser = {
       language: "sql",
       sourceFile: fileName
     });
-    return proj;
+    return {
+      project: proj,
+      evidenceNode: { type: "sql", data: sqlEvidence }
+    };
   }
 };
 var PythonParser = {
@@ -105,6 +129,13 @@ var PythonParser = {
     proj.role = "Data Scientist";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
+    const docEvidence = {
+      sourceFile: fileName,
+      parser: "PythonParser",
+      confidence: 90,
+      sections: [{ heading: "Python Source Code", content: text.slice(0, 3e3) }],
+      extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
+    };
     const cleanName = fileName.replace(/\.py$/i, "").replace(/[-_]+/g, " ");
     proj.title = `Python Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
     lines.forEach((line, lineIdx) => {
@@ -115,21 +146,12 @@ var PythonParser = {
         if (lower.startsWith("kpi:") || lower.startsWith("metric:")) {
           const parts = comment.substring(comment.indexOf(":") + 1).split("=");
           if (parts.length >= 2) {
-            const mLabel = parts[0].trim();
-            const rest = parts[1].trim();
-            let mVal = rest;
-            let mDesc = "";
-            const descIndex = rest.indexOf("(");
-            if (descIndex !== -1) {
-              mVal = rest.substring(0, descIndex).trim();
-              mDesc = rest.substring(descIndex + 1, rest.length - 1).trim();
-            }
             proj.metrics.push({
               id: `py-metric-${proj.metrics.length}-${Date.now()}`,
-              label: mLabel,
-              value: mVal,
-              description: mDesc || `Extracted from Python script ${fileName}`,
-              iconName: mLabel.toLowerCase().includes("accuracy") ? "Percent" : "Activity",
+              label: parts[0].trim(),
+              value: parts[1].trim(),
+              description: `Extracted from Python script ${fileName}`,
+              iconName: "Activity",
               sourceFile: fileName,
               sourceLocation: `Line ${lineIdx + 1}`
             });
@@ -145,7 +167,10 @@ var PythonParser = {
       language: "python",
       sourceFile: fileName
     });
-    return proj;
+    return {
+      project: proj,
+      evidenceNode: { type: "document", data: docEvidence }
+    };
   }
 };
 var NotebookParser = {
@@ -156,32 +181,26 @@ var NotebookParser = {
     proj.tags = ["Python", "Jupyter Notebook"];
     proj.categories = ["Data Science", "Interactive Analytics"];
     proj.role = "Data Scientist";
+    const docEvidence = {
+      sourceFile: fileName,
+      parser: "NotebookParser",
+      confidence: 90,
+      sections: [],
+      extractedTerms: ["Jupyter", "Interactive Notebook"]
+    };
     try {
       const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
       const json = JSON.parse(text);
       const cells = json.cells || [];
       let markdownConcat = "";
       let codeCellIdx = 0;
-      cells.forEach((cell, cellIdx) => {
+      cells.forEach((cell) => {
         const cellType = cell.cell_type;
         const sourceLines = Array.isArray(cell.source) ? cell.source : [cell.source || ""];
         const sourceText = sourceLines.join("");
         if (cellType === "markdown") {
           markdownConcat += sourceText + "\n\n";
-          const lines = sourceText.split("\n");
-          lines.forEach((l) => {
-            const trimmed = l.trim();
-            if (trimmed.startsWith("#")) {
-              const headerText = trimmed.replace(/^#+\s*/, "").toLowerCase();
-              if (headerText.includes("objective") || headerText.includes("goal")) {
-                proj.objective = trimmed.replace(/^#+\s*/, "");
-              } else if (headerText.includes("problem") || headerText.includes("business friction")) {
-                proj.businessProblem = trimmed.replace(/^#+\s*/, "");
-              } else if (headerText.includes("methodology") || headerText.includes("workflow")) {
-                proj.methodology = trimmed.replace(/^#+\s*/, "");
-              }
-            }
-          });
+          docEvidence.sections.push({ heading: "Markdown Cell", content: sourceText });
         } else if (cellType === "code") {
           codeCellIdx++;
           sourceLines.forEach((l, lineNum) => {
@@ -191,12 +210,10 @@ var NotebookParser = {
               if (commentPart.toLowerCase().startsWith("kpi:") || commentPart.toLowerCase().startsWith("metric:")) {
                 const parts = commentPart.substring(commentPart.indexOf(":") + 1).split("=");
                 if (parts.length >= 2) {
-                  const mLabel = parts[0].trim();
-                  const rest = parts[1].trim();
                   proj.metrics.push({
                     id: `notebook-metric-${proj.metrics.length}-${Date.now()}`,
-                    label: mLabel,
-                    value: rest,
+                    label: parts[0].trim(),
+                    value: parts[1].trim(),
                     description: `Notebook Code Extraction`,
                     iconName: "Activity",
                     sourceFile: fileName,
@@ -206,16 +223,6 @@ var NotebookParser = {
               }
             }
           });
-          if (sourceText.trim() && proj.storyBlocks.length < 5) {
-            proj.storyBlocks.push({
-              id: `notebook-cell-sb-${proj.storyBlocks.length}-${Date.now()}`,
-              type: "code_snippet",
-              title: `Notebook Cell [${codeCellIdx}]`,
-              bodyContent: sourceText,
-              language: "python",
-              sourceFile: fileName
-            });
-          }
         }
       });
       if (markdownConcat.trim()) {
@@ -225,7 +232,10 @@ ${markdownConcat.slice(0, 1e3)}`;
     } catch (err) {
       console.error("NotebookParser Error:", err);
     }
-    return proj;
+    return {
+      project: proj,
+      evidenceNode: { type: "document", data: docEvidence }
+    };
   }
 };
 var PowerBIParser = {
@@ -237,16 +247,46 @@ var PowerBIParser = {
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
     proj.role = "BI Engineer";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const pbiEvidence = {
+      sourceFile: fileName,
+      parser: "PowerBIParser",
+      confidence: 90,
+      visuals: [],
+      daxMeasures: [],
+      pages: ["Overview", "Executive Dashboard"],
+      relationships: [],
+      kpis: []
+    };
+    const daxLines = text.split("\n");
+    daxLines.forEach((line) => {
+      const match = line.match(/^([a-zA-Z0-9_\s%]+)\s*=\s*(.+)$/);
+      if (match) {
+        const name = match[1].trim();
+        const expr = match[2].trim();
+        pbiEvidence.daxMeasures.push({ name, expression: expr });
+        pbiEvidence.kpis.push({ label: name, value: expr });
+        proj.metrics.push({
+          id: `dax-metric-${proj.metrics.length}-${Date.now()}`,
+          label: name,
+          value: expr,
+          description: "Calculated DAX Measure",
+          iconName: "BarChart2",
+          sourceFile: fileName
+        });
+      }
+    });
     proj.storyBlocks.push({
       id: `pbi-sb-${Date.now()}`,
       type: "code_snippet",
       title: `DAX Calculations: ${fileName}`,
       bodyContent: text.slice(0, 5e3),
       language: "sql",
-      // DAX is highlighted nicely using sql/general coding
       sourceFile: fileName
     });
-    return proj;
+    return {
+      project: proj,
+      evidenceNode: { type: "powerbi", data: pbiEvidence }
+    };
   }
 };
 var GitHubParser = {
@@ -257,7 +297,17 @@ var GitHubParser = {
     proj.tags = ["GitHub", "Source Control"];
     proj.categories = ["DevOps", "Data Engineering"];
     proj.objective = `Repository structure compiled: ${fileName}`;
-    return proj;
+    const docEvidence = {
+      sourceFile: fileName,
+      parser: "GitHubParser",
+      confidence: 90,
+      sections: [{ heading: "GitHub Repository Structure", content: proj.objective }],
+      extractedTerms: ["Git", "Repository"]
+    };
+    return {
+      project: proj,
+      evidenceNode: { type: "document", data: docEvidence }
+    };
   }
 };
 
