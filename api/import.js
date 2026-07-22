@@ -5,24 +5,24 @@ import mammoth from "mammoth";
 import JSZip from "jszip";
 function createEmptyProject(fileName, parserName) {
   return {
-    title: `Analytical Report: ${fileName}`,
-    subtitle: `Synthesized analysis from ${parserName}`,
-    summary: `Structured dataset analysis parsed from ${fileName} using specialized ${parserName} compiler.`,
-    industry: "Analytical Technology",
-    role: "Analytics Engineer",
-    duration: "1 Week",
+    title: "",
+    subtitle: "",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
     tags: [parserName.replace("Parser", "")],
-    categories: ["Data Analytics"],
-    objective: `Analyze data insights inside ${fileName}.`,
-    businessProblem: `Identify strategic opportunities or patterns inside the source file ${fileName}.`,
-    methodology: "1. Loaded file into the compiler pipeline.\n2. Parsed variables and analytical markers.\n3. Normalized findings.",
-    datasetDesc: `Dataset from file ${fileName}.`,
-    dataCleaning: "Extracted and structured content schema.",
-    findings: "Analysis complete. Waiting for narrative synthesis.",
-    recommendations: "1. Integrate parsed findings into central decision dashboards.",
-    challengesText: "Adapting file contents to standardized portfolio schemas.",
-    lessonsLearned: "Maintained complete factual lineage of evidence metrics.",
+    categories: [],
+    objective: "",
+    businessProblem: "",
+    methodology: "",
+    datasetDesc: "",
+    dataCleaning: "",
+    findings: "",
+    recommendations: "",
+    challengesText: "",
+    lessonsLearned: "",
     metrics: [],
     storyBlocks: [],
     sourceFiles: [fileName]
@@ -35,7 +35,6 @@ var SQLParser = {
     const proj = createEmptyProject(fileName, "SQLParser");
     proj.tags = ["SQL", "Relational Database"];
     proj.categories = ["Data Engineering", "Database Querying"];
-    proj.role = "Database Analyst";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
     const sqlEvidence = {
@@ -53,8 +52,6 @@ var SQLParser = {
     const joinsSet = /* @__PURE__ */ new Set();
     const aggSet = /* @__PURE__ */ new Set();
     const windowSet = /* @__PURE__ */ new Set();
-    const cleanName = fileName.replace(/\.sql$/i, "").replace(/[-_]+/g, " ");
-    proj.title = `SQL Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
       const fromMatch = trimmed.match(/\bFROM\s+([a-zA-Z0-9_\.]+)/i);
@@ -102,9 +99,6 @@ var SQLParser = {
     sqlEvidence.joins = Array.from(joinsSet);
     sqlEvidence.aggregations = Array.from(aggSet);
     sqlEvidence.windowFunctions = Array.from(windowSet);
-    if (tablesSet.size > 0) {
-      proj.datasetDesc = `Relational tables referenced: ${sqlEvidence.tables.join(", ")}.`;
-    }
     proj.storyBlocks.push({
       id: `sql-query-sb-${Date.now()}`,
       type: "code_snippet",
@@ -126,7 +120,6 @@ var PythonParser = {
     const proj = createEmptyProject(fileName, "PythonParser");
     proj.tags = ["Python"];
     proj.categories = ["Data Science", "Data Engineering"];
-    proj.role = "Data Scientist";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
     const docEvidence = {
@@ -136,8 +129,6 @@ var PythonParser = {
       sections: [{ heading: "Python Source Code", content: text.slice(0, 3e3) }],
       extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
     };
-    const cleanName = fileName.replace(/\.py$/i, "").replace(/[-_]+/g, " ");
-    proj.title = `Python Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
       if (trimmed.startsWith("#")) {
@@ -226,8 +217,7 @@ var NotebookParser = {
         }
       });
       if (markdownConcat.trim()) {
-        proj.findings = `Parsed findings from Notebook Markdown cells:
-${markdownConcat.slice(0, 1e3)}`;
+        docEvidence.sections.push({ heading: "Notebook Markdown Synthesis", content: markdownConcat });
       }
     } catch (err) {
       console.error("NotebookParser Error:", err);
@@ -245,7 +235,6 @@ var PowerBIParser = {
     const proj = createEmptyProject(fileName, "PowerBIParser");
     proj.tags = ["Power BI", "DAX"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
-    proj.role = "BI Engineer";
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const pbiEvidence = {
       sourceFile: fileName,
@@ -296,12 +285,11 @@ var GitHubParser = {
     const proj = createEmptyProject(fileName, "GitHubParser");
     proj.tags = ["GitHub", "Source Control"];
     proj.categories = ["DevOps", "Data Engineering"];
-    proj.objective = `Repository structure compiled: ${fileName}`;
     const docEvidence = {
       sourceFile: fileName,
       parser: "GitHubParser",
       confidence: 90,
-      sections: [{ heading: "GitHub Repository Structure", content: proj.objective }],
+      sections: [{ heading: "GitHub Repository Structure", content: `Repository files extracted from ${fileName}` }],
       extractedTerms: ["Git", "Repository"]
     };
     return {

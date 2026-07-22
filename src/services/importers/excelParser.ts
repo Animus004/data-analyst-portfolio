@@ -9,13 +9,13 @@ import { ExtractedProject, ExtractedMetric, ExtractedStoryBlock } from "./types"
 export function parseExcelWorkbook(fileName: string, base64Content: string): ExtractedProject {
   const sourceFiles = [fileName];
   
-  let title = "Spreadsheet Financial & Operational Analytics";
-  let subtitle = "Numerical modeling, pivot insights, and metric dashboarding";
-  let objective = "Build spreadsheet models to analyze operational datasets.";
+  let title = "";
+  let subtitle = "";
+  let objective = "";
   let businessProblem = "";
-  let datasetDesc = "Tabular spreadsheet workbook.";
+  let datasetDesc = "";
   let dataCleaning = "";
-  let methodology = "1. Imported tabular worksheets.\n2. Executed functions and aggregations.\n3. Rendered charts and summary metrics.";
+  let methodology = "";
   let findings = "";
   let recommendations = "";
   let challengesText = "";
@@ -29,34 +29,16 @@ export function parseExcelWorkbook(fileName: string, base64Content: string): Ext
     const excelBuffer = Buffer.from(base64Content, "base64");
     const workbook = XLSX.read(excelBuffer, { type: "buffer" });
 
-    let projectsRaw: any[] = [];
     let metricsRaw: any[] = [];
 
     workbook.SheetNames.forEach(sheetName => {
       const nameLower = sheetName.toLowerCase().replace(/\s+/g, "");
       const sheet = workbook.Sheets[sheetName];
 
-      if (nameLower === "projects" || nameLower === "casestudies") {
-        projectsRaw = XLSX.utils.sheet_to_json(sheet);
-      } else if (nameLower === "metrics" || nameLower === "kpis") {
+      if (nameLower === "metrics" || nameLower === "kpis") {
         metricsRaw = XLSX.utils.sheet_to_json(sheet);
       }
     });
-
-    if (projectsRaw.length > 0) {
-      const firstProj = projectsRaw[0];
-      title = firstProj.title || title;
-      subtitle = firstProj.subtitle || subtitle;
-      objective = firstProj.objective || firstProj.businessProblem || objective;
-      businessProblem = firstProj.businessProblem || businessProblem;
-      methodology = firstProj.methodology || methodology;
-      datasetDesc = firstProj.datasetDesc || datasetDesc;
-      dataCleaning = firstProj.dataCleaning || dataCleaning;
-      findings = firstProj.findings || findings;
-      recommendations = firstProj.recommendations || recommendations;
-      challengesText = firstProj.challengesText || challengesText;
-      lessonsLearned = firstProj.lessonsLearned || lessonsLearned;
-    }
 
     metricsRaw.forEach((m: any, mIdx: number) => {
       metrics.push({
@@ -77,10 +59,10 @@ export function parseExcelWorkbook(fileName: string, base64Content: string): Ext
   return {
     title,
     subtitle,
-    summary: `Operational analytics compiled from Excel spreadsheet: ${fileName}.`,
-    industry: "Spreadsheet Analytics",
-    role: "Financial Analyst",
-    duration: "1 Week",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: new Date().toISOString().split("T")[0],
     tags,
     categories,

@@ -28,39 +28,7 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
 
   if (projects.length <= 1) return conflicts;
 
-  // Compare Business Facts (Title, Subtitle, Role, Duration, Industry, Date)
-  const fieldsToCompare = ["title", "subtitle", "role", "duration", "industry", "date"];
-
-  fieldsToCompare.forEach(field => {
-    const valuesMap = new Map<string, { value: string; sourceFile: string; location?: string }[]>();
-    
-    projects.forEach(p => {
-      const val = (p as any)[field] || "";
-      if (val && val !== "Not Found" && val !== "Requires User Review") {
-        const norm = val.toLowerCase().trim();
-        if (!valuesMap.has(norm)) {
-          valuesMap.set(norm, []);
-        }
-        valuesMap.get(norm)!.push({
-          value: val,
-          sourceFile: p.sourceFiles.join(", ")
-        });
-      }
-    });
-
-    if (valuesMap.size > 1) {
-      const valuesList: ConflictRecord["values"] = [];
-      valuesMap.forEach(group => {
-        valuesList.push(group[0]);
-      });
-      conflicts.push({
-        field: field.charAt(0).toUpperCase() + field.slice(1),
-        values: valuesList
-      });
-    }
-  });
-
-  // Compare KPIs & Metrics (by similarity of labels)
+  // Compare KPIs & Metrics (by similarity of labels across evidence sources)
   const metricGroups = new Map<string, Array<{ label: string; value: string; sourceFile: string; location?: string }>>();
 
   projects.forEach(p => {
@@ -103,7 +71,7 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
         });
 
         conflicts.push({
-          field: `KPI: ${group[0].label}`,
+          field: `Metric Discrepancy (${group[0].label})`,
           values: valuesList
         });
       }

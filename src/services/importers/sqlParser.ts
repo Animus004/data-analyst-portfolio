@@ -8,13 +8,13 @@ import { ExtractedProject, ExtractedMetric, ExtractedStoryBlock } from "./types"
 export function parseSqlFiles(files: Array<{ name: string; content: string }>): ExtractedProject {
   const sourceFiles = files.map(f => f.name);
   
-  let title = "SQL Database Analytics";
-  let subtitle = "Database schema, query modeling, and analytical reporting";
-  let objective = "Perform structured query operations to surface analytical metrics.";
+  let title = "";
+  let subtitle = "";
+  let objective = "";
   let businessProblem = "";
-  let datasetDesc = "Structured SQL tables.";
+  let datasetDesc = "";
   let dataCleaning = "";
-  let methodology = "1. Wrote analytical query scripts.\n2. Executed joins and aggregate operations.\n3. Extracted key business metrics.";
+  let methodology = "";
   let findings = "";
   let recommendations = "";
   let challengesText = "";
@@ -28,12 +28,6 @@ export function parseSqlFiles(files: Array<{ name: string; content: string }>): 
   files.forEach((file, fileIdx) => {
     const content = file.content;
     const lines = content.split("\n");
-    
-    // Default title based on first SQL filename
-    if (fileIdx === 0) {
-      const cleanName = file.name.replace(/\.sql$/i, "").replace(/[-_]+/g, " ");
-      title = `SQL Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
-    }
 
     // Try to extract comments for metadata
     let currentBlock = "";
@@ -115,20 +109,6 @@ export function parseSqlFiles(files: Array<{ name: string; content: string }>): 
             sourceLocation: lineNum > 0 ? `Line ${lineNum}` : "Header block"
           });
         }
-      } else if (lower.startsWith("title:")) {
-        title = comment.substring(6).trim();
-      } else if (lower.startsWith("subtitle:")) {
-        subtitle = comment.substring(9).trim();
-      } else if (lower.startsWith("objective:")) {
-        objective = comment.substring(10).trim();
-      } else if (lower.startsWith("problem:")) {
-        businessProblem = comment.substring(8).trim();
-      } else if (lower.startsWith("methodology:")) {
-        methodology = comment.substring(12).trim();
-      } else if (lower.startsWith("findings:")) {
-        findings = comment.substring(9).trim();
-      } else if (lower.startsWith("recommendations:")) {
-        recommendations = comment.substring(16).trim();
       } else if (lower.startsWith("tag:") || lower.startsWith("tags:")) {
         const extractedTags = comment.substring(comment.indexOf(":") + 1)
           .split(",")
@@ -138,11 +118,6 @@ export function parseSqlFiles(files: Array<{ name: string; content: string }>): 
           if (!tags.includes(t)) tags.push(t);
         });
       }
-    }
-
-    // Include tables in datasetDesc
-    if (tablesReferenced.size > 0) {
-      datasetDesc = `SQL queries run against database tables: ${Array.from(tablesReferenced).join(", ")}.`;
     }
 
     // Add query script as story block
@@ -159,10 +134,10 @@ export function parseSqlFiles(files: Array<{ name: string; content: string }>): 
   return {
     title,
     subtitle,
-    summary: `Database analytics compiled from SQL scripts: ${sourceFiles.join(", ")}. Contains fully engineered table queries.`,
-    industry: "Relational Data Analytics",
-    role: "Database Analyst",
-    duration: "1 Week",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: new Date().toISOString().split("T")[0],
     tags,
     categories,

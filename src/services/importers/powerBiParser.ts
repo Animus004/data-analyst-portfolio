@@ -8,13 +8,13 @@ import { ExtractedProject, ExtractedMetric, ExtractedStoryBlock } from "./types"
 export function parsePowerBiFiles(files: Array<{ name: string; content: string }>): ExtractedProject {
   const sourceFiles = files.map(f => f.name);
 
-  let title = "Power BI Dashboard Report";
-  let subtitle = "Business Intelligence reporting, modeling, and dashboard layout";
-  let objective = "Build interactive business dashboards to report key business analytics.";
+  let title = "";
+  let subtitle = "";
+  let objective = "";
   let businessProblem = "";
-  let datasetDesc = "Data model loaded with multiple fact and dimension tables.";
+  let datasetDesc = "";
   let dataCleaning = "";
-  let methodology = "1. Connected data sources to Power BI.\n2. Built star schema relationships.\n3. Calculated measures in DAX.";
+  let methodology = "";
   let findings = "";
   let recommendations = "";
   let challengesText = "";
@@ -25,12 +25,6 @@ export function parsePowerBiFiles(files: Array<{ name: string; content: string }
   const categories: string[] = ["Business Intelligence", "Dashboard Reporting"];
 
   files.forEach((file, fileIdx) => {
-    // Default title based on first Power BI filename
-    if (fileIdx === 0) {
-      const cleanName = file.name.replace(/\.(pbix|dax|json)$/i, "").replace(/[-_]+/g, " ");
-      title = `Power BI Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
-    }
-
     const lines = file.content.split("\n");
     let currentDax = "";
 
@@ -84,10 +78,6 @@ export function parsePowerBiFiles(files: Array<{ name: string; content: string }
               sourceLocation: `Line ${lineIdx + 1}`
             });
           }
-        } else if (lower.startsWith("title:")) {
-          title = comment.substring(6).trim();
-        } else if (lower.startsWith("objective:")) {
-          objective = comment.substring(10).trim();
         }
       }
     });
@@ -99,7 +89,7 @@ export function parsePowerBiFiles(files: Array<{ name: string; content: string }
         type: "code_snippet",
         title: `DAX Measures: ${file.name}`,
         bodyContent: file.content || currentDax,
-        language: "sql", // sql highlighting matches DAX formulas nicely
+        language: "sql",
         sourceFile: file.name
       });
     }
@@ -108,10 +98,10 @@ export function parsePowerBiFiles(files: Array<{ name: string; content: string }
   return {
     title,
     subtitle,
-    summary: `Power BI analytical reporting compiled from layout and DAX source files: ${sourceFiles.join(", ")}.`,
-    industry: "Business Intelligence",
-    role: "BI Engineer",
-    duration: "1 Week",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: new Date().toISOString().split("T")[0],
     tags,
     categories,

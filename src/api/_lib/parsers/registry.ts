@@ -35,24 +35,24 @@ export interface Parser {
 // ----------------------------------------------------------------------
 function createEmptyProject(fileName: string, parserName: string): ExtractedProject {
   return {
-    title: `Analytical Report: ${fileName}`,
-    subtitle: `Synthesized analysis from ${parserName}`,
-    summary: `Structured dataset analysis parsed from ${fileName} using specialized ${parserName} compiler.`,
-    industry: "Analytical Technology",
-    role: "Analytics Engineer",
-    duration: "1 Week",
+    title: "",
+    subtitle: "",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: new Date().toISOString().split("T")[0],
     tags: [parserName.replace("Parser", "")],
-    categories: ["Data Analytics"],
-    objective: `Analyze data insights inside ${fileName}.`,
-    businessProblem: `Identify strategic opportunities or patterns inside the source file ${fileName}.`,
-    methodology: "1. Loaded file into the compiler pipeline.\n2. Parsed variables and analytical markers.\n3. Normalized findings.",
-    datasetDesc: `Dataset from file ${fileName}.`,
-    dataCleaning: "Extracted and structured content schema.",
-    findings: "Analysis complete. Waiting for narrative synthesis.",
-    recommendations: "1. Integrate parsed findings into central decision dashboards.",
-    challengesText: "Adapting file contents to standardized portfolio schemas.",
-    lessonsLearned: "Maintained complete factual lineage of evidence metrics.",
+    categories: [],
+    objective: "",
+    businessProblem: "",
+    methodology: "",
+    datasetDesc: "",
+    dataCleaning: "",
+    findings: "",
+    recommendations: "",
+    challengesText: "",
+    lessonsLearned: "",
     metrics: [],
     storyBlocks: [],
     sourceFiles: [fileName]
@@ -69,7 +69,6 @@ export const ExcelParser: Parser = {
     const proj = createEmptyProject(fileName, "ExcelParser");
     proj.tags = ["Excel", "Spreadsheets"];
     proj.categories = ["Financial Modeling", "Business Analytics"];
-    proj.role = "Financial Analyst";
 
     const excelEvidence: ExcelEvidence = {
       sourceFile: fileName,
@@ -185,7 +184,6 @@ export const SQLParser: Parser = {
     const proj = createEmptyProject(fileName, "SQLParser");
     proj.tags = ["SQL", "Relational Database"];
     proj.categories = ["Data Engineering", "Database Querying"];
-    proj.role = "Database Analyst";
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -206,9 +204,6 @@ export const SQLParser: Parser = {
     const joinsSet = new Set<string>();
     const aggSet = new Set<string>();
     const windowSet = new Set<string>();
-
-    const cleanName = fileName.replace(/\.sql$/i, "").replace(/[-_]+/g, " ");
-    proj.title = `SQL Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
 
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
@@ -269,10 +264,6 @@ export const SQLParser: Parser = {
     sqlEvidence.aggregations = Array.from(aggSet);
     sqlEvidence.windowFunctions = Array.from(windowSet);
 
-    if (tablesSet.size > 0) {
-      proj.datasetDesc = `Relational tables referenced: ${sqlEvidence.tables.join(", ")}.`;
-    }
-
     proj.storyBlocks.push({
       id: `sql-query-sb-${Date.now()}`,
       type: "code_snippet",
@@ -299,7 +290,6 @@ export const PythonParser: Parser = {
     const proj = createEmptyProject(fileName, "PythonParser");
     proj.tags = ["Python"];
     proj.categories = ["Data Science", "Data Engineering"];
-    proj.role = "Data Scientist";
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -311,9 +301,6 @@ export const PythonParser: Parser = {
       sections: [{ heading: "Python Source Code", content: text.slice(0, 3000) }],
       extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
     };
-
-    const cleanName = fileName.replace(/\.py$/i, "").replace(/[-_]+/g, " ");
-    proj.title = `Python Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
 
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
@@ -414,7 +401,7 @@ export const NotebookParser: Parser = {
       });
 
       if (markdownConcat.trim()) {
-        proj.findings = `Parsed findings from Notebook Markdown cells:\n${markdownConcat.slice(0, 1000)}`;
+        docEvidence.sections.push({ heading: "Notebook Markdown Synthesis", content: markdownConcat });
       }
     } catch (err) {
       console.error("NotebookParser Error:", err);
@@ -437,7 +424,6 @@ export const PowerBIParser: Parser = {
     const proj = createEmptyProject(fileName, "PowerBIParser");
     proj.tags = ["Power BI", "DAX"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
-    proj.role = "BI Engineer";
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
 
@@ -500,7 +486,6 @@ export const MarkdownParser: Parser = {
     proj.categories = ["Technical Writing", "Reporting"];
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
-    proj.summary = `Technical documentation compiled from Markdown files: ${fileName}.`;
 
     const readmeEvidence: ReadmeEvidence = {
       sourceFile: fileName,
@@ -516,21 +501,16 @@ export const MarkdownParser: Parser = {
       const body = lines.slice(1).join("\n").trim();
 
       if (title.includes("objective") || title.includes("goal")) {
-        proj.objective = body;
         readmeEvidence.objective = body;
       } else if (title.includes("problem") || title.includes("challenge")) {
-        proj.businessProblem = body;
+        // Business problem recorded in evidence
       } else if (title.includes("methodology") || title.includes("architecture")) {
-        proj.methodology = body;
         readmeEvidence.methodology = body;
       } else if (title.includes("finding") || title.includes("insight")) {
-        proj.findings = body;
         readmeEvidence.findings = body;
       } else if (title.includes("recommendation")) {
-        proj.recommendations = body;
         readmeEvidence.recommendations = body;
       } else if (title.includes("dataset")) {
-        proj.datasetDesc = body;
         readmeEvidence.dataset = body;
       }
     });
@@ -574,9 +554,6 @@ export const WordParser: Parser = {
       const buffer = Buffer.from(content, "base64");
       const extractionResult = await mammoth.extractRawText({ buffer });
       const text = extractionResult.value;
-
-      proj.objective = `Extracted narrative from Business Analysis Report: ${fileName}`;
-      proj.findings = text.slice(0, 2000);
 
       docEvidence.sections.push({ heading: "Full Document Content", content: text.slice(0, 4000) });
 
@@ -631,7 +608,6 @@ export const CSVParser: Parser = {
       if (lines.length > 0) {
         const headers = lines[0].split(",").map(h => h.trim());
         excelEvidence.dimensions = headers;
-        proj.datasetDesc = `Flat-file dataset contains ${lines.length - 1} records across headers: ${headers.join(", ")}.`;
 
         const rowMetric = {
           id: `csv-metric-rows-${Date.now()}`,
@@ -666,14 +642,13 @@ export const PDFParser: Parser = {
     const proj = createEmptyProject(fileName, "PDFParser");
     proj.tags = ["PDF", "Acrobat Document"];
     proj.categories = ["Data Extract", "Reporting"];
-    proj.objective = `Grounded extraction from PDF document: ${fileName}`;
 
     const docEvidence: DocumentEvidence = {
       sourceFile: fileName,
       parser: "PDFParser",
       confidence: 85,
       title: fileName,
-      sections: [{ heading: "PDF Grounded Extraction", content: proj.objective }],
+      sections: [{ heading: "PDF Grounded Extraction", content: `Evidence extracted from PDF file: ${fileName}` }],
       extractedTerms: ["PDF Document"]
     };
 
@@ -725,13 +700,12 @@ export const GitHubParser: Parser = {
     const proj = createEmptyProject(fileName, "GitHubParser");
     proj.tags = ["GitHub", "Source Control"];
     proj.categories = ["DevOps", "Data Engineering"];
-    proj.objective = `Repository structure compiled: ${fileName}`;
 
     const docEvidence: DocumentEvidence = {
       sourceFile: fileName,
       parser: "GitHubParser",
       confidence: 90,
-      sections: [{ heading: "GitHub Repository Structure", content: proj.objective }],
+      sections: [{ heading: "GitHub Repository Structure", content: `Repository files extracted from ${fileName}` }],
       extractedTerms: ["Git", "Repository"]
     };
 

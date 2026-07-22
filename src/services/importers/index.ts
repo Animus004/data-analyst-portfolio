@@ -70,40 +70,7 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
 
   if (projects.length <= 1) return conflicts;
 
-  // 1. Validate Business Facts (Title, Subtitle, Role, Duration, Industry, Date)
-  const fieldsToCompare = ["title", "subtitle", "role", "duration", "industry", "date"];
-
-  fieldsToCompare.forEach(field => {
-    const valuesMap = new Map<string, { value: string; sourceFile: string; location?: string }[]>();
-    
-    projects.forEach(p => {
-      const val = (p as any)[field] || "";
-      if (val && val !== "Not Found" && val !== "Requires User Review") {
-        const norm = val.toLowerCase().trim();
-        if (!valuesMap.has(norm)) {
-          valuesMap.set(norm, []);
-        }
-        valuesMap.get(norm)!.push({
-          value: val,
-          sourceFile: p.sourceFiles.join(", ")
-        });
-      }
-    });
-
-    if (valuesMap.size > 1) {
-      // Conflict detected!
-      const valuesList: ConflictRecord["values"] = [];
-      valuesMap.forEach(group => {
-        valuesList.push(group[0]); // Take the first representing value of the group
-      });
-      conflicts.push({
-        field: field.charAt(0).toUpperCase() + field.slice(1),
-        values: valuesList
-      });
-    }
-  });
-
-  // 2. Validate KPIs & Metrics (Compare metrics with similar labels)
+  // Validate KPIs & Metrics (Compare metrics with similar labels across evidence sources)
   const metricGroups = new Map<string, Array<{ metric: ExtractedMetric; sourceFile: string }>>();
 
   projects.forEach(p => {
@@ -123,7 +90,6 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
 
   metricGroups.forEach((group, normLabel) => {
     if (group.length > 1) {
-      // Check if values match
       const valuesMap = new Map<string, typeof group>();
       group.forEach(item => {
         const normVal = item.metric.value.toLowerCase().trim();
@@ -134,7 +100,6 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
       });
 
       if (valuesMap.size > 1) {
-        // Values differ for the same metric label!
         const valuesList: ConflictRecord["values"] = [];
         valuesMap.forEach(vGroup => {
           const rep = vGroup[0];
@@ -146,7 +111,7 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
         });
 
         conflicts.push({
-          field: `KPI: ${group[0].metric.label}`,
+          field: `Metric Discrepancy (${group[0].metric.label})`,
           values: valuesList
         });
       }

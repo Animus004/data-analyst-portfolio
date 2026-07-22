@@ -8,13 +8,13 @@ import { ExtractedProject, ExtractedMetric, ExtractedStoryBlock } from "./types"
 export function parsePythonFiles(files: Array<{ name: string; content: string }>): ExtractedProject {
   const sourceFiles = files.map(f => f.name);
 
-  let title = "Python Analytics Pipeline";
-  let subtitle = "Exploratory data analysis, modeling, and pythonic processing";
-  let objective = "Build an analytical pipeline in Python to discover data insights.";
+  let title = "";
+  let subtitle = "";
+  let objective = "";
   let businessProblem = "";
-  let datasetDesc = "Raw file datasets loaded via pandas.";
+  let datasetDesc = "";
   let dataCleaning = "";
-  let methodology = "1. Loaded and prepared data using pandas.\n2. Carried out exploratory data analysis.\n3. Drafted analytical code cells.";
+  let methodology = "";
   let findings = "";
   let recommendations = "";
   let challengesText = "";
@@ -27,19 +27,12 @@ export function parsePythonFiles(files: Array<{ name: string; content: string }>
   // Analyze files
   files.forEach((file, fileIdx) => {
     const isNotebook = file.name.endsWith(".ipynb");
-    
-    // Default title based on first Python file
-    if (fileIdx === 0) {
-      const cleanName = file.name.replace(/\.(py|ipynb)$/i, "").replace(/[-_]+/g, " ");
-      title = `Python Analytics: ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
-    }
 
     if (isNotebook) {
       // Jupyter Notebook
       try {
         const json = JSON.parse(file.content);
         const cells = json.cells || [];
-        let markdownConcat = "";
         let codeCellIdx = 0;
 
         cells.forEach((cell: any, cellIdx: number) => {
@@ -48,38 +41,17 @@ export function parsePythonFiles(files: Array<{ name: string; content: string }>
           const sourceText = sourceLines.join("");
 
           if (cellType === "markdown") {
-            markdownConcat += sourceText + "\n\n";
-            
-            // Look for headers
             const lines = sourceText.split("\n");
             lines.forEach(l => {
               const trimmed = l.trim();
-              if (trimmed.startsWith("#")) {
-                const headerText = trimmed.replace(/^#+\s*/, "").toLowerCase();
-                if (headerText.includes("objective") || headerText.includes("goal")) {
-                  objective = trimmed.replace(/^#+\s*/, "");
-                } else if (headerText.includes("problem") || headerText.includes("business friction")) {
-                  businessProblem = trimmed.replace(/^#+\s*/, "");
-                } else if (headerText.includes("methodology") || headerText.includes("workflow")) {
-                  methodology = trimmed.replace(/^#+\s*/, "");
-                } else if (headerText.includes("finding") || headerText.includes("insight")) {
-                  findings = trimmed.replace(/^#+\s*/, "");
-                } else if (headerText.includes("recommendation")) {
-                  recommendations = trimmed.replace(/^#+\s*/, "");
-                }
-              }
-              
-              // Extract KPI comments in markdown cell
               detectKpi(trimmed, cellIdx, file.name);
             });
           } else if (cellType === "code") {
             codeCellIdx++;
-            // Check for KPI comments in code cells
             sourceLines.forEach((l: any, lineNum: number) => {
               detectKpi(l, lineNum + 1, file.name, `Cell ${codeCellIdx}`);
             });
 
-            // If it's a small code cell or has interesting code, save as story block
             if (sourceText.trim() && storyBlocks.length < 5) {
               storyBlocks.push({
                 id: `py-sb-${fileIdx}-${cellIdx}-${Date.now()}`,
@@ -92,11 +64,6 @@ export function parsePythonFiles(files: Array<{ name: string; content: string }>
             }
           }
         });
-
-        // Use markdown cells to populate larger blocks
-        if (markdownConcat.trim()) {
-          findings = findings || `Extracted findings from Jupyter Notebook: \n${markdownConcat.slice(0, 500)}...`;
-        }
       } catch (err) {
         console.error(`Failed to parse Jupyter notebook JSON ${file.name}:`, err);
       }
@@ -129,9 +96,6 @@ export function parsePythonFiles(files: Array<{ name: string; content: string }>
       let commentPart = cleaned;
       if (commentIndex !== -1) {
         commentPart = cleaned.substring(commentIndex + 1).trim();
-      } else if (!cleaned.startsWith("#") && isNotebook && cleaned.includes("=")) {
-        // Look for inline KPI comments like: accuracy = 0.94 # KPI: Model Accuracy
-        // handled below
       } else {
         return;
       }
@@ -181,10 +145,10 @@ export function parsePythonFiles(files: Array<{ name: string; content: string }>
   return {
     title,
     subtitle,
-    summary: `Python analytics and modeling pipeline compiled from files: ${sourceFiles.join(", ")}.`,
-    industry: "Advanced Analytics",
-    role: "Data Scientist",
-    duration: "2 Weeks",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
     date: new Date().toISOString().split("T")[0],
     tags,
     categories,
