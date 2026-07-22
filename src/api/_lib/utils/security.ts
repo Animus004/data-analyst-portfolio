@@ -100,6 +100,38 @@ export function isAllowedFileType(fileName: string): boolean {
 }
 
 /**
+ * Step & Checkpoint Logger with > 2-second periodic warnings.
+ */
+export function createStepLogger(scope: string) {
+  const scopeStart = Date.now();
+  return {
+    start: (stepName: string) => {
+      const sStart = Date.now();
+      console.log(`[INSTRUMENTATION] [${scope}] START: ${stepName} @ T+${sStart - scopeStart}ms`);
+      
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - sStart;
+        if (elapsed >= 2000) {
+          console.warn(`[INSTRUMENTATION] [${scope}] CHECKPOINT (WARN >2s): '${stepName}' is taking long... (Elapsed: ${elapsed}ms)`);
+        }
+      }, 2000);
+
+      return {
+        end: (outputSizeInfo?: string | number) => {
+          clearInterval(interval);
+          const duration = Date.now() - sStart;
+          const sizeStr = outputSizeInfo !== undefined 
+            ? ` | Output Size: ${typeof outputSizeInfo === "number" ? `${(outputSizeInfo / 1024).toFixed(1)} KB` : outputSizeInfo}`
+            : "";
+          console.log(`[INSTRUMENTATION] [${scope}] END: ${stepName} | Elapsed: ${duration}ms${sizeStr}`);
+          return duration;
+        }
+      };
+    }
+  };
+}
+
+/**
  * Sandboxed parser execution wrapper with configurable timeout threshold.
  */
 export async function executeWithTimeout<T>(

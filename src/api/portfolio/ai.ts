@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { parseUploadedPackage, compileSourceCodeToProject, compileProjectPackage } from "../_lib/compiler/index";
 import { getAiClient } from "../_lib/ai/index";
 import { getSupabaseClient } from "../_lib/storage/index";
-import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission, executeWithTimeout } from "../_lib/utils/security";
+import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission, executeWithTimeout, createStepLogger } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
@@ -22,6 +22,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!enforceOwnerPermission(req, res)) return;
 
+  const logger = createStepLogger("API Endpoint /ai-package-parse");
+  const handlerStep = logger.start("Full Request Handler Execution");
+
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);
@@ -34,6 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Action: AI Package Parse (PBIT, ZIP, DAX, etc.)
   if (pathname.includes("/ai-package-parse")) {
     try {
+      const prepStep = logger.start("Stage 0: Payload Parsing & Storage Resolution");
       const body = req.body || {};
       const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
 
@@ -56,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // 1. Use storagePath first: Download from Supabase Storage if available with 3s timeout
           if (fileMeta.storagePath) {
+            const dlStep = logger.start(`Supabase Storage Download [${name}]`);
             const client = getSupabaseClient();
             if (client) {
               try {
@@ -69,11 +74,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (!downloadRes.error && downloadRes.data) {
                   const arrayBuffer = await downloadRes.data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
+                  dlStep.end(buffer.length);
                 } else if (downloadRes.error) {
+                  dlStep.end("Failed");
                   const { category, message } = categorizeStorageError(downloadRes.error);
                   console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
                 }
               } catch (downloadErr: any) {
+                dlStep.end("Timeout/Error");
                 console.warn(`[ai-package-parse] Exception or timeout downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
               }
             }
@@ -131,19 +139,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           "Invalid request payload. Must provide either legacy format ({ fileName, fileDataBase64 }) or new format ({ packageId, files })."
         );
       }
+      prepStep.end(`${rawFilesToCompile.length} file(s) resolved`);
 
       // Execute package compiler with a strict 25-second hard deadline
+      const compileStep = logger.start("Package Compiler Pipeline Execution");
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
         () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding),
         25000
       );
+      compileStep.end(JSON.stringify(output).length);
 
       logExecution({
         endpoint: pathname,
         totalDurationMs: Date.now() - startTime
       });
 
+      handlerStep.end("200 OK Response Sent");
       return sendSuccess(res, output);
     } catch (err: any) {
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

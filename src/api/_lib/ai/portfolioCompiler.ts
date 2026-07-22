@@ -822,287 +822,291 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
   for (const model of candidateModels) {
     try {
       usedModel = model;
-      response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction:
-            "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              subtitle: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              executiveSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessContext: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessProblem: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessObjective: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessImpact: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              stakeholders: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              datasetDescription: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              methodology: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              dataCleaning: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              analysisProcess: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              analyticalTechniques: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              industry: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              role: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              duration: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              findings: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              recommendations: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              challenges: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              lessonsLearned: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              technologyStack: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              skillsDemonstrated: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              resumeBullets: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              linkedInSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              gitHubReadmeSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              starStory: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.OBJECT,
-                    properties: {
-                      situation: { type: Type.STRING },
-                      task: { type: Type.STRING },
-                      action: { type: Type.STRING },
-                      result: { type: Type.STRING }
-                    },
-                    required: ["situation", "task", "action", "result"]
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              metrics: {
-                type: Type.ARRAY,
-                items: {
+      response = await executeWithTimeout(
+        `Gemini Compiler Model[${model}]`,
+        () => ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction:
+              "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: {
                   type: Type.OBJECT,
                   properties: {
-                    label: { type: Type.STRING },
                     value: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    iconName: { type: Type.STRING },
-                    confidence: { type: Type.INTEGER },
-                    sourceFile: { type: Type.STRING }
+                    confidence: { type: Type.INTEGER }
                   },
-                  required: ["label", "value", "description", "confidence"]
+                  required: ["value", "confidence"]
+                },
+                subtitle: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                executiveSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessContext: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessProblem: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessObjective: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessImpact: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                stakeholders: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                datasetDescription: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                methodology: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                dataCleaning: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                analysisProcess: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                analyticalTechniques: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                industry: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                role: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                duration: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                findings: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                recommendations: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                challenges: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                lessonsLearned: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                technologyStack: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                skillsDemonstrated: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                resumeBullets: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                linkedInSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                gitHubReadmeSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                starStory: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.OBJECT,
+                      properties: {
+                        situation: { type: Type.STRING },
+                        task: { type: Type.STRING },
+                        action: { type: Type.STRING },
+                        result: { type: Type.STRING }
+                      },
+                      required: ["situation", "task", "action", "result"]
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                metrics: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      label: { type: Type.STRING },
+                      value: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      iconName: { type: Type.STRING },
+                      confidence: { type: Type.INTEGER },
+                      sourceFile: { type: Type.STRING }
+                    },
+                    required: ["label", "value", "description", "confidence"]
+                  }
+                },
+                tags: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                categories: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
                 }
               },
-              tags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              categories: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            },
-            required: [
-              "title",
-              "executiveSummary",
-              "businessProblem",
-              "businessObjective",
-              "methodology",
-              "findings",
-              "recommendations",
-              "resumeBullets",
-              "linkedInSummary",
-              "starStory"
-            ]
+              required: [
+                "title",
+                "executiveSummary",
+                "businessProblem",
+                "businessObjective",
+                "methodology",
+                "findings",
+                "recommendations",
+                "resumeBullets",
+                "linkedInSummary",
+                "starStory"
+              ]
+            }
           }
-        }
-      });
+        }),
+        15000
+      );
       if (response && response.text) {
         break;
       }
