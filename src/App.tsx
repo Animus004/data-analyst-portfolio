@@ -114,14 +114,14 @@ export default function App() {
   }, []);
 
   // Helper to trigger direct Supabase Cloud Sync
-  const triggerCloudSync = async (pProfile: CreatorProfile, pProjects: ProjectRecord[]) => {
+  const triggerCloudSync = async (pProfile: CreatorProfile, pProjects: ProjectRecord[]): Promise<{ success: boolean; error?: string }> => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setSyncStatus({
         status: "offline",
         lastSyncTime: syncStatus.lastSyncTime,
         errorMsg: "Offline Mode: Changes saved locally but cloud sync is pending internet connection."
       });
-      return;
+      return { success: true };
     }
 
     setSyncStatus(prev => ({ ...prev, status: "pending", errorMsg: null }));
@@ -136,19 +136,23 @@ export default function App() {
           lastSyncTime: now,
           errorMsg: null
         });
+        return { success: true };
       } else {
         setSyncStatus({
           status: "failed",
           lastSyncTime: syncStatus.lastSyncTime,
           errorMsg: result.error || "Database synchronization failed."
         });
+        return { success: false, error: result.error || "Database synchronization failed." };
       }
     } catch (e: any) {
+      const errStr = e.message || "An unexpected error occurred during cloud sync.";
       setSyncStatus({
         status: "failed",
         lastSyncTime: syncStatus.lastSyncTime,
-        errorMsg: e.message || "An unexpected error occurred during cloud sync."
+        errorMsg: errStr
       });
+      return { success: false, error: errStr };
     }
   };
 
