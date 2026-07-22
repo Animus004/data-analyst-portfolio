@@ -62,7 +62,10 @@ export const storageService = {
         createdAt: p.createdAt || new Date().toISOString(),
         updatedAt: p.updatedAt || new Date().toISOString()
       }));
-      this.saveProfile(defaultCreatorProfile);
+      const existingProfile = localStorage.getItem(PROFILE_KEY);
+      if (!existingProfile) {
+        this.saveProfile(defaultCreatorProfile);
+      }
       this.saveProjects(updatedProjects.length > 0 ? updatedProjects : seedProjects);
       localStorage.setItem(VERSION_KEY, CURRENT_VERSION);
     }
@@ -174,7 +177,7 @@ export const storageService = {
 
       if (!error && data?.payload) {
         const payload = data.payload;
-        if (payload && payload.profile && Array.isArray(payload.projects)) {
+        if (payload && payload.profile && Array.isArray(payload.projects) && payload.projects.length > 0) {
           this.saveProfile(payload.profile);
           this.saveProjects(payload.projects);
           return { profile: payload.profile, projects: payload.projects };
@@ -194,7 +197,7 @@ export const storageService = {
 
       if (!altError && altData?.payload) {
         const payload = altData.payload;
-        if (payload && payload.profile && Array.isArray(payload.projects)) {
+        if (payload && payload.profile && Array.isArray(payload.projects) && payload.projects.length > 0) {
           this.saveProfile(payload.profile);
           this.saveProjects(payload.projects);
           return { profile: payload.profile, projects: payload.projects };

@@ -202,6 +202,19 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   // Local state for inline record deletion safety
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Click-away cancel: reset deletingId when user clicks anywhere outside the confirm button
+  React.useEffect(() => {
+    if (!deletingId) return;
+    const cancel = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(`[data-delete-confirm="${deletingId}"]`)) {
+        setDeletingId(null);
+      }
+    };
+    document.addEventListener("click", cancel, { capture: true });
+    return () => document.removeEventListener("click", cancel, { capture: true });
+  }, [deletingId]);
+
   // Local state for profile form editor
   const [editedProfile, setEditedProfile] = useState<CreatorProfile>({ ...profile });
   const [profileSaved, setProfileSaved] = useState(false);
@@ -853,7 +866,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     try {
       const validation = validatePackageFileDescriptors(uploadedFileMetas);
       if (!validation.isValid) {
-        throw new Error(`Package descriptor validation failed on client: File(s) [${validation.invalidFiles.join(", ")}] are missing both storagePath and fallbackContent.`);
+        setAiParseError(`Re-evaluation cannot proceed: File(s) [${validation.invalidFiles.join(", ")}] are missing both a storage path and cached content. Please re-upload the original project files and run AI synthesis again.`);
+        return;
       }
 
       const packageId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `pkg-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
@@ -890,6 +904,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       }
     } catch (err: any) {
       console.error("Re-compile error:", err);
+      setAiParseError(`Re-evaluation failed: ${err.message || "Network error reaching AI service. Please retry."}`);
     } finally {
       setUploadProgressText(null);
       setAiParsing(false);
@@ -1063,6 +1078,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
     setPackageFiles([]);
     setAiParsedResult(null);
+    setAiParseError(null); // Clear any stale error from a prior re-evaluation attempt
     setProjectType(null);
     setSourceAttributions(null);
     setConfidenceScores(null);
@@ -1618,7 +1634,11 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
 
     const success = onImportBackup(backupJson);
     if (success) {
-      // ...
+      setBackupStatus({ type: "success", msg: "Portfolio backup restored successfully! All case studies and profile settings loaded." });
+      setBackupJson("");
+      setTimeout(() => setBackupStatus({ type: null, msg: "" }), 4000);
+    } else {
+      setBackupStatus({ type: "error", msg: "Restore failed: Invalid JSON structure. Ensure the payload has 'profile' and 'projects' fields." });
     }
   };
 
@@ -1918,9 +1938,22 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                       <Button variant="ghost" size="sm" onClick={() => handleDuplicateProject(project)} className="text-slate-400 hover:text-white px-1.5 h-8">
                                         <Copy className="w-3.5 h-3.5" />
                                       </Button>
-                                      <Button variant="ghost" size="sm" onClick={() => setDeletingId(project.id)} className="text-slate-400 hover:text-red-400 px-1.5 h-8">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </Button>
+                                      {deletingId === project.id ? (
+                                        <Button
+                                          data-delete-confirm={project.id}
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => { onDeleteProject(project.id); setDeletingId(null); }}
+                                          className="text-red-400 hover:text-red-300 px-1.5 h-8 ring-1 ring-red-500/50"
+                                          title="Click again to confirm deletion"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                        </Button>
+                                      ) : (
+                                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeletingId(project.id); }} className="text-slate-400 hover:text-red-400 px-1.5 h-8">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>

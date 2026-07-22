@@ -57,98 +57,11 @@ function createEmptyProject(fileName: string): ExtractedProject {
   };
 }
 
-/**
- * Asynchronous, non-blocking StreamExcelParser for Portfolio OS.
- * Unpacks .xlsx archives via stream-based XML extraction to prevent single-threaded event loop lockup.
- */
-export async function parseStreamExcel(fileName: string, content: string | Buffer): Promise<ParserResult> {
-  const parseStart = Date.now();
-  const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
-
-  const proj = createEmptyProject(fileName);
-  const excelBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
-  const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
-
-  const excelEvidence: ExcelEvidence = {
-    sourceFile: fileName,
-    parser: "StreamExcelParser",
-    confidence: 95,
-    sheetNames: [],
-    metrics: [],
-    kpis: [],
-    charts: [],
-    pivots: [],
-    dashboardTitles: [],
-    formulas: [],
-    dimensions: [],
-    measures: [],
-    businessTerms: [],
-    worksheets: [],
-    namedRanges: [],
-    calculatedColumns: [],
-    workbookMetadata: {},
-    isAdaptivelySampled: excelBuffer.length > 5 * 1024 * 1024,
-    samplingStrategy: excelBuffer.length > 5 * 1024 * 1024 
-      ? `Asynchronous Stream XML Parsing (${fileSizeMb} MB). Extracted sheet metadata, headers, formulas, and pivots in non-blocking event loop.`
-      : undefined
-  };
-
-  // Check if buffer is a valid PKZIP archive (.xlsx)
-  const isZipArchive = excelBuffer.length >= 4 && excelBuffer[0] === 0x50 && excelBuffer[1] === 0x4b;
-
-  if (isZipArchive && excelBuffer.length > 5 * 1024 * 1024) {
-    // Large .xlsx workbook (> 5 MB): Asynchronous SAX/XML Stream Reader
-    try {
-      const zip = await JSZip.loadAsync(excelBuffer);
-
-      // 1. Parse xl/workbook.xml for sheet names & rel IDs
-      const workbookXmlStr = await zip.file("xl/workbook.xml")?.async("string");
-      const sheetNameMap: Array<{ id: string; name: string }> = [];
-
-      if (workbookXmlStr) {
-        const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*sheetId="([^"]+)"/g;
-        let match: RegExpExecArray | null;
-        while ((match = sheetRegex.exec(workbookXmlStr)) !== null) {
-          const name = decodeXmlEntities(match[1]);
-          sheetNameMap.push({ id: match[2], name });
-          excelEvidence.sheetNames.push(name);
-        }
-      }
-
-      // If sheetNameMap is empty, try fallback sheet pattern
-      if (sheetNameMap.length === 0) {
-        const sheetFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/worksheets/sheet"));
-        sheetFiles.forEach((f, idx) => {
-          const name = `Sheet${idx + 1}`;
-          sheetNameMap.push({ id: String(idx + 1), name });
-          excelEvidence.sheetNames.push(name);
-        });
-      }
-
-      // 2. Parse Shared Strings Table (xl/sharedStrings.xml)
-      const sharedStrings: string[] = [];
-      const sharedStringsXmlStr = await zip.file("xl/sharedStrings.xml")?.async("string");
-      if (sharedStringsXmlStr) {
-        const tRegex = /<t[^>]*>([\s\S]*?)<\/t>/g;
-        let tMatch: RegExpExecArray | null;
-        let count = 0;
-        while ((tMatch = tRegex.exec(sharedStringsXmlStr)) !== null && count < 2000) {
-          sharedStrings.push(decodeXmlEntities(tMatch[1]).trim());
-          count++;
-        }
-      }
-
-      // 3. Enumerate Pivot Tables & Drawings
-      const pivotFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/pivotTables/"));
-      pivotFiles.forEach((_, idx) => {
-        excelEvidence.pivots.push(`Pivot Table ${idx + 1}`);
-      });
-
-      const drawingFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/drawings/"));
-      drawingFiles.forEach((_, idx) => {
-        excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
-      });
-
+// ---------------------------------------------------------------------------
+// StreamWorksheetResult and streamParseWorksheetXml are module-scoped so they
+// can be called from inside the try{} block of parseStreamExcel without
+// violating block-scoped function declaration rules.
+// ---------------------------------------------------------------------------
 interface StreamWorksheetResult {
   rowCount: number;
   columns: string[];
@@ -260,6 +173,98 @@ async function streamParseWorksheetXml(
     });
   });
 }
+
+/**
+ * Asynchronous, non-blocking StreamExcelParser for Portfolio OS.
+ * Unpacks .xlsx archives via stream-based XML extraction to prevent single-threaded event loop lockup.
+ */
+export async function parseStreamExcel(fileName: string, content: string | Buffer): Promise<ParserResult> {
+  const parseStart = Date.now();
+  const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
+
+  const proj = createEmptyProject(fileName);
+  const excelBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
+  const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
+
+  const excelEvidence: ExcelEvidence = {
+    sourceFile: fileName,
+    parser: "StreamExcelParser",
+    confidence: 95,
+    sheetNames: [],
+    metrics: [],
+    kpis: [],
+    charts: [],
+    pivots: [],
+    dashboardTitles: [],
+    formulas: [],
+    dimensions: [],
+    measures: [],
+    businessTerms: [],
+    worksheets: [],
+    namedRanges: [],
+    calculatedColumns: [],
+    workbookMetadata: {},
+    isAdaptivelySampled: excelBuffer.length > 5 * 1024 * 1024,
+    samplingStrategy: excelBuffer.length > 5 * 1024 * 1024 
+      ? `Asynchronous Stream XML Parsing (${fileSizeMb} MB). Extracted sheet metadata, headers, formulas, and pivots in non-blocking event loop.`
+      : undefined
+  };
+
+  // Check if buffer is a valid PKZIP archive (.xlsx)
+  const isZipArchive = excelBuffer.length >= 4 && excelBuffer[0] === 0x50 && excelBuffer[1] === 0x4b;
+
+  if (isZipArchive && excelBuffer.length > 5 * 1024 * 1024) {
+    // Large .xlsx workbook (> 5 MB): Asynchronous SAX/XML Stream Reader
+    try {
+      const zip = await JSZip.loadAsync(excelBuffer);
+
+      // 1. Parse xl/workbook.xml for sheet names & rel IDs
+      const workbookXmlStr = await zip.file("xl/workbook.xml")?.async("string");
+      const sheetNameMap: Array<{ id: string; name: string }> = [];
+
+      if (workbookXmlStr) {
+        const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*sheetId="([^"]+)"/g;
+        let match: RegExpExecArray | null;
+        while ((match = sheetRegex.exec(workbookXmlStr)) !== null) {
+          const name = decodeXmlEntities(match[1]);
+          sheetNameMap.push({ id: match[2], name });
+          excelEvidence.sheetNames.push(name);
+        }
+      }
+
+      // If sheetNameMap is empty, try fallback sheet pattern
+      if (sheetNameMap.length === 0) {
+        const sheetFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/worksheets/sheet"));
+        sheetFiles.forEach((f, idx) => {
+          const name = `Sheet${idx + 1}`;
+          sheetNameMap.push({ id: String(idx + 1), name });
+          excelEvidence.sheetNames.push(name);
+        });
+      }
+
+      // 2. Parse Shared Strings Table (xl/sharedStrings.xml)
+      const sharedStrings: string[] = [];
+      const sharedStringsXmlStr = await zip.file("xl/sharedStrings.xml")?.async("string");
+      if (sharedStringsXmlStr) {
+        const tRegex = /<t[^>]*>([\s\S]*?)<\/t>/g;
+        let tMatch: RegExpExecArray | null;
+        let count = 0;
+        while ((tMatch = tRegex.exec(sharedStringsXmlStr)) !== null && count < 2000) {
+          sharedStrings.push(decodeXmlEntities(tMatch[1]).trim());
+          count++;
+        }
+      }
+
+      // 3. Enumerate Pivot Tables & Drawings
+      const pivotFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/pivotTables/"));
+      pivotFiles.forEach((_, idx) => {
+        excelEvidence.pivots.push(`Pivot Table ${idx + 1}`);
+      });
+
+      const drawingFiles = Object.keys(zip.files).filter(k => k.startsWith("xl/drawings/"));
+      drawingFiles.forEach((_, idx) => {
+        excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
+      });
 
       // 4. Stream Each Worksheet XML via SAX Sliding Window
       let totalRowCount = 0;
