@@ -10,12 +10,25 @@ import { Card, CardContent } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
 import { motion } from "motion/react";
+import { normalizeKpiLabel, cleanKpiValue } from "../../utils";
 import { Search, SlidersHorizontal, ArrowUpRight, Code, Database, Compass, Eye } from "lucide-react";
 
 interface PublicHomeProps {
   projects: ProjectRecord[];
   profile: CreatorProfile;
   onNavigate: (page: string, params?: Record<string, string>) => void;
+}
+
+function safeStr(val: any): string {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && typeof val.value === "string") return val.value;
+  return "";
+}
+
+function safeArr(val: any): string[] {
+  if (Array.isArray(val)) return val.map(safeStr).filter(Boolean);
+  if (val && typeof val === "object" && Array.isArray(val.value)) return val.value.map(safeStr).filter(Boolean);
+  return [];
 }
 
 export const PublicHome: React.FC<PublicHomeProps> = ({
@@ -31,20 +44,21 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
   // Filter only published projects for recruiters
   const publishedProjects = useMemo(() => {
-    return projects.filter(p => p.status === ProjectStatus.PUBLISHED);
+    return (projects || []).filter(p => p && p.status === ProjectStatus.PUBLISHED);
   }, [projects]);
 
   // Aggregate all unique tags, industries from published projects
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
-    publishedProjects.forEach(p => p.tags.forEach(t => tags.add(t)));
+    publishedProjects.forEach(p => safeArr(p.tags).forEach(t => tags.add(t)));
     return Array.from(tags);
   }, [publishedProjects]);
 
   const availableIndustries = useMemo(() => {
     const industries = new Set<string>();
     publishedProjects.forEach(p => {
-      if (p.industry) industries.add(p.industry);
+      const ind = safeStr(p.industry);
+      if (ind) industries.add(ind);
     });
     return Array.from(industries);
   }, [publishedProjects]);
@@ -65,23 +79,30 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
     ];
   }, [profile.quickStackSkills]);
 
-  // Perform multi-dimensional client-side filtering
+  // Perform multi-dimensional client-side filtering safely
   const filteredProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return publishedProjects.filter((p) => {
-      const matchesSearch = 
-        p.title.toLowerCase().includes(search.toLowerCase()) ||
-        p.summary.toLowerCase().includes(search.toLowerCase()) ||
-        p.tags.some(t => t.toLowerCase().includes(search.toLowerCase())) ||
-        p.industry.toLowerCase().includes(search.toLowerCase());
+      const pTitle = safeStr(p.title);
+      const pSummary = safeStr(p.summary);
+      const pIndustry = safeStr(p.industry);
+      const pTags = safeArr(p.tags);
+      const pDiff = safeStr(p.difficulty);
+
+      const matchesSearch = !q ||
+        pTitle.toLowerCase().includes(q) ||
+        pSummary.toLowerCase().includes(q) ||
+        pIndustry.toLowerCase().includes(q) ||
+        pTags.some(t => t.toLowerCase().includes(q));
         
       const matchesDifficulty = 
-        selectedDifficulty === "all" || p.difficulty === selectedDifficulty;
+        selectedDifficulty === "all" || pDiff === selectedDifficulty;
         
       const matchesTag = 
-        selectedTag === "all" || p.tags.includes(selectedTag);
+        selectedTag === "all" || pTags.includes(selectedTag);
         
       const matchesIndustry = 
-        selectedIndustry === "all" || p.industry === selectedIndustry;
+        selectedIndustry === "all" || pIndustry === selectedIndustry;
 
       return matchesSearch && matchesDifficulty && matchesTag && matchesIndustry;
     });
@@ -370,44 +391,48 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     {/* Header: Industry & Difficulty */}
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant="industry">{project.industry}</Badge>
-                        <Badge variant="difficulty" difficulty={project.difficulty}>
-                          {project.difficulty}
+                        <Badge variant="industry">{safeStr(project.industry)}</Badge>
+                        <Badge variant="difficulty" difficulty={safeStr(project.difficulty)}>
+                          {safeStr(project.difficulty)}
                         </Badge>
                       </div>
 
                       {/* Project Title */}
                       <h3 className="font-display font-bold text-xl text-slate-900 group-hover:text-slate-950 transition-colors tracking-tight line-clamp-1">
-                        {project.title}
+                        {safeStr(project.title)}
                       </h3>
                       <p className="font-mono text-[11px] text-slate-400 leading-none">
-                        {project.role} &bull; {project.duration}
+                        {safeStr(project.role)} &bull; {safeStr(project.duration)}
                       </p>
                     </div>
 
                     {/* Summary text */}
                     <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 font-sans font-light">
-                      {project.summary}
+                      {safeStr(project.summary)}
                     </p>
 
                     {/* High-Impact Mini Dashboard Metrics */}
                     <div className="grid grid-cols-3 gap-3 bg-slate-50/70 p-3.5 rounded-lg border border-slate-100">
-                      {project.metrics.slice(0, 3).map((metric) => (
-                        <div key={metric.id} className="text-center space-y-0.5 border-r last:border-r-0 border-slate-200/50">
-                          <span className="block text-sm font-bold text-slate-900 tracking-tight leading-none">
-                            {metric.value}
-                          </span>
-                          <span className="block text-[9px] font-mono font-medium text-slate-400 uppercase tracking-tight line-clamp-1 leading-none mt-1">
-                            {metric.label}
-                          </span>
-                        </div>
-                      ))}
+                      {(project.metrics || []).slice(0, 3).map((metric, mIdx) => {
+                        const normLabel = normalizeKpiLabel(safeStr(metric.label));
+                        const cleanVal = cleanKpiValue(safeStr(metric.value), normLabel);
+                        return (
+                          <div key={metric.id || mIdx} className="text-center space-y-0.5 border-r last:border-r-0 border-slate-200/50">
+                            <span className="block text-sm font-bold text-slate-900 tracking-tight leading-none">
+                              {cleanVal}
+                            </span>
+                            <span className="block text-[9px] font-mono font-medium text-slate-400 uppercase tracking-tight line-clamp-1 leading-none mt-1">
+                              {normLabel}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Bottom Tech Tags & Navigation Action */}
                     <div className="flex items-center justify-between pt-3.5 border-t border-slate-100">
                       <div className="flex flex-wrap gap-1.5 max-w-[70%]">
-                        {project.tags.slice(0, 3).map((tag) => (
+                        {safeArr(project.tags).slice(0, 3).map((tag) => (
                           <span 
                             key={tag} 
                             className="inline-flex items-center text-[9px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/30"
@@ -415,9 +440,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                             {tag}
                           </span>
                         ))}
-                        {project.tags.length > 3 && (
+                        {safeArr(project.tags).length > 3 && (
                           <span className="text-[9px] font-mono text-slate-400 self-center">
-                            +{project.tags.length - 3}
+                            +{safeArr(project.tags).length - 3}
                           </span>
                         )}
                       </div>
