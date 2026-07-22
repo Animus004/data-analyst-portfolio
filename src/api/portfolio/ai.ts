@@ -188,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name,
             size: fileMeta.size || buffer.length,
             type: fileMeta.type || "binary",
-            content: buffer.toString("base64"),
+            content: buffer,
             storagePath: fileMeta.storagePath
           });
         }
@@ -209,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: fileName,
           size: buffer.length,
           type: fileType || "binary",
-          content: buffer.toString("base64")
+          content: buffer
         });
       } else {
         return sendError(

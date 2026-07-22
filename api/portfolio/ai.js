@@ -38,7 +38,7 @@ async function parseStreamExcel(fileName, content) {
   const parseStart = Date.now();
   const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
   const proj = createEmptyProject(fileName);
-  const excelBuffer = Buffer.from(content, "base64");
+  const excelBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
   const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
   const excelEvidence = {
     sourceFile: fileName,
@@ -788,7 +788,7 @@ async function unpackZipFile(base64Content) {
   const MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
   let totalUncompressedBytes = 0;
   try {
-    const zipBuffer = Buffer.from(base64Content, "base64");
+    const zipBuffer = typeof base64Content === "string" ? Buffer.from(base64Content, "base64") : base64Content;
     const zip = new JSZip2();
     const contents = await zip.loadAsync(zipBuffer);
     const entries = Object.entries(contents.files);
@@ -3264,7 +3264,7 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
   console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
   console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
   console.log(`RAW FILE DESCRIPTOR:
-${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? firstRaw.content.length : 0 } : null, null, 2)}`);
+${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? typeof firstRaw.content === "string" ? firstRaw.content.length : firstRaw.content.length : 0 } : null, null, 2)}`);
   console.log(`----------------------------------------------------------
 `);
   const pipelineStartTime = Date.now();
@@ -4283,7 +4283,7 @@ async function handler(req, res) {
             name,
             size: fileMeta.size || buffer.length,
             type: fileMeta.type || "binary",
-            content: buffer.toString("base64"),
+            content: buffer,
             storagePath: fileMeta.storagePath
           });
         }
@@ -4301,7 +4301,7 @@ async function handler(req, res) {
           name: fileName,
           size: buffer.length,
           type: fileType || "binary",
-          content: buffer.toString("base64")
+          content: buffer
         });
       } else {
         return sendError(

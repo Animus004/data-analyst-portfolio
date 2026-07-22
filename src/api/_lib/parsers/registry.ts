@@ -29,7 +29,7 @@ export interface ParserResult {
 export interface Parser {
   name: string;
   extensions: string[];
-  parse(fileName: string, content: string, type: "text" | "binary"): Promise<ParserResult>;
+  parse(fileName: string, content: string | Buffer, type: "text" | "binary"): Promise<ParserResult>;
 }
 
 // ----------------------------------------------------------------------
@@ -636,14 +636,14 @@ export const PARSER_REGISTRY: Record<string, Parser> = {
   jpeg: ImageParser
 };
 
-export async function unpackZipFile(base64Content: string): Promise<Array<{ name: string; content: string; type: "text" | "binary" }>> {
+export async function unpackZipFile(base64Content: string | Buffer): Promise<Array<{ name: string; content: string; type: "text" | "binary" }>> {
   const extractedFiles: Array<{ name: string; content: string; type: "text" | "binary" }> = [];
   const MAX_EXTRACTED_FILES = 100;
   const MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
   let totalUncompressedBytes = 0;
 
   try {
-    const zipBuffer = Buffer.from(base64Content, "base64");
+    const zipBuffer = typeof base64Content === "string" ? Buffer.from(base64Content, "base64") : base64Content;
     const zip = new JSZip();
     const contents = await zip.loadAsync(zipBuffer);
 

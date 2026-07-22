@@ -152,7 +152,7 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
  * Flow: Raw Files -> Specialized Parsers -> Evidence Extraction -> Evidence Graph -> Gemini Reasoning Engine -> Structured Portfolio Project
  */
 export async function compileProjectPackage(
-  rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>,
+  rawFiles: Array<{ name: string; size: number; type: string; content: string | Buffer; storagePath?: string }>,
   userAnswers?: Record<string, string>,
   forceCompile?: boolean,
   existingUnderstanding?: ProjectUnderstanding,
@@ -169,7 +169,7 @@ export async function compileProjectPackage(
   console.log(`Array.isArray(rawFiles): ${Array.isArray(rawFiles)}`);
   console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
   console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
-  console.log(`RAW FILE DESCRIPTOR:\n${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? firstRaw.content.length : 0 } : null, null, 2)}`);
+  console.log(`RAW FILE DESCRIPTOR:\n${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? (typeof firstRaw.content === "string" ? firstRaw.content.length : firstRaw.content.length) : 0 } : null, null, 2)}`);
   console.log(`----------------------------------------------------------\n`);
 
   const pipelineStartTime = Date.now();

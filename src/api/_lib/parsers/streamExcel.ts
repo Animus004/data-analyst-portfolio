@@ -61,12 +61,12 @@ function createEmptyProject(fileName: string): ExtractedProject {
  * Asynchronous, non-blocking StreamExcelParser for Portfolio OS.
  * Unpacks .xlsx archives via stream-based XML extraction to prevent single-threaded event loop lockup.
  */
-export async function parseStreamExcel(fileName: string, content: string): Promise<ParserResult> {
+export async function parseStreamExcel(fileName: string, content: string | Buffer): Promise<ParserResult> {
   const parseStart = Date.now();
   const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
 
   const proj = createEmptyProject(fileName);
-  const excelBuffer = Buffer.from(content, "base64");
+  const excelBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
   const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
 
   const excelEvidence: ExcelEvidence = {
