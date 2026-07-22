@@ -123,6 +123,14 @@ export interface EvidenceMeta {
   location?: string;
 }
 
+export interface ExcelWorksheetInfo {
+  name: string;
+  role: string;
+  rowCount: number;
+  columnCount: number;
+  columns: string[];
+}
+
 export interface ExcelEvidence extends EvidenceMeta {
   metrics: Array<{ label: string; value: string; description?: string }>;
   kpis: Array<{ name: string; target?: string; actual?: string }>;
@@ -134,6 +142,10 @@ export interface ExcelEvidence extends EvidenceMeta {
   measures: string[];
   sheetNames: string[];
   businessTerms: string[];
+  worksheets?: ExcelWorksheetInfo[];
+  namedRanges?: Array<{ name: string; ref: string }>;
+  calculatedColumns?: Array<{ sheet: string; column: string; formula: string }>;
+  workbookMetadata?: Record<string, any>;
 }
 
 export interface SqlEvidence extends EvidenceMeta {

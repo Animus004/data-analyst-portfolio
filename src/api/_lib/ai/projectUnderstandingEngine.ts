@@ -80,17 +80,28 @@ function cacheSet(key: string, understanding: ProjectUnderstanding): void {
 function buildEvidenceDigest(graph: EvidenceGraph): string {
   const parsers = Array.from(new Set(graph.evidenceSources.map(s => s.parser)));
 
-  const kpiNames = [
+  const kpiNames = Array.from(new Set([
     ...graph.detectedKPIs.map(k => k.value.name),
     ...graph.kpis.map(k => k.value.name),
     ...graph.metrics.map(m => m.value.label)
-  ].filter(Boolean).slice(0, 30);
+  ])).filter(Boolean).slice(0, 35);
 
-  const colNames = [
+  const colNames = Array.from(new Set([
     ...graph.detectedDimensions.map(d => d.value),
     ...graph.dimensions.map(d => d.value),
     ...graph.detectedMeasures.map(m => m.value)
-  ].filter(Boolean).slice(0, 40);
+  ])).filter(Boolean).slice(0, 45);
+
+  const excelMeasures = Array.from(new Set(
+    graph.detectedMeasures
+      .filter(m => m.parser === "ExcelParser")
+      .map(m => m.value)
+  )).slice(0, 20);
+
+  const excelInsights = graph.dashboardInsights
+    .filter(d => d.parser === "ExcelParser")
+    .map(d => d.value)
+    .slice(0, 15);
 
   const sqlTables = graph.sqlLogic.flatMap(s => s.value.tables).slice(0, 20);
   const sqlAggs   = graph.sqlLogic.flatMap(s => s.value.aggregations).slice(0, 20);
@@ -101,16 +112,18 @@ function buildEvidenceDigest(graph: EvidenceGraph): string {
     .map(m => m.value.label)
     .slice(0, 20);
 
-  const businessTerms     = graph.businessTerms.map(t => t.value).slice(0, 30);
-  const businessEntities  = graph.businessEntities.map(e => e.value).slice(0, 20);
+  const businessTerms     = Array.from(new Set(graph.businessTerms.map(t => t.value))).slice(0, 35);
+  const businessEntities  = Array.from(new Set(graph.businessEntities.map(e => e.value))).slice(0, 25);
   const businessQuestions = graph.businessQuestions.map(q => q.value).slice(0, 10);
   const dashboardPages    = graph.dashboards.flatMap(d => d.value.pages || [d.value.name]).slice(0, 15);
-  const docs              = graph.documentation.map(d => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 8);
-  const techniques        = graph.analyticalTechniques.map(a => a.value).slice(0, 15);
+  const docs              = graph.documentation.map(d => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 10);
+  const techniques        = Array.from(new Set(graph.analyticalTechniques.map(a => a.value))).slice(0, 20);
   const recommendations   = graph.recommendations.map(r => r.value).slice(0, 5);
-  const toolsRaw          = graph.businessTerms
-    .filter(t => t.value.startsWith("Tool:"))
-    .map(t => t.value.replace("Tool:", "").trim());
+  const toolsRaw          = Array.from(new Set(
+    graph.businessTerms
+      .filter(t => t.value.startsWith("Tool:"))
+      .map(t => t.value.replace("Tool:", "").trim())
+  ));
 
   const filesSummary = graph.evidenceSources.map(s => ({
     file: s.fileName,
@@ -124,6 +137,8 @@ function buildEvidenceDigest(graph: EvidenceGraph): string {
     files: filesSummary,
     kpiNames,
     columnNames: colNames,
+    excelMeasures,
+    excelWorkbookTelemetry: excelInsights,
     sqlTables,
     sqlAggregations: sqlAggs,
     sqlWindowFunctions: sqlWin,

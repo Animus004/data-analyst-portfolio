@@ -83,7 +83,11 @@ export const ExcelParser: Parser = {
       formulas: [],
       dimensions: [],
       measures: [],
-      businessTerms: []
+      businessTerms: [],
+      worksheets: [],
+      namedRanges: [],
+      calculatedColumns: [],
+      workbookMetadata: {}
     };
 
     try {
@@ -91,37 +95,160 @@ export const ExcelParser: Parser = {
       const workbook = XLSX.read(excelBuffer, { type: "buffer", cellFormula: true });
       excelEvidence.sheetNames = workbook.SheetNames;
 
+      // Extract Workbook Properties/Metadata for business context
+      if (workbook.Props) {
+        const props = workbook.Props as Record<string, any>;
+        const cleanProps: Record<string, any> = {};
+        if (props.Title) cleanProps.title = props.Title;
+        if (props.Subject) cleanProps.subject = props.Subject;
+        if (props.Author) cleanProps.author = props.Author;
+        if (props.Category) cleanProps.category = props.Category;
+        if (props.Company) cleanProps.company = props.Company;
+        if (props.Comments) cleanProps.comments = props.Comments;
+        excelEvidence.workbookMetadata = cleanProps;
+
+        if (props.Title && !proj.title) proj.title = String(props.Title);
+        if (props.Comments && !proj.summary) proj.summary = String(props.Comments);
+      }
+
+      // Extract Named Ranges
+      const workbookObj = workbook.Workbook as any;
+      if (workbookObj && Array.isArray(workbookObj.Names)) {
+        workbookObj.Names.forEach((n: any) => {
+          if (n && n.Name) {
+            const nameStr = String(n.Name).trim();
+            const refStr = String(n.Ref || n.Content || "").trim();
+            if (nameStr && !nameStr.startsWith("_")) {
+              excelEvidence.namedRanges!.push({ name: nameStr, ref: refStr });
+              excelEvidence.businessTerms.push(`Named Range: ${nameStr}`);
+            }
+          }
+        });
+      }
+
       let projectsRaw: any[] = [];
       let metricsRaw: any[] = [];
+      const formulaSet = new Set<string>();
+      const measureSet = new Set<string>();
 
       workbook.SheetNames.forEach(sheetName => {
         const nameLower = sheetName.toLowerCase().replace(/\s+/g, "");
         const sheet = workbook.Sheets[sheetName];
+        if (!sheet) return;
 
-        if (nameLower.includes("dashboard") || nameLower.includes("summary")) {
+        // Classify Sheet Role
+        let role = "Analytical Worksheet";
+        if (nameLower.includes("dashboard") || nameLower.includes("summary") || nameLower.includes("kpi") || nameLower.includes("cockpit") || nameLower.includes("overview")) {
+          role = "Executive Dashboard";
           excelEvidence.dashboardTitles.push(sheetName);
-        }
-        if (nameLower.includes("pivot")) {
+        } else if (nameLower.includes("model") || nameLower.includes("forecast") || nameLower.includes("budget") || nameLower.includes("p&l") || nameLower.includes("valuation") || nameLower.includes("dcf")) {
+          role = "Financial Model";
+        } else if (nameLower.includes("pivot") || nameLower.includes("crosstab") || nameLower.includes("cube")) {
+          role = "Pivot Analysis";
           excelEvidence.pivots.push(sheetName);
+        } else if (nameLower.includes("data") || nameLower.includes("raw") || nameLower.includes("source") || nameLower.includes("dump") || nameLower.includes("transaction")) {
+          role = "Data Source";
         }
 
-        // Scan formula expressions and dimension headers
-        Object.keys(sheet).forEach(cellAddr => {
-          if (cellAddr.startsWith("!")) return;
-          const cell = sheet[cellAddr];
-          if (cell && cell.f) {
-            excelEvidence.formulas.push(`${cellAddr}: =${cell.f}`);
-          }
-        });
+        // Calculate Row & Column counts from sheet range
+        let rowCount = 0;
+        let colCount = 0;
+        const sheetColumns: string[] = [];
 
+        if (sheet["!ref"]) {
+          try {
+            const range = XLSX.utils.decode_range(sheet["!ref"]);
+            rowCount = Math.max(0, range.e.r - range.s.r); // excluding header row
+            colCount = range.e.c - range.s.c + 1;
+          } catch (_) {
+            rowCount = 0;
+          }
+        }
+
+        // Extract Top Row Headers (Columns)
         const jsonData: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         if (jsonData.length > 0 && Array.isArray(jsonData[0])) {
           jsonData[0].forEach((colHeader: any) => {
             if (colHeader && typeof colHeader === "string") {
-              excelEvidence.dimensions.push(colHeader.trim());
+              const cleaned = colHeader.trim();
+              if (cleaned && !cleaned.match(/^Column\d+$/i) && !cleaned.match(/^Unnamed:\s*\d+$/i)) {
+                sheetColumns.push(cleaned);
+                if (!excelEvidence.dimensions.includes(cleaned)) {
+                  excelEvidence.dimensions.push(cleaned);
+                }
+              }
             }
           });
         }
+
+        excelEvidence.worksheets!.push({
+          name: sheetName,
+          role,
+          rowCount,
+          columnCount: colCount,
+          columns: sheetColumns.slice(0, 25)
+        });
+
+        // Detect Pivot tables and Charts metadata
+        if ((sheet as any)["!pivots"] && Array.isArray((sheet as any)["!pivots"])) {
+          excelEvidence.pivots.push(`${sheetName} (Native Pivot Table)`);
+        }
+        if ((sheet as any)["!drawings"] || nameLower.includes("chart") || nameLower.includes("visual")) {
+          excelEvidence.charts.push({ title: `${sheetName} Visual Layout`, chartType: "Spreadsheet Visualization" });
+        }
+
+        // Scan Cell Formulas and Calculated Columns
+        const colFormulasMap = new Map<number, { colName: string; count: number; sampleFormula: string }>();
+
+        Object.keys(sheet).forEach(cellAddr => {
+          if (cellAddr.startsWith("!")) return;
+          const cell = sheet[cellAddr];
+          if (cell && cell.f) {
+            const formulaStr = String(cell.f).trim();
+            const upperF = formulaStr.toUpperCase();
+
+            // High-signal business calculation detection
+            if (
+              upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") ||
+              upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") ||
+              upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("NPV") ||
+              upperF.includes("IRR") || upperF.includes("PMT") || upperF.includes("GROWTH") ||
+              upperF.includes("MARGIN") || upperF.includes("VAR")
+            ) {
+              if (formulaSet.size < 30) {
+                formulaSet.add(`${sheetName}!${cellAddr}: =${formulaStr}`);
+              }
+              const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+              if (matchFn && matchFn[1]) {
+                measureSet.add(`Formula Calculation: ${matchFn[1]} in ${sheetName}`);
+              }
+            }
+
+            // Track calculated column signatures
+            try {
+              const parsedAddr = XLSX.utils.decode_cell(cellAddr);
+              const colIdx = parsedAddr.c;
+              const colHeader = sheetColumns[colIdx] || `Column ${colIdx + 1}`;
+              if (!colFormulasMap.has(colIdx)) {
+                colFormulasMap.set(colIdx, { colName: colHeader, count: 1, sampleFormula: formulaStr });
+              } else {
+                colFormulasMap.get(colIdx)!.count++;
+              }
+            } catch (_) {}
+          }
+        });
+
+        // Register Calculated Columns (if >= 2 rows in column use formulas)
+        colFormulasMap.forEach((meta) => {
+          if (meta.count >= 2) {
+            excelEvidence.calculatedColumns!.push({
+              sheet: sheetName,
+              column: meta.colName,
+              formula: meta.sampleFormula
+            });
+            excelEvidence.measures.push(`Calculated Column '${meta.colName}' (${sheetName}): =${meta.sampleFormula}`);
+          }
+        });
 
         if (nameLower === "projects" || nameLower === "casestudies") {
           projectsRaw = XLSX.utils.sheet_to_json(sheet);
@@ -129,6 +256,9 @@ export const ExcelParser: Parser = {
           metricsRaw = XLSX.utils.sheet_to_json(sheet);
         }
       });
+
+      excelEvidence.formulas = Array.from(formulaSet);
+      excelEvidence.measures = Array.from(measureSet);
 
       if (projectsRaw.length > 0) {
         const firstProj = projectsRaw[0];

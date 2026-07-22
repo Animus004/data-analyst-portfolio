@@ -87,6 +87,35 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
             graph.businessEntities.push({ value: d, sourceFile, parser, confidence, location });
           }
         });
+        if (data.measures && data.measures.length > 0) {
+          data.measures.forEach(m => {
+            graph.detectedMeasures.push({ value: m, sourceFile, parser, confidence });
+            sourceMeta.nodesExtracted++;
+          });
+        }
+        if (data.calculatedColumns && data.calculatedColumns.length > 0) {
+          data.calculatedColumns.forEach(cc => {
+            graph.analyticalTechniques.push({
+              value: `Calculated Column '${cc.column}' in ${cc.sheet} (Formula: =${cc.formula})`,
+              sourceFile, parser, confidence
+            });
+            sourceMeta.nodesExtracted++;
+          });
+        }
+        if (data.worksheets && data.worksheets.length > 0) {
+          data.worksheets.forEach(ws => {
+            graph.dashboardInsights.push({
+              value: `Worksheet [${ws.name}] (${ws.role}): ${ws.rowCount} rows, ${ws.columns.length} columns (${ws.columns.slice(0, 5).join(", ")})`,
+              sourceFile, parser, confidence
+            });
+            sourceMeta.nodesExtracted++;
+          });
+        }
+        if (data.workbookMetadata && Object.keys(data.workbookMetadata).length > 0) {
+          const metaText = Object.entries(data.workbookMetadata).map(([k, v]) => `${k}: ${v}`).join("; ");
+          graph.documentation.push({ value: { key: "Workbook Metadata", text: metaText }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
         if (data.formulas.length > 0) {
           graph.analyticalTechniques.push({ value: `Spreadsheet Formulas (${data.formulas.length} calculated cells)`, sourceFile, parser, confidence, location });
         }

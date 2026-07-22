@@ -224,12 +224,37 @@ export function evaluateEvidenceCompleteness(
 }
 
 /**
+ * Detects whether there is explicit supporting evidence that the project was implemented
+ * or deployed in a real organization with live metrics (Production project), versus an
+ * exploratory / portfolio case study (Portfolio project).
+ */
+export function hasProductionDeploymentEvidence(
+  graph: EvidenceGraph,
+  understanding: ProjectUnderstanding
+): boolean {
+  const keywords = [
+    "production deployment", "deployed to", "live client", "client engagement",
+    "actual revenue impact", "realized cost savings", "roi achieved",
+    "production database", "live server", "enterprise rollout",
+    "organization deployment", "client implementation", "deployed in production"
+  ];
+
+  const docsText = graph.documentation.map(d => d.value.text.toLowerCase()).join(" ");
+  const termsText = graph.businessTerms.map(t => t.value.toLowerCase()).join(" ");
+  const problemText = (understanding.businessProblem || "").toLowerCase();
+  const summaryText = (understanding.suggestedSummaries?.[0]?.summary || "").toLowerCase();
+
+  const combinedText = `${docsText} ${termsText} ${problemText} ${summaryText}`;
+
+  return keywords.some(kw => combinedText.includes(kw));
+}
+
+/**
  * Task: Missing Information Engine — Contextual, Adaptive & Conversational Questions
  * Questions are derived directly from ProjectUnderstanding — they reference actual detected
  * domain, tool stack, KPI names, business questions, and stakeholder roles.
  *
- * `understanding` is required: it is always produced by Stage 4 of the pipeline before
- * this function is ever called.
+ * Differentiates between Portfolio projects (no real deployment) and Production projects (real implementation).
  */
 export function generateMissingInformationRequests(
   report: EvidenceCoverageReport,
@@ -238,28 +263,44 @@ export function generateMissingInformationRequests(
 ): MissingInformationItem[] {
   const requests: MissingInformationItem[] = [];
 
-  const fileCount    = understanding.datasets.length;
-  const toolStack    = understanding.toolsUsed.join(" & ");
-  const domain       = understanding.businessDomain;
-  const industry     = understanding.industry;
-  const archetype    = understanding.projectArchetype;
-  const projectType  = understanding.projectType;
-  const topKPI       = understanding.trueKPIs[0]?.label || "core metrics";
+  const fileCount      = understanding.datasets.length;
+  const toolStack      = understanding.toolsUsed.join(" & ");
+  const domain         = understanding.businessDomain;
+  const industry       = understanding.industry;
+  const archetype      = understanding.projectArchetype;
+  const projectType    = understanding.projectType;
+  const topKPI         = understanding.trueKPIs[0]?.label || "core metrics";
   const topStakeholder = understanding.likelyStakeholders[0] || "executive decision-makers";
-  const detectedQ    = understanding.businessQuestions.length > 0
+  const detectedQ      = understanding.businessQuestions.length > 0
     ? `"${understanding.businessQuestions[0]}"`
     : null;
 
-  // 1. Business Impact — highest priority: quantified outcomes missing
+  const isProduction = hasProductionDeploymentEvidence(graph, understanding);
+
+  // 1. Business Impact / Business Recommendations
   if (report.businessImpact < 80) {
-    requests.push({
-      field: "Business Impact",
-      reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
-      question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} — ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
-      type: "textarea",
-      estimatedQualityBoost: 25,
-      recruiterImpactPriority: "Critical"
-    });
+    if (isProduction) {
+      // Production project with evidence of real deployment: ask for measurable business impact
+      requests.push({
+        field: "Business Impact",
+        reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
+        question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} — ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
+        type: "textarea",
+        estimatedQualityBoost: 25,
+        recruiterImpactPriority: "Critical"
+      });
+    } else {
+      // Portfolio project (no real deployment evidence): do NOT ask about revenue impact or cost savings.
+      // Ask evidence-grounded questions about business recommendations and management priorities.
+      requests.push({
+        field: "Business Recommendations & Priorities",
+        reason: `Key strategic recommendations or management priority actions missing for ${domain}.`,
+        question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} — ${toolStack}) analyzes ${topKPI}. What top business recommendations emerged from your findings, and which action should management prioritize first?`,
+        type: "textarea",
+        estimatedQualityBoost: 25,
+        recruiterImpactPriority: "Critical"
+      });
+    }
   }
 
   // 2. Business Objective — what strategic question was this trying to solve?
@@ -277,27 +318,32 @@ export function generateMissingInformationRequests(
     });
   }
 
-  // 3. Strategic Recommendations — what should stakeholders do next?
+  // 3. Strategic Recommendations / Analytical Insights
   if (report.recommendations < 80) {
+    const recQuestion = isProduction
+      ? `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you presented to ${topStakeholder}?`
+      : `Based on your ${industry} analysis of ${topKPI}, what key business recommendations emerged, and which analytical insight surprised you most?`;
+
     requests.push({
       field: "Strategic Recommendations",
       reason: "Strategic action items or executive recommendations were not explicitly stated in source files.",
-      question: `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you would present to ${topStakeholder}?`,
+      question: recQuestion,
       type: "textarea",
       estimatedQualityBoost: 20,
       recruiterImpactPriority: "High"
     });
   }
 
-  // 4. Stakeholders — who consumed this report?
+  // 4. Stakeholders & KPI Focus
   if (report.stakeholders < 80) {
-    const kpiMention = understanding.trueKPIs.length > 0
-      ? ` tracking metrics like ${topKPI}`
-      : "";
+    const question = isProduction
+      ? `Who were the primary business stakeholders consuming this ${projectType} report within ${industry}?`
+      : `Which key stakeholder (${topStakeholder}) benefits most from this ${projectType} analysis, and which KPI (such as ${topKPI}) should they monitor going forward?`;
+
     requests.push({
-      field: "Stakeholders",
-      reason: "Target audience or key decision-maker roles were not identified in evidence.",
-      question: `Who were the primary business stakeholders or executive team leaders consuming this ${projectType} report${kpiMention} within ${industry}?`,
+      field: "Stakeholders & KPI Focus",
+      reason: "Target audience roles or key monitoring KPIs were not fully identified in evidence.",
+      question,
       type: "text",
       estimatedQualityBoost: 15,
       recruiterImpactPriority: "Medium"
