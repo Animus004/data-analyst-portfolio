@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { parseUploadedPackage, compileSourceCodeToProject, compileProjectPackage } from "../_lib/compiler/index";
 import { getAiClient } from "../_lib/ai/index";
 import { getSupabaseClient } from "../_lib/storage/index";
-import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission } from "../_lib/utils/security";
+import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission, executeWithTimeout } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
@@ -54,25 +54,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           let buffer: Buffer | null = null;
 
-          // 1. Use storagePath first: Download from Supabase Storage if available
+          // 1. Use storagePath first: Download from Supabase Storage if available with 3s timeout
           if (fileMeta.storagePath) {
             const client = getSupabaseClient();
             if (client) {
               try {
                 const bucket = process.env.SUPABASE_STORAGE_BUCKET || "portfolio-uploads";
-                const { data, error } = await client.storage
-                  .from(bucket)
-                  .download(fileMeta.storagePath);
+                const downloadRes = await executeWithTimeout(
+                  `Supabase Download [${name}]`,
+                  () => client.storage.from(bucket).download(fileMeta.storagePath!),
+                  3000
+                );
 
-                if (!error && data) {
-                  const arrayBuffer = await data.arrayBuffer();
+                if (!downloadRes.error && downloadRes.data) {
+                  const arrayBuffer = await downloadRes.data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
-                } else if (error) {
-                  const { category, message } = categorizeStorageError(error);
+                } else if (downloadRes.error) {
+                  const { category, message } = categorizeStorageError(downloadRes.error);
                   console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
                 }
               } catch (downloadErr: any) {
-                console.warn(`[ai-package-parse] Exception downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                console.warn(`[ai-package-parse] Exception or timeout downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
               }
             }
           }
@@ -130,7 +132,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
 
-      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding);
+      // Execute package compiler with a strict 25-second hard deadline
+      const output = await executeWithTimeout(
+        "Package Compiler Hard Deadline",
+        () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding),
+        25000
+      );
 
       logExecution({
         endpoint: pathname,

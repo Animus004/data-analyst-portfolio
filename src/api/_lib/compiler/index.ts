@@ -166,6 +166,7 @@ export async function compileProjectPackage(
   }
 
   // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
+  console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
   const stage1Start = Date.now();
   const allFiles: Array<{ name: string; content: string; type: "text" | "binary"; size: number; sha256: string }> = [];
   const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
@@ -219,8 +220,10 @@ export async function compileProjectPackage(
     }
   }
   const stage1Duration = Date.now() - stage1Start;
+  console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);
 
   // Stage 2: Sandboxed Parser Selection & Evidence Extraction
+  console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
   const stage2Start = Date.now();
   const parsedProjects: ExtractedProject[] = [];
   const evidenceNodes: ParserEvidenceNode[] = [];
@@ -232,11 +235,11 @@ export async function compileProjectPackage(
     if (parser) {
       try {
         const pStart = Date.now();
-        // Sandboxed execution with 15 second threshold
+        // Sandboxed execution with 4 second timeout per file
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
-          15000
+          4000
         );
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);
@@ -269,6 +272,7 @@ export async function compileProjectPackage(
     }
   }
   const stage2Duration = Date.now() - stage2Start;
+  console.log(`[Pipeline] Stage 2 Complete (${stage2Duration}ms)`);
 
   if (parsedProjects.length === 1 && projectType !== "ZIP Package") {
     const ext = rawFiles[0].name.split(".").pop()?.toLowerCase() || "";
@@ -280,6 +284,7 @@ export async function compileProjectPackage(
   }
 
   // Stage 3: Build Canonical Evidence Graph
+  console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
   const stage3Start = Date.now();
   let evidenceGraph: any;
   try {
@@ -289,8 +294,10 @@ export async function compileProjectPackage(
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
   const stage3Duration = Date.now() - stage3Start;
+  console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
 
   // Stage 4: Project Understanding Engine
+  console.log("[Pipeline] Stage 4 Start: Project Understanding Engine (PUE)");
   const stage4Start = Date.now();
   const packageEvidenceHash = crypto.createHash("sha256")
     .update(allFiles.map(f => f.sha256).sort().join(":"))
@@ -302,10 +309,12 @@ export async function compileProjectPackage(
     existingUnderstanding
   );
   const stage4Duration = Date.now() - stage4Start;
+  console.log(`[Pipeline] Stage 4 Complete (${stage4Duration}ms)`);
 
   const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
 
   // Stage 5: Evidence Completeness Evaluator & Conflicts
+  console.log("[Pipeline] Stage 5 Start: Completeness Evaluator & Conflict Detection");
   const stage5Start = Date.now();
   const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
   const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
@@ -316,8 +325,11 @@ export async function compileProjectPackage(
     ...answerConflicts
   ];
   const stage5Duration = Date.now() - stage5Start;
+  console.log(`[Pipeline] Stage 5 Complete (${stage5Duration}ms)`);
 
   // Stage 6: Decision Logic: Evaluate Completeness Thresholds
+  console.log("[Pipeline] Stage 6 Start: Decision Logic Evaluation");
+  const stage6Start = Date.now();
   const requiredScores = [
     coverageReport.executiveSummary,
     coverageReport.businessObjective,
@@ -330,12 +342,23 @@ export async function compileProjectPackage(
     coverageReport.interviewStory
   ];
   const isFullySufficient = requiredScores.every(score => score >= 80);
+  const stage6Duration = Date.now() - stage6Start;
+  console.log(`[Pipeline] Stage 6 Complete (${stage6Duration}ms)`);
+
+  const stageTimings = [
+    { stage: "Stage 1 (File Prep & Unpack)", durationMs: stage1Duration, status: "Completed" as const },
+    { stage: "Stage 2 (Sandboxed Parsers)", durationMs: stage2Duration, status: "Completed" as const },
+    { stage: "Stage 3 (Evidence Graph)", durationMs: stage3Duration, status: "Completed" as const },
+    { stage: "Stage 4 (Project Understanding)", durationMs: stage4Duration, status: "Completed" as const },
+    { stage: "Stage 5 (Completeness & Conflicts)", durationMs: stage5Duration, status: "Completed" as const },
+    { stage: "Stage 6 (Decision Logic)", durationMs: stage6Duration, status: "Completed" as const }
+  ];
 
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
     const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
       const rawProject = mergeExtractedProjects(parsedProjects);
-      console.log(`[Timing Profile] Stage 1 (Prep): ${stage1Duration}ms | Stage 2 (Parsers): ${stage2Duration}ms | Stage 3 (Graph): ${stage3Duration}ms | Stage 4 (PUE): ${stage4Duration}ms | Total (NEEDS_INPUT): ${Date.now() - pipelineStartTime}ms`);
+      console.log(`[Timing Profile] Total Pipeline Duration (NEEDS_USER_INPUT): ${Date.now() - pipelineStartTime}ms`);
       return {
         status: "NEEDS_USER_INPUT",
         projectType,
@@ -349,14 +372,22 @@ export async function compileProjectPackage(
         missingInformation,
         conflicts,
         fileCoverage,
-        evidenceGraph
+        evidenceGraph,
+        stageTimings
       };
     }
   }
 
+  // Stage 7: Baseline Merged Raw Project Assembly
+  console.log("[Pipeline] Stage 7 Start: Baseline Merged Raw Project Assembly");
+  const stage7Start = Date.now();
   const rawProject = mergeExtractedProjects(parsedProjects);
+  const stage7Duration = Date.now() - stage7Start;
+  console.log(`[Pipeline] Stage 7 Complete (${stage7Duration}ms)`);
+  stageTimings.push({ stage: "Stage 7 (Baseline Raw Project)", durationMs: stage7Duration, status: "Completed" as const });
 
-  // Stage 8: AI Portfolio Compiler
+  // Stage 8: AI Portfolio Compiler Synthesis
+  console.log("[Pipeline] Stage 8 Start: AI Portfolio Compiler Synthesis");
   const stage8Start = Date.now();
   const synthesized = await compilePortfolioWithGemini(
     evidenceGraph,
@@ -367,23 +398,20 @@ export async function compileProjectPackage(
     projectUnderstanding
   );
   const stage8Duration = Date.now() - stage8Start;
+  console.log(`[Pipeline] Stage 8 Complete (${stage8Duration}ms)`);
+  stageTimings.push({ stage: "Stage 8 (Gemini Synthesis)", durationMs: stage8Duration, status: "Completed" as const });
 
-  // Stage 9: Recruiter Audit Engine
+  // Stage 9: Recruiter Audit Engine Evaluation
+  console.log("[Pipeline] Stage 9 Start: Recruiter Audit Engine Evaluation");
   const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
   const stage9Duration = Date.now() - stage9Start;
+  console.log(`[Pipeline] Stage 9 Complete (${stage9Duration}ms)`);
+  stageTimings.push({ stage: "Stage 9 (Recruiter Audit Engine)", durationMs: stage9Duration, status: "Completed" as const });
 
   const totalDuration = Date.now() - pipelineStartTime;
-
   console.log(`\n==========================================================`);
-  console.log(`[PIPELINE TIMING PROFILE] Total Duration: ${totalDuration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 1 (File Prep & Unpack): ${stage1Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 2 (Sandboxed Parsers): ${stage2Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 3 (Evidence Graph): ${stage3Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 4 (Project Understanding): ${stage4Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 5 (Completeness & Conflicts): ${stage5Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 8 (Gemini Synthesis): ${stage8Duration}ms`);
-  console.log(`[PIPELINE TIMING PROFILE] Stage 9 (Recruiter Audit Engine): ${stage9Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Total Pipeline Execution: ${totalDuration}ms`);
   console.log(`==========================================================\n`);
 
   // packageEvidenceHash already computed at Stage 4 — reused here for auditMetadata.
@@ -441,7 +469,8 @@ export async function compileProjectPackage(
       projectVersion: "v4.1",
       totalFilesProcessed: allFiles.length,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
-    }
+    },
+    stageTimings
   };
 }
 

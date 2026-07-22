@@ -766,49 +766,64 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       }
 
       setUploadedFileMetas(uploadRes.uploadedFiles || []);
-      setUploadProgressText("Analyzing and synthesizing package with Gemini...");
+      setUploadProgressText("Parsing Excel, SQL & PDF Workbooks...");
 
-      // 2. Send lightweight metadata payload to serverless endpoint (< 5 KB JSON)
-      const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          packageId, 
-          files: uploadRes.uploadedFiles, 
-          evidenceOnlyMode 
-        })
-      });
+      const progressInterval = setInterval(() => {
+        setUploadProgressText((prev) => {
+          if (!prev) return prev;
+          if (prev.includes("Parsing Excel")) return "Building Canonical Evidence Graph...";
+          if (prev.includes("Evidence Graph")) return "Project Understanding Engine (PUE)...";
+          if (prev.includes("Project Understanding")) return "Generating Executive Case Study with Gemini...";
+          if (prev.includes("Generating Executive")) return "Running Recruiter Audit Engine...";
+          return prev;
+        });
+      }, 1400);
 
-      const { ok, data } = await safeParseJsonResponse(res);
+      try {
+        // 2. Send lightweight metadata payload to serverless endpoint (< 5 KB JSON)
+        const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            packageId, 
+            files: uploadRes.uploadedFiles, 
+            evidenceOnlyMode 
+          })
+        });
 
-      if (ok && data) {
-        const projectPayload = data.portfolioProject || data.project || data.rawProject;
-        if (projectPayload) {
-          setAiParsedResult(projectPayload);
-          setProjectUnderstanding(data.projectUnderstanding || null);
-          setMissingInformation(data.missingInformation || []);
-          setRecruiterAudit(data.recruiterAudit || null);
-          setProjectType(data.projectType);
-          setSourceAttributions(data.sourceAttributions);
-          setConfidenceScores(data.confidenceScores);
-          setCrossDocAnalysis(data.crossDocAnalysis);
-          
-          // Set advanced safety and trust metrics
-          setSafetyScore(data.safetyScore);
-          setClassifications(data.classifications || {});
-          setActivityLog(data.activityLog || []);
-          setOriginalTexts(data.originalTexts || {});
-          setRecommendationValidation(data.recommendationValidation || []);
-          setDatasetTraceability(data.datasetTraceability || []);
-          setFileCoverageReport(data.fileCoverageReport || data.fileCoverage || []);
-          setCompletenessReport(data.completenessReport || []);
-          setConflicts(data.conflicts || []);
-          setResolvedConflictFields({});
+        const { ok, data } = await safeParseJsonResponse(res);
+
+        if (ok && data) {
+          const projectPayload = data.portfolioProject || data.project || data.rawProject;
+          if (projectPayload) {
+            setAiParsedResult(projectPayload);
+            setProjectUnderstanding(data.projectUnderstanding || null);
+            setMissingInformation(data.missingInformation || []);
+            setRecruiterAudit(data.recruiterAudit || null);
+            setProjectType(data.projectType);
+            setSourceAttributions(data.sourceAttributions);
+            setConfidenceScores(data.confidenceScores);
+            setCrossDocAnalysis(data.crossDocAnalysis);
+            
+            // Set advanced safety and trust metrics
+            setSafetyScore(data.safetyScore);
+            setClassifications(data.classifications || {});
+            setActivityLog(data.activityLog || []);
+            setOriginalTexts(data.originalTexts || {});
+            setRecommendationValidation(data.recommendationValidation || []);
+            setDatasetTraceability(data.datasetTraceability || []);
+            setFileCoverageReport(data.fileCoverageReport || data.fileCoverage || []);
+            setCompletenessReport(data.completenessReport || []);
+            setConflicts(data.conflicts || []);
+            setResolvedConflictFields({});
+          } else {
+            setAiParseError(data.error || "Failed to parse project package. Please verify your files and try again.");
+          }
         } else {
-          setAiParseError(data.error || "Failed to parse project package. Please verify your files and try again.");
+          setAiParseError(data.error || "Server error occurred during package analysis.");
         }
-      } else {
-        setAiParseError(data.error || "Server error occurred during package analysis.");
+      } finally {
+        clearInterval(progressInterval);
       }
     } catch (err: any) {
       console.error("AI package parse error:", err);

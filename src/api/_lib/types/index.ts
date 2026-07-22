@@ -397,4 +397,9 @@ export interface UniversalCompilerOutput {
     totalFilesProcessed: number;
     debugAiContext?: any;
   };
+  stageTimings?: Array<{
+    stage: string;
+    durationMs: number;
+    status: "Completed" | "Skipped" | "Failed";
+  }>;
 }
