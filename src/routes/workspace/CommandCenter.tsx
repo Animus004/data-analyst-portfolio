@@ -6,6 +6,7 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import { ProjectRecord, CreatorProfile, ProjectStatus, TechnicalDifficulty, SyncStatus } from "../../types";
+import { AiReviewPanel } from "../../components/ai-review/AiReviewPanel";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -607,6 +608,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   const [confidenceScores, setConfidenceScores] = useState<any>(null);
   const [crossDocAnalysis, setCrossDocAnalysis] = useState<any>(null);
   const [aiParseError, setAiParseError] = useState<string | null>(null);
+  const [projectUnderstanding, setProjectUnderstanding] = useState<any>(null);
+  const [missingInformation, setMissingInformation] = useState<any[]>([]);
+  const [recruiterAudit, setRecruiterAudit] = useState<any>(null);
+  const [uploadedFileMetas, setUploadedFileMetas] = useState<any[]>([]);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [resolvedConflictFields, setResolvedConflictFields] = useState<Record<string, boolean>>({});
   const unresolvedConflictsCount = conflicts.filter(c => !resolvedConflictFields[c.field]).length;
@@ -715,6 +720,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setSourceAttributions(null);
     setConfidenceScores(null);
     setCrossDocAnalysis(null);
+    setProjectUnderstanding(null);
+    setMissingInformation([]);
+    setRecruiterAudit(null);
+    setUploadedFileMetas([]);
     setConflicts([]);
     setResolvedConflictFields({});
     
@@ -741,6 +750,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         throw new Error(uploadRes.error || "Failed to upload project package files to storage.");
       }
 
+      setUploadedFileMetas(uploadRes.uploadedFiles || []);
       setUploadProgressText("Analyzing and synthesizing package with Gemini...");
 
       // 2. Send lightweight metadata payload to serverless endpoint (< 5 KB JSON)
@@ -756,9 +766,12 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        const projectPayload = data.project || data.rawProject;
+        const projectPayload = data.portfolioProject || data.project || data.rawProject;
         if (data.success && projectPayload) {
           setAiParsedResult(projectPayload);
+          setProjectUnderstanding(data.projectUnderstanding || null);
+          setMissingInformation(data.missingInformation || []);
+          setRecruiterAudit(data.recruiterAudit || null);
           setProjectType(data.projectType);
           setSourceAttributions(data.sourceAttributions);
           setConfidenceScores(data.confidenceScores);
@@ -785,6 +798,46 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     } catch (err: any) {
       console.error("AI package parse error:", err);
       setAiParseError(`Network error: ${err.message || "Failed to reach AI parsing service."}`);
+    } finally {
+      setUploadProgressText(null);
+      setAiParsing(false);
+    }
+  };
+
+  const handleAnswersAndRecompile = async (userAnswers: Record<string, string>) => {
+    setAiParsing(true);
+    setUploadProgressText("Re-evaluating portfolio with your answers...");
+    setAiParseError(null);
+    try {
+      const packageId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `pkg-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
+      const res = await fetch("/api/portfolio/ai-package-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packageId,
+          files: uploadedFileMetas,
+          userAnswers,
+          projectUnderstanding,
+          forceCompile: true,
+          evidenceOnlyMode
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const projectPayload = data.portfolioProject || data.project || data.rawProject;
+        if (data.success && projectPayload) {
+          setAiParsedResult(projectPayload);
+          if (data.projectUnderstanding) setProjectUnderstanding(data.projectUnderstanding);
+          setMissingInformation(data.missingInformation || []);
+          if (data.recruiterAudit) setRecruiterAudit(data.recruiterAudit);
+          if (data.sourceAttributions) setSourceAttributions(data.sourceAttributions);
+          if (data.confidenceScores) setConfidenceScores(data.confidenceScores);
+          if (data.fileCoverageReport || data.fileCoverage) setFileCoverageReport(data.fileCoverageReport || data.fileCoverage);
+        }
+      }
+    } catch (err: any) {
+      console.error("Re-compile error:", err);
     } finally {
       setUploadProgressText(null);
       setAiParsing(false);
@@ -2488,474 +2541,141 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                             </Button>
                           </div>
                         ) : (
-                          /* AI Parsing Complete: Advanced Package Review & Custom Editor Preview Panel */
-                          <div className="space-y-4 flex-1 flex flex-col justify-between max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-                            <div className="border-b border-slate-800/80 pb-2.5 flex flex-col gap-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-mono uppercase bg-emerald-950/60 border border-emerald-900 text-emerald-400 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
-                                    <Shield className="w-3 h-3 text-emerald-400" />
-                                    ✓ Package Synthesized
-                                  </span>
-                                  {evidenceOnlyMode && (
-                                    <span className="text-[8px] font-mono uppercase bg-indigo-950/60 border border-indigo-900 text-indigo-400 px-1 rounded font-bold">
-                                      🔒 Evidence-Only
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    setAiParsedResult(null);
-                                    setProjectType(null);
-                                    setSourceAttributions(null);
-                                    setConfidenceScores(null);
-                                    setCrossDocAnalysis(null);
-                                    setAiParseError(null);
-                                    
-                                    setSafetyScore(null);
-                                    setClassifications({});
-                                    setActivityLog([]);
-                                    setOriginalTexts({});
-                                    setRecommendationValidation([]);
-                                    setDatasetTraceability([]);
-                                    setFileCoverageReport([]);
-                                    setCompletenessReport([]);
-                                  }}
-                                  className="text-slate-500 hover:text-slate-300 text-[10px] font-mono hover:underline cursor-pointer"
-                                >
-                                  [Start Over]
-                                </button>
-                              </div>
-                              
-                              {/* Detected Project Type */}
-                              {projectType && (
-                                <div className="flex items-center gap-1.5 bg-indigo-950/40 border border-indigo-900/60 rounded px-2 py-1.5 text-[11px]">
-                                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                  <span className="text-slate-400 font-mono">Project Classification:</span>
-                                  <span className="text-white font-bold bg-indigo-900/80 px-1.5 py-0.5 rounded text-[10px] uppercase font-mono">
-                                    {projectType}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                          /* AI Review Experience: Pre-populated Portfolio + Evidence Confidence + Optional Edits */
+                          <div className="space-y-4 flex-1 flex flex-col justify-between">
+                            <AiReviewPanel
+                              portfolioProject={aiParsedResult}
+                              projectUnderstanding={projectUnderstanding}
+                              missingInformation={missingInformation}
+                              recruiterAudit={recruiterAudit}
+                              fileCoverage={fileCoverageReport}
+                              confidenceScores={confidenceScores}
+                              sourceAttributions={sourceAttributions}
+                              conflicts={conflicts}
+                              resolvedConflictFields={resolvedConflictFields}
+                              unresolvedConflictsCount={unresolvedConflictsCount}
+                              onApprove={handleApproveAiProject}
+                              onCancel={() => {
+                                setAiParsedResult(null);
+                                setProjectUnderstanding(null);
+                                setMissingInformation([]);
+                                setRecruiterAudit(null);
+                                setConfidenceScores(null);
+                                setCrossDocAnalysis(null);
+                                setSafetyScore(null);
+                                setClassifications({});
+                                setActivityLog([]);
+                                setOriginalTexts({});
+                                setRecommendationValidation([]);
+                                setDatasetTraceability([]);
+                                setFileCoverageReport([]);
+                                setCompletenessReport([]);
+                              }}
+                              onFieldEdit={handleFieldCorrection}
+                              onAnswersSubmit={handleAnswersAndRecompile}
+                              advancedReviewSlot={
+                                <div className="space-y-3 text-left">
+                                  {/* Custom Tab Selector */}
+                                  <div className="flex border-b border-slate-800/80 text-[10px] font-mono gap-1">
+                                    {(["overview", "fields", "traceability", "history"] as const).map((tab) => (
+                                      <button
+                                        key={tab}
+                                        type="button"
+                                        onClick={() => setReviewTab(tab)}
+                                        className={`flex-1 py-1.5 text-center border-b-2 capitalize transition-colors cursor-pointer font-bold ${
+                                          reviewTab === tab
+                                            ? "border-indigo-500 text-indigo-400"
+                                            : "border-transparent text-slate-500 hover:text-slate-300"
+                                        }`}
+                                      >
+                                        {tab === "traceability" ? "Trace Map" : tab === "fields" ? "Review & Diff" : tab}
+                                      </button>
+                                    ))}
+                                  </div>
 
-                            {/* 🚨 DETERMINISTIC CONFLICT RESOLUTION WIZARD PANEL */}
-                            {conflicts.length > 0 && (
-                              <div className="bg-slate-950 border border-amber-900/50 rounded-lg p-3 space-y-3 text-left">
-                                <div className="flex items-center gap-2 text-amber-400">
-                                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500 animate-pulse" />
-                                  <span className="text-xs font-mono font-bold uppercase tracking-wider">Deterministic Conflict Resolution Panel</span>
-                                </div>
-                                <p className="text-[10px] text-slate-400 leading-normal font-sans">
-                                  The Universal Validation Engine detected factual inconsistencies across the uploaded artifacts. To maintain portfolio integrity, you must select the correct value for each field before persistence.
-                                </p>
-                                <div className="space-y-3">
-                                  {conflicts.map((c, cIdx) => {
-                                    const isResolved = resolvedConflictFields[c.field];
-                                    const currentVal = c.field.startsWith("KPI:") 
-                                      ? aiParsedResult?.metrics?.find((m: any) => m.label === c.field.replace("KPI: ", ""))?.value 
-                                      : aiParsedResult?.[c.field];
-
-                                    return (
-                                      <div key={cIdx} className={`p-2.5 rounded border text-[10px] space-y-2 transition-all ${
-                                        isResolved ? "bg-emerald-950/10 border-emerald-900/40" : "bg-slate-900 border-slate-800"
-                                      }`}>
-                                        <div className="flex justify-between items-center gap-2">
-                                          <span className="font-mono font-bold text-slate-300 truncate">
-                                            Field: <span className="text-indigo-400 font-semibold">{c.field}</span>
-                                          </span>
-                                          {isResolved ? (
-                                            <span className="text-[9px] text-emerald-400 font-mono font-bold bg-emerald-950/60 border border-emerald-900 px-1.5 py-0.5 rounded uppercase shrink-0">✓ Resolved</span>
-                                          ) : (
-                                            <span className="text-[9px] text-amber-400 font-mono font-bold bg-amber-950/60 border border-amber-900 px-1.5 py-0.5 rounded uppercase shrink-0 animate-pulse">⚠ Action Required</span>
-                                          )}
+                                  {/* Tab Contents */}
+                                  {reviewTab === "overview" && (
+                                    <div className="space-y-3.5 text-left text-[11px]">
+                                      {safetyScore !== null && (
+                                        <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold flex items-center gap-1">
+                                              <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                                              AI Safety & Hallucination Score
+                                            </span>
+                                            <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
+                                              safetyScore >= 95 ? "bg-emerald-950/40 border border-emerald-900 text-emerald-400" :
+                                              safetyScore >= 80 ? "bg-amber-950/40 border border-amber-900 text-amber-400" :
+                                              "bg-rose-950/40 border border-rose-900 text-rose-400"
+                                            }`}>
+                                              {safetyScore}% Safe
+                                            </span>
+                                          </div>
+                                          <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                            <div className={`h-full ${safetyScore >= 95 ? 'bg-emerald-500' : safetyScore >= 80 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${safetyScore}%` }}></div>
+                                          </div>
                                         </div>
+                                      )}
 
-                                        <div className="grid grid-cols-1 gap-2">
-                                          {c.values.map((v: any, vIdx: number) => {
-                                            const isOptionSelected = isResolved && currentVal === v.value;
-                                            return (
-                                              <button
-                                                key={vIdx}
-                                                type="button"
-                                                onClick={() => {
-                                                  const isKpi = c.field.startsWith("KPI: ");
-                                                  if (isKpi) {
-                                                    const kpiLabel = c.field.replace("KPI: ", "");
-                                                    const updatedMetrics = (aiParsedResult?.metrics || []).map((m: any) => {
-                                                      if (m.label === kpiLabel) {
-                                                        return { ...m, value: v.value };
-                                                      }
-                                                      return m;
-                                                    });
-                                                    setAiParsedResult({ ...aiParsedResult, metrics: updatedMetrics });
-                                                  } else {
-                                                    setAiParsedResult({ ...aiParsedResult, [c.field]: v.value });
-                                                  }
-                                                  setResolvedConflictFields(prev => ({
-                                                    ...prev,
-                                                    [c.field]: true
-                                                  }));
-                                                }}
-                                                className={`w-full p-2.5 rounded border text-left flex justify-between items-start gap-3 transition-all cursor-pointer ${
-                                                  isOptionSelected
-                                                    ? "bg-indigo-950/40 border-indigo-500 text-white shadow-sm"
-                                                    : "bg-slate-950 border-slate-900 text-slate-400 hover:border-slate-700 hover:text-slate-200"
-                                                }`}
-                                              >
-                                                <div className="flex items-start gap-2.5 min-w-0">
-                                                  <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                                                    isOptionSelected ? "border-indigo-500 bg-indigo-500" : "border-slate-700 bg-transparent"
+                                      {fileCoverageReport && fileCoverageReport.length > 0 && (
+                                        <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
+                                          <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">File Coverage Report</span>
+                                          <div className="space-y-1 font-mono text-[10px]">
+                                            {fileCoverageReport.map((f, i) => (
+                                              <div key={i} className="flex flex-col bg-slate-950/30 p-1.5 rounded border border-slate-900/50">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-slate-200 truncate max-w-[150px] font-bold" title={f.fileName}>{f.fileName}</span>
+                                                  <span className={`text-[8px] uppercase font-bold px-1 rounded ${
+                                                    f.status === "Used" ? "bg-emerald-950/60 border border-emerald-900 text-emerald-400" : "bg-slate-900 border border-slate-800 text-slate-400"
                                                   }`}>
-                                                    {isOptionSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                                  </div>
-                                                  <div className="min-w-0">
-                                                    <span className="font-semibold block break-words text-[11px]">{v.value}</span>
-                                                    <span className="text-[9px] font-mono text-slate-500 mt-0.5 block">
-                                                      Source: <span className="text-slate-400 font-medium">{v.sourceFile}</span>
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                                {v.location && (
-                                                  <span className="text-[8px] font-mono bg-slate-900/80 border border-slate-800 px-1 py-0.5 rounded text-slate-500 shrink-0 mt-0.5 uppercase">
-                                                    {v.location}
+                                                    {f.status}
                                                   </span>
-                                                )}
-                                              </button>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Custom Tab Selector */}
-                            <div className="flex border-b border-slate-800/80 text-[10px] font-mono gap-1">
-                              {(["overview", "fields", "traceability", "history"] as const).map((tab) => (
-                                <button
-                                  key={tab}
-                                  type="button"
-                                  onClick={() => setReviewTab(tab)}
-                                  className={`flex-1 py-1.5 text-center border-b-2 capitalize transition-colors cursor-pointer font-bold ${
-                                    reviewTab === tab
-                                      ? "border-indigo-500 text-indigo-400"
-                                      : "border-transparent text-slate-500 hover:text-slate-300"
-                                  }`}
-                                >
-                                  {tab === "traceability" ? "Trace Map" : tab === "fields" ? "Review & Diff" : tab}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Learning System Correction Banner */}
-                            {showLearningOffer && pendingCorrection && (
-                              <div className="bg-indigo-950/80 border border-indigo-500 rounded-lg p-3 space-y-2 text-left my-1">
-                                <div className="flex items-start gap-2">
-                                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
-                                  <div className="min-w-0 flex-1">
-                                    <span className="text-xs font-mono font-bold text-white block">Use this correction for future imports?</span>
-                                    <p className="text-[9px] text-slate-400 mt-1 leading-normal">
-                                      Portfolio OS detected an adjustment to <strong className="text-indigo-300">"{pendingCorrection.field}"</strong>:
-                                    </p>
-                                    <div className="mt-1 bg-slate-950 p-1.5 rounded text-[8px] font-mono space-y-0.5 border border-slate-800/80">
-                                      <div className="text-rose-400 truncate"><span className="text-slate-500">From:</span> "{pendingCorrection.original}"</div>
-                                      <div className="text-emerald-400 truncate"><span className="text-slate-500">To:</span> "{pendingCorrection.corrected}"</div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex justify-end gap-1.5 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setLearnedCorrections(prev => [
-                                        ...prev,
-                                        { ...pendingCorrection }
-                                      ]);
-                                      setBackupStatus({
-                                        type: "success",
-                                        msg: `🧠 Saved rule to improve future package imports.`
-                                      });
-                                      setShowLearningOffer(false);
-                                      setPendingCorrection(null);
-                                    }}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-mono px-2 py-1 rounded cursor-pointer font-bold"
-                                  >
-                                    Approve Correction
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setShowLearningOffer(false);
-                                      setPendingCorrection(null);
-                                    }}
-                                    className="text-slate-400 hover:text-slate-200 text-[9px] font-mono px-2 py-1 hover:underline cursor-pointer"
-                                  >
-                                    Keep Temporary
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Tab Contents */}
-                            {reviewTab === "overview" && (
-                              <div className="space-y-3.5 text-left text-[11px]">
-                                {/* safety score section */}
-                                {safetyScore !== null && (
-                                  <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold flex items-center gap-1">
-                                        <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                                        AI Safety & Hallucination Score
-                                      </span>
-                                      <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${
-                                        safetyScore >= 95 ? "bg-emerald-950/40 border border-emerald-900 text-emerald-400" :
-                                        safetyScore >= 80 ? "bg-amber-950/40 border border-amber-900 text-amber-400" :
-                                        "bg-rose-950/40 border border-rose-900 text-rose-400"
-                                      }`}>
-                                        {safetyScore}% Safe
-                                      </span>
-                                    </div>
-                                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                                      <div className={`h-full ${safetyScore >= 95 ? 'bg-emerald-500' : safetyScore >= 80 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${safetyScore}%` }}></div>
-                                    </div>
-                                    <p className="text-[10px] text-slate-400 leading-relaxed font-mono">
-                                      {safetyScore >= 100 
-                                        ? "✓ Deterministic verification perfect. Every fact and recommendation corresponds strictly to uploaded artifacts."
-                                        : `⚠ Safety score modified to ${safetyScore}%. Certain recommendations might benefit from manual verification.`
-                                      }
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Confidence Scores */}
-                                {confidenceScores && (
-                                  <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                    <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">Extraction Confidence Scores</span>
-                                    <div className="space-y-1.5">
-                                      {[
-                                        { label: "Title & Core Metadata", score: confidenceScores.titleMetadata },
-                                        { label: "Executive Summary / Intro", score: confidenceScores.executiveSummary },
-                                        { label: "Objectives & Problems", score: confidenceScores.objectivesProblem },
-                                        { label: "KPIs / Metrics Accuracy", score: confidenceScores.kpisMetrics },
-                                        { label: "Methodology & Narrative", score: confidenceScores.methodologyNarrative },
-                                      ].map((item, i) => {
-                                        const scoreValue = item.score ?? 50;
-                                        let barColor = "bg-rose-500";
-                                        let textColor = "text-rose-400";
-                                        if (scoreValue >= 80) {
-                                          barColor = "bg-emerald-500";
-                                          textColor = "text-emerald-400";
-                                        } else if (scoreValue >= 50) {
-                                          barColor = "bg-amber-500";
-                                          textColor = "text-amber-400";
-                                        }
-                                        return (
-                                          <div key={i} className="space-y-1">
-                                            <div className="flex justify-between text-[10px] font-mono">
-                                              <span className="text-slate-300">{item.label}</span>
-                                              <span className={`font-bold ${textColor}`}>{scoreValue}%</span>
-                                            </div>
-                                            <div className="w-full bg-slate-950 h-1 rounded-full overflow-hidden">
-                                              <div className={`h-full ${barColor}`} style={{ width: `${scoreValue}%` }}></div>
-                                            </div>
+                                                </div>
+                                                <span className="text-[9px] text-slate-500 mt-0.5 leading-tight">{f.reason}</span>
+                                              </div>
+                                            ))}
                                           </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Completeness report */}
-                                {completenessReport && completenessReport.length > 0 && (
-                                  <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                    <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">
-                                      Project Completeness Report ({
-                                        Math.round((completenessReport.filter(c => c.status === "Complete").length / completenessReport.length) * 100)
-                                      }% Complete)
-                                    </span>
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-                                      {completenessReport.map((c, i) => (
-                                        <div key={i} className="flex items-center gap-1.5 bg-slate-950/40 p-1 rounded border border-slate-900/60">
-                                          <span className={c.status === "Complete" ? "text-emerald-400" : "text-rose-400"}>
-                                            {c.status === "Complete" ? "✓" : "⚠"}
-                                          </span>
-                                          <span className="text-slate-300 truncate">{c.fieldName}</span>
-                                          <span className={`ml-auto text-[8px] font-bold ${
-                                            c.status === "Complete" ? "text-emerald-400" : "text-rose-400"
-                                          }`}>
-                                            {c.status}
-                                          </span>
                                         </div>
-                                      ))}
+                                      )}
                                     </div>
-                                  </div>
-                                )}
+                                  )}
 
-                                {/* File Coverage Report */}
-                                {fileCoverageReport && fileCoverageReport.length > 0 && (
-                                  <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                    <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">File Coverage Report</span>
-                                    <div className="space-y-1 font-mono text-[10px]">
-                                      {fileCoverageReport.map((f, i) => (
-                                        <div key={i} className="flex flex-col bg-slate-950/30 p-1.5 rounded border border-slate-900/50">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-slate-200 truncate max-w-[150px] font-bold" title={f.fileName}>{f.fileName}</span>
-                                            <span className={`text-[8px] uppercase font-bold px-1 rounded ${
-                                              f.status === "Used" ? "bg-emerald-950/60 border border-emerald-900 text-emerald-400" : "bg-slate-900 border border-slate-800 text-slate-400"
-                                            }`}>
-                                              {f.status}
-                                            </span>
-                                          </div>
-                                          <span className="text-[9px] text-slate-500 mt-0.5 leading-tight">{f.reason}</span>
+                                  {reviewTab === "fields" && (
+                                    <div className="space-y-3 text-left font-mono text-[10px]">
+                                      <div className="space-y-3">
+                                        <div className="space-y-1">
+                                          <label className="text-slate-400 uppercase font-bold block">Case Study Title</label>
+                                          <input
+                                            type="text"
+                                            value={aiParsedResult.title || ""}
+                                            onChange={(e) => handleFieldCorrection("title", e.target.value)}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500"
+                                          />
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Synthesis logs */}
-                                {activityLog && activityLog.length > 0 && (
-                                  <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                    <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">Synthesis Activity Log</span>
-                                    <div className="bg-slate-950 border border-slate-900 rounded p-2 text-[9px] font-mono text-slate-300 space-y-1 max-h-[100px] overflow-y-auto custom-scrollbar">
-                                      {activityLog.map((log, i) => (
-                                        <div key={i} className="leading-relaxed border-b border-slate-900/50 pb-1 last:border-0 flex items-start gap-1">
-                                          <Activity className="w-2.5 h-2.5 text-indigo-400 shrink-0 mt-0.5" />
-                                          <span>{log}</span>
+                                        <div className="space-y-1">
+                                          <label className="text-slate-400 uppercase font-bold block">Executive Summary</label>
+                                          <textarea
+                                            value={aiParsedResult.summary || ""}
+                                            onChange={(e) => handleFieldCorrection("summary", e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                                          />
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {reviewTab === "fields" && (
-                              <div className="space-y-4 text-left">
-                                <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-3">
-                                  <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">Refine & Review Extracted Fields</span>
-
-                                  {/* Highlighted Missing Fields Warning */}
-                                  {crossDocAnalysis?.missingFields && crossDocAnalysis.missingFields.length > 0 && (
-                                    <div className="bg-rose-950/20 border border-rose-900/40 p-2 rounded text-rose-300 text-[10px] leading-snug space-y-1 font-mono">
-                                      <span className="font-bold text-rose-400 block">⚠ Missing Fields Highlighted for Review:</span>
-                                      <div className="flex flex-wrap gap-1 text-[8px]">
-                                        {crossDocAnalysis.missingFields.map((f: string, i: number) => (
-                                          <span key={i} className="bg-rose-900/30 border border-rose-800 text-rose-300 px-1.5 py-0.5 rounded uppercase font-bold">
-                                            {f}
-                                          </span>
-                                        ))}
                                       </div>
                                     </div>
                                   )}
 
-                                  {/* Live Custom In-place Editors */}
-                                  <div className="space-y-4 text-[11px]">
-                                    {/* 1. Title */}
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between items-center text-[9px]">
-                                        <div className="flex items-center gap-1">
-                                          <label className="font-mono uppercase text-slate-400 font-bold">Case Study Title</label>
-                                          {classifications.title && (
-                                            <span className={`text-[8px] font-bold px-1 rounded ${
-                                              classifications.title === "VERIFIED" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                              classifications.title === "IMPROVED" ? "bg-indigo-950 text-indigo-400 border border-indigo-900" :
-                                              classifications.title === "USER EDITED" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                              "bg-slate-900 text-slate-400 border border-slate-800"
-                                            }`}>
-                                              {classifications.title}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                          <button
-                                            type="button"
-                                            onClick={() => setActiveDiffField(activeDiffField === "title" ? null : "title")}
-                                            className="text-indigo-400 hover:underline text-[8px] font-bold cursor-pointer"
-                                          >
-                                            [Compare Diff]
-                                          </button>
-                                          {sourceAttributions?.titleMetadata && (
-                                            <span className="text-slate-500 truncate max-w-[120px]" title={sourceAttributions.titleMetadata}>
-                                              📄 {sourceAttributions.titleMetadata}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      {/* Diff Renderer */}
-                                      {activeDiffField === "title" && (
-                                        <div className="my-1.5 border border-slate-800 rounded p-1.5 bg-slate-950/40">
-                                          {renderDiff(originalTexts.title || "", aiParsedResult.title || "")}
-                                        </div>
-                                      )}
-
-                                      <input
-                                        type="text"
-                                        value={aiParsedResult.title || ""}
-                                        onChange={(e) => handleFieldCorrection("title", e.target.value)}
-                                        className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans ${
-                                          !aiParsedResult.title ? "border-rose-900/60 bg-rose-950/10 placeholder-rose-700" : "border-slate-800"
-                                        }`}
-                                        placeholder="Missing Case Study Title"
-                                      />
-                                      {!aiParsedResult.title && (
-                                        <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Field missing from source artifacts. Manual input required.</p>
-                                      )}
-                                    </div>
-
-                                    {/* 2. Executive Summary */}
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between items-center text-[9px]">
-                                        <div className="flex items-center gap-1">
-                                          <label className="font-mono uppercase text-slate-400 font-bold">Executive Summary</label>
-                                          {classifications.summary && (
-                                            <span className={`text-[8px] font-bold px-1 rounded ${
-                                              classifications.summary === "VERIFIED" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                              classifications.summary === "IMPROVED" ? "bg-indigo-950 text-indigo-400 border border-indigo-900" :
-                                              classifications.summary === "USER EDITED" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                              "bg-slate-900 text-slate-400 border border-slate-800"
-                                            }`}>
-                                              {classifications.summary}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                          <button
-                                            type="button"
-                                            onClick={() => setActiveDiffField(activeDiffField === "summary" ? null : "summary")}
-                                            className="text-indigo-400 hover:underline text-[8px] font-bold cursor-pointer"
-                                          >
-                                            [Compare Diff]
-                                          </button>
-                                          {sourceAttributions?.executiveSummary && (
-                                            <span className="text-slate-500 truncate max-w-[120px]" title={sourceAttributions.executiveSummary}>
-                                              📄 {sourceAttributions.executiveSummary}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Diff Renderer */}
-                                      {activeDiffField === "summary" && (
-                                        <div className="my-1.5 border border-slate-800 rounded p-1.5 bg-slate-950/40">
-                                          {renderDiff(originalTexts.summary || "", aiParsedResult.summary || "")}
-                                        </div>
-                                      )}
-
-                                      <textarea
-                                        value={aiParsedResult.summary || ""}
-                                        onChange={(e) => handleFieldCorrection("summary", e.target.value)}
-                                        className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.summary ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
-                                        }`}
-                                        placeholder="Missing Executive Summary"
-                                      />
-                                      {!aiParsedResult.summary && (
-                                        <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Field missing from source artifacts. Manual input required.</p>
+                                  {reviewTab === "traceability" && (
+                                    <div className="space-y-3 text-left text-[11px]">
+                                      {datasetTraceability && datasetTraceability.length > 0 ? (
+                                        <div className="space-y-2 font-mono text-[10px]">
+                                          {datasetTraceability.map((trace, i) => (
+                                            <div key={i} className="bg-slate-950/40 p-2 rounded border border-slate-900/60 space-y-1">
+                                              <div className="flex justify-between text-slate-200">
+                                                <span className="font-bold text-indigo-300 truncate max-w-[120px]">{trace.metricLabel}</span>
+                                                {trace.cellNumber && (
+                                                  <span className="text-emerald-400 text-[9px] font-bold">Cell: {trace.cellNumber}</span>
+                                                )}
                                       )}
                                     </div>
 
@@ -3002,13 +2722,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                         value={aiParsedResult.objective || ""}
                                         onChange={(e) => handleFieldCorrection("objective", e.target.value)}
                                         className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.objective ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
+                                          !aiParsedResult.objective ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
                                         }`}
-                                        placeholder="Missing Strategic Objective"
+                                        placeholder="Strategic Objective..."
                                       />
-                                      {!aiParsedResult.objective && (
-                                        <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Field missing from source artifacts. Manual input required.</p>
-                                      )}
                                     </div>
 
                                     {/* 4. Methodology */}
@@ -3054,13 +2771,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                         value={aiParsedResult.methodology || ""}
                                         onChange={(e) => handleFieldCorrection("methodology", e.target.value)}
                                         className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.methodology ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
+                                          !aiParsedResult.methodology ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
                                         }`}
-                                        placeholder="Missing Methodology & Action Steps"
+                                        placeholder="Methodology & Action Steps..."
                                       />
-                                      {!aiParsedResult.methodology && (
-                                        <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Field missing from source artifacts. Manual input required.</p>
-                                      )}
                                     </div>
 
                                     {/* 5. Business Problem */}
@@ -3106,13 +2820,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                         value={aiParsedResult.businessProblem || ""}
                                         onChange={(e) => handleFieldCorrection("businessProblem", e.target.value)}
                                         className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.businessProblem ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
+                                          !aiParsedResult.businessProblem ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
                                         }`}
-                                        placeholder="Describe the Business Problem..."
+                                        placeholder="Business Problem..."
                                       />
-                                      {!aiParsedResult.businessProblem && (
-                                        <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Field missing. Manual input required.</p>
-                                      )}
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -3123,13 +2834,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                           value={aiParsedResult.industry || ""}
                                           onChange={(e) => handleFieldCorrection("industry", e.target.value)}
                                           className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans ${
-                                            !aiParsedResult.industry ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
+                                            !aiParsedResult.industry ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
                                           }`}
-                                          placeholder="Missing Industry"
+                                          placeholder="Industry..."
                                         />
-                                        {!aiParsedResult.industry && (
-                                          <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Required.</p>
-                                        )}
                                       </div>
                                       <div className="space-y-1">
                                         <label className="text-[9px] font-mono uppercase text-slate-400 font-bold">Your Role</label>
@@ -3138,13 +2846,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                           value={aiParsedResult.role || ""}
                                           onChange={(e) => handleFieldCorrection("role", e.target.value)}
                                           className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans ${
-                                            !aiParsedResult.role ? "border-rose-900/60 bg-rose-950/10" : "border-slate-800"
+                                            !aiParsedResult.role ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
                                           }`}
-                                          placeholder="Missing Role"
+                                          placeholder="Your Role..."
                                         />
-                                        {!aiParsedResult.role && (
-                                          <p className="text-[8px] text-rose-400 font-mono mt-0.5">⚠ Required.</p>
-                                        )}
                                       </div>
                                     </div>
 
