@@ -67,6 +67,26 @@ export async function authenticatedFetch(input: RequestInfo | URL, init: Request
     ...existingHeaders
   };
 
+  const bodyStr = typeof init.body === "string" ? init.body : null;
+  let parsedBody: any = null;
+  if (bodyStr) {
+    try {
+      parsedBody = JSON.parse(bodyStr);
+    } catch (_) {}
+  }
+
+  const firstFile = parsedBody && Array.isArray(parsedBody.files) && parsedBody.files[0] ? parsedBody.files[0] : null;
+
+  console.log(`\n----------------------------------------------------------`);
+  console.log(`[STAGE 4 & 5: apiClient.ts authenticatedFetch() & Serialized Request Body]`);
+  console.log(`URL Target: "${String(input)}"`);
+  console.log(`typeof init.body: "${typeof init.body}"`);
+  console.log(`Array.isArray(parsedBody.files): ${parsedBody ? Array.isArray(parsedBody.files) : false}`);
+  console.log(`Object.keys(parsedBody || {}): [${parsedBody ? Object.keys(parsedBody).join(", ") : ""}]`);
+  console.log(`Object.keys(firstFile || {}): [${firstFile ? Object.keys(firstFile).join(", ") : ""}]`);
+  console.log(`SERIALIZED FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstFile, null, 2)}`);
+  console.log(`----------------------------------------------------------\n`);
+
   return fetch(input, {
     ...init,
     headers: mergedHeaders

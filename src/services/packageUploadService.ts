@@ -285,12 +285,18 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
   const auditLogs: string[] = [];
   const invalidFiles: string[] = [];
 
-  console.log(`\n==========================================================`);
-  console.log(`[PACKAGE-WIDE CLIENT VALIDATION AUDIT]`);
-  console.log(`Total Descriptors: ${descriptors.length}`);
-  console.log(`==========================================================\n`);
+  const firstFile = descriptors && descriptors[0] ? descriptors[0] : null;
 
-  descriptors.forEach((d) => {
+  console.log(`\n----------------------------------------------------------`);
+  console.log(`[STAGE 1: validatePackageFileDescriptors]`);
+  console.log(`typeof payload: "${typeof descriptors}"`);
+  console.log(`Array.isArray(descriptors): ${Array.isArray(descriptors)}`);
+  console.log(`Object.keys(descriptors): [${descriptors ? Object.keys(descriptors).join(", ") : ""}]`);
+  console.log(`Object.keys(firstFile): [${firstFile ? Object.keys(firstFile).join(", ") : ""}]`);
+  console.log(`FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstFile, null, 2)}`);
+  console.log(`----------------------------------------------------------\n`);
+
+  for (const d of descriptors) {
     const hasStoragePath = Boolean(d.storagePath && d.storagePath.trim().length > 0);
     const hasFallback = Boolean(d.fallbackContent && d.fallbackContent.trim().length > 0);
     const isValid = hasStoragePath || hasFallback;
@@ -455,6 +461,17 @@ export async function uploadProjectPackage(
       error: `Package-wide client descriptor validation failed. Invalid descriptor for file(s): ${clientValidation.invalidFiles.join(", ")}.`
     };
   }
+
+  const firstFile = uploadedFiles && uploadedFiles[0] ? uploadedFiles[0] : null;
+
+  console.log(`\n----------------------------------------------------------`);
+  console.log(`[STAGE 2: packageUploadService.ts Return Payload]`);
+  console.log(`typeof payload: "${typeof uploadedFiles}"`);
+  console.log(`Array.isArray(uploadedFiles): ${Array.isArray(uploadedFiles)}`);
+  console.log(`Object.keys(uploadedFiles): [${uploadedFiles ? Object.keys(uploadedFiles).join(", ") : ""}]`);
+  console.log(`Object.keys(firstFile): [${firstFile ? Object.keys(firstFile).join(", ") : ""}]`);
+  console.log(`FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstFile, null, 2)}`);
+  console.log(`----------------------------------------------------------\n`);
 
   return {
     success: uploadedFiles.length > 0,

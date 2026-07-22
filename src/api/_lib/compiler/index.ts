@@ -159,6 +159,17 @@ export async function compileProjectPackage(
   const logger = createStepLogger("Compiler Pipeline");
   const pipelineStep = logger.start("Full compileProjectPackage Execution");
 
+  const firstRaw = Array.isArray(rawFiles) && rawFiles[0] ? rawFiles[0] : null;
+
+  console.log(`\n----------------------------------------------------------`);
+  console.log(`[STAGE 8: compileProjectPackage Input]`);
+  console.log(`typeof rawFiles: "${typeof rawFiles}"`);
+  console.log(`Array.isArray(rawFiles): ${Array.isArray(rawFiles)}`);
+  console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
+  console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
+  console.log(`RAW FILE DESCRIPTOR:\n${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? firstRaw.content.length : 0 } : null, null, 2)}`);
+  console.log(`----------------------------------------------------------\n`);
+
   const pipelineStartTime = Date.now();
   let projectType = "Mixed Analytics";
 

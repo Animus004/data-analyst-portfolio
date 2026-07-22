@@ -41,6 +41,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const body = req.body || {};
       const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
 
+      const firstRawFile = Array.isArray(files) && files[0] ? files[0] : null;
+
+      console.log(`\n==========================================================`);
+      console.log(`[STAGE 6: API RAW REQUEST BODY PARSED]`);
+      console.log(`typeof req.body: "${typeof req.body}"`);
+      console.log(`Array.isArray(req.body.files): ${Array.isArray(files)}`);
+      console.log(`Object.keys(req.body): [${Object.keys(body).join(", ")}]`);
+      console.log(`Object.keys(firstFile): [${firstRawFile ? Object.keys(firstRawFile).join(", ") : ""}]`);
+      console.log(`RAW FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstRawFile, null, 2)}`);
+      console.log(`==========================================================\n`);
+
       const rawFilesToCompile: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }> = [];
 
       // Detect Payload Format Automatically
@@ -53,12 +64,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           console.log(`\n----------------------------------------------------------`);
-          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 5 & 6 Server Received Payload]`);
-          console.log(`- filename: "${name}"`);
-          console.log(`- mimeType: "${fileMeta.type || "unknown"}"`);
-          console.log(`- size: ${fileMeta.size || "unknown"} bytes`);
-          console.log(`- storagePath: "${fileMeta.storagePath || "NONE"}"`);
-          console.log(`- fallbackContent exists? ${Boolean(fileMeta.fallbackContent)} (length: ${fileMeta.fallbackContent ? fileMeta.fallbackContent.length : 0})`);
+          console.log(`[STAGE 7: ai-package-parse File Descriptor Iteration]`);
+          console.log(`typeof fileMeta: "${typeof fileMeta}"`);
+          console.log(`Object.keys(fileMeta): [${Object.keys(fileMeta).join(", ")}]`);
+          console.log(`FILE DESCRIPTOR:\n${JSON.stringify(fileMeta, null, 2)}`);
           console.log(`----------------------------------------------------------\n`);
 
           if (!isAllowedFileType(name)) {

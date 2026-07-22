@@ -780,15 +780,27 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       }, 1400);
 
       try {
-        // 2. Send lightweight metadata payload to serverless endpoint (< 5 KB JSON)
+        const payloadToSerialize = { 
+          packageId, 
+          files: uploadRes.uploadedFiles, 
+          evidenceOnlyMode 
+        };
+
+        const firstFile = uploadRes.uploadedFiles && uploadRes.uploadedFiles[0] ? uploadRes.uploadedFiles[0] : null;
+
+        console.log(`\n----------------------------------------------------------`);
+        console.log(`[STAGE 3: CommandCenter.tsx Request Payload Assembly]`);
+        console.log(`typeof payload: "${typeof payloadToSerialize}"`);
+        console.log(`Array.isArray(files): ${Array.isArray(uploadRes.uploadedFiles)}`);
+        console.log(`Object.keys(payload): [${Object.keys(payloadToSerialize).join(", ")}]`);
+        console.log(`Object.keys(firstFile): [${firstFile ? Object.keys(firstFile).join(", ") : ""}]`);
+        console.log(`FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstFile, null, 2)}`);
+        console.log(`----------------------------------------------------------\n`);
+
         const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            packageId, 
-            files: uploadRes.uploadedFiles, 
-            evidenceOnlyMode 
-          })
+          body: JSON.stringify(payloadToSerialize)
         });
 
         const { ok, data } = await safeParseJsonResponse(res);
