@@ -233,11 +233,26 @@ export const ExcelParser: Parser = {
             const range = XLSX.utils.decode_range(sheet["!ref"]);
             const totalSheetRows = range.e.r - range.s.r + 1;
 
-            // Adaptive range selection: For large sheets (> 2000 rows), sample high-signal top & bottom rows
+            // Adaptive range selection:
+            // For workbooks/sheets containing > 100,000 rows, intelligently sample high-signal zones:
+            // (1) Top 100 rows (Headers, KPI summary cards, executive titles)
+            // (2) Bottom 50 rows (Grand totals, SUM, AVERAGE, COUNT summary aggregations)
+            // (3) Stratified mid-dataset rows (every 1000th row)
             const rowsToSample = new Set<number>();
             if (totalSheetRows <= 2000) {
               for (let r = range.s.r; r <= range.e.r; r++) rowsToSample.add(r);
+            } else if (totalSheetRows > 100000) {
+              excelEvidence.isAdaptivelySampled = true;
+              excelEvidence.samplingStrategy = `Intelligent Multi-Stratum Sampling (>100,000 Rows: ${totalSheetRows.toLocaleString()} rows). Extracted 100% metadata, headers, named ranges, pivot tables, chart visuals, calculated columns, and sampled KPI/summary rows.`;
+              
+              // Top 100 rows
+              for (let r = range.s.r; r <= range.s.r + 100 && r <= range.e.r; r++) rowsToSample.add(r);
+              // Bottom 50 rows (Totals/Aggregations)
+              for (let r = Math.max(range.s.r, range.e.r - 50); r <= range.e.r; r++) rowsToSample.add(r);
+              // Stratified mid-dataset sampling (every 1000th row)
+              for (let r = range.s.r + 100; r < range.e.r - 50; r += 1000) rowsToSample.add(r);
             } else {
+              // Standard large dataset sampling (> 2000 rows)
               // Top 60 rows
               for (let r = range.s.r; r <= range.s.r + 60 && r <= range.e.r; r++) rowsToSample.add(r);
               // Bottom 40 rows (Summary / Totals)

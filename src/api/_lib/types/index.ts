@@ -146,6 +146,8 @@ export interface ExcelEvidence extends EvidenceMeta {
   namedRanges?: Array<{ name: string; ref: string }>;
   calculatedColumns?: Array<{ sheet: string; column: string; formula: string }>;
   workbookMetadata?: Record<string, any>;
+  isAdaptivelySampled?: boolean;
+  samplingStrategy?: string;
 }
 
 export interface SqlEvidence extends EvidenceMeta {
