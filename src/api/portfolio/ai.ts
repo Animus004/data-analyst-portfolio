@@ -41,15 +41,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const body = req.body || {};
       const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
 
-      const firstRawFile = Array.isArray(files) && files[0] ? files[0] : null;
-
+      // SERVER AUDIT 1: Raw req.body.files[0] immediately after parsing
       console.log(`\n==========================================================`);
-      console.log(`[STAGE 6: API RAW REQUEST BODY PARSED]`);
-      console.log(`typeof req.body: "${typeof req.body}"`);
-      console.log(`Array.isArray(req.body.files): ${Array.isArray(files)}`);
-      console.log(`Object.keys(req.body): [${Object.keys(body).join(", ")}]`);
-      console.log(`Object.keys(firstFile): [${firstRawFile ? Object.keys(firstRawFile).join(", ") : ""}]`);
-      console.log(`RAW FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstRawFile, null, 2)}`);
+      console.log(`[SERVER AUDIT 1: Raw req.body.files[0]]`);
+      console.log(JSON.stringify(req.body.files?.[0], null, 2));
       console.log(`==========================================================\n`);
 
       const rawFilesToCompile: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }> = [];
@@ -63,26 +58,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return sendError(res, 400, "File item missing name in files payload.");
           }
 
-          console.log(`\n----------------------------------------------------------`);
-          console.log(`[STAGE 7: ai-package-parse File Descriptor Iteration]`);
-          console.log(`typeof fileMeta: "${typeof fileMeta}"`);
-          console.log(`Object.keys(fileMeta): [${Object.keys(fileMeta).join(", ")}]`);
-          console.log(`FILE DESCRIPTOR:\n${JSON.stringify(fileMeta, null, 2)}`);
-          console.log(`----------------------------------------------------------\n`);
-
           if (!isAllowedFileType(name)) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
 
-          // Pre-parser Validation: storagePath OR fallbackContent MUST exist
-          if (!fileMeta.storagePath && !fileMeta.fallbackContent) {
-            return sendError(res, 400, `Invalid file descriptor for '${name}': Both storagePath and fallbackContent are missing.`);
-          }
+          // SERVER AUDIT 2: Descriptor immediately before attempting Supabase download
+          console.log(`\n----------------------------------------------------------`);
+          console.log(`[SERVER AUDIT 2: Descriptor BEFORE Supabase Download]`);
+          console.log(`File Name: "${name}"`);
+          console.log(`storagePath: "${fileMeta.storagePath || "NONE"}"`);
+          console.log(`fallbackContent present? ${Boolean(fileMeta.fallbackContent)}`);
+          console.log(`Complete Descriptor:\n${JSON.stringify(fileMeta, null, 2)}`);
+          console.log(`----------------------------------------------------------\n`);
 
           let buffer: Buffer | null = null;
           let resolutionSource = "None";
+          let storageDownloadErrorMsg = "";
 
-          // 1. Use storagePath first: Download from Supabase Storage if available with 3s timeout
+          // 1. Use storagePath first: Download from Supabase Storage if available with 12s timeout
           if (fileMeta.storagePath) {
             const dlStep = logger.start(`Supabase Storage Download [${name}]`);
             const client = getSupabaseClient();
@@ -92,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const downloadRes = await executeWithTimeout(
                   `Supabase Download [${name}]`,
                   () => client.storage.from(bucket).download(fileMeta.storagePath!),
-                  3000
+                  12000
                 );
 
                 if (!downloadRes.error && downloadRes.data) {
@@ -103,12 +96,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 } else if (downloadRes.error) {
                   dlStep.end("Failed");
                   const { category, message } = categorizeStorageError(downloadRes.error);
+                  storageDownloadErrorMsg = `Category ${category}: ${message}`;
                   console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
                 }
               } catch (downloadErr: any) {
                 dlStep.end("Timeout/Error");
+                storageDownloadErrorMsg = downloadErr.message || "Timeout downloading from Supabase Storage";
                 console.warn(`[ai-package-parse] Exception or timeout downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
               }
+            } else {
+              storageDownloadErrorMsg = "Supabase client unconfigured on server environment.";
             }
           }
 
@@ -122,17 +119,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
-          // 3. Return HTTP 400 only when both storagePath and fallbackContent are absent or fail to yield content
+          // SERVER AUDIT 3: Descriptor immediately after download/fallback resolution
+          console.log(`\n----------------------------------------------------------`);
+          console.log(`[SERVER AUDIT 3: Descriptor AFTER Download/Fallback Resolution]`);
+          console.log(`File Name: "${name}"`);
+          console.log(`Resolution Source: ${resolutionSource}`);
+          console.log(`Resolved Buffer Size: ${buffer ? buffer.length : 0} bytes`);
+          console.log(`Complete Descriptor:\n${JSON.stringify(fileMeta, null, 2)}`);
+          console.log(`----------------------------------------------------------\n`);
+
+          // 3. Return HTTP 400 only when both storagePath download and fallbackContent fail to yield content
           if (!buffer) {
-            return sendError(res, 400, `Both storagePath and fallbackContent are absent or unavailable for file '${name}'.`);
+            const hasPath = Boolean(fileMeta.storagePath);
+            const hasFallback = Boolean(fileMeta.fallbackContent);
+            if (!hasPath && !hasFallback) {
+              return sendError(res, 400, `Both storagePath and fallbackContent are absent on file descriptor for '${name}'.`);
+            } else {
+              return sendError(res, 400, `Failed to retrieve content for '${name}' (storagePath: '${fileMeta.storagePath || "NONE"}'). Storage download error: ${storageDownloadErrorMsg || "Download failed"} and no inline fallbackContent was available.`);
+            }
           }
 
           const validation = validateFileBuffer(buffer, name);
           if (!validation.isValid) {
             return sendError(res, 400, validation.error || `Corrupted file buffer for '${name}'.`);
           }
-
-          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 7 Parser Descriptor] Verified File: "${name}" | Size: ${buffer.length} bytes | Resolution Source: ${resolutionSource}`);
 
           rawFilesToCompile.push({
             name,
@@ -168,6 +178,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
       prepStep.end(`${rawFilesToCompile.length} file(s) resolved`);
+
+      // SERVER AUDIT 4: Descriptor immediately before compileProjectPackage() is called
+      console.log(`\n==========================================================`);
+      console.log(`[SERVER AUDIT 4: Descriptors BEFORE compileProjectPackage()]`);
+      console.log(`Total rawFilesToCompile: ${rawFilesToCompile.length}`);
+      rawFilesToCompile.forEach((rf, idx) => {
+        console.log(`File [${idx}]: name="${rf.name}" | size=${rf.size} | type="${rf.type}" | storagePath="${rf.storagePath || "NONE"}" | contentLen=${rf.content ? rf.content.length : 0}`);
+      });
+      console.log(`First Compiled File Descriptor:\n${JSON.stringify(rawFilesToCompile[0] ? { name: rawFilesToCompile[0].name, size: rawFilesToCompile[0].size, type: rawFilesToCompile[0].type, storagePath: rawFilesToCompile[0].storagePath, contentLength: rawFilesToCompile[0].content ? rawFilesToCompile[0].content.length : 0 } : null, null, 2)}`);
+      console.log(`==========================================================\n`);
 
       // Execute package compiler with a strict 25-second hard deadline
       const compileStep = logger.start("Package Compiler Pipeline Execution");
