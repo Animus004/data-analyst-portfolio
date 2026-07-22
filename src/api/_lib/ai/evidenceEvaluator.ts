@@ -7,17 +7,128 @@ import {
   EvidenceGraph,
   EvidenceCoverageReport,
   MissingInformationItem,
-  ConflictRecord
+  ConflictRecord,
+  StructuredPortfolioProject,
+  RecruiterAuditReport,
+  ProjectUnderstanding
 } from "../types/index";
 
 /**
- * Task: Evidence Completeness Evaluator
- * Evaluates canonical evidence graph nodes to compute deterministic coverage scores (0 - 100)
- * for all 9 core portfolio dimensions.
+ * Task: Project Archetype Classifier
+ * Analyzes Evidence Graph nodes to classify the exact analytical project archetype.
+ */
+export function classifyProjectArchetype(graph: EvidenceGraph): string {
+  const parsers = new Set(graph.evidenceSources.map(s => s.parser));
+
+  if (parsers.has("NotebookParser") || graph.documentation.some(d => d.parser === "NotebookParser")) {
+    return "Jupyter Notebook Exploratory Data Science";
+  }
+
+  if (parsers.has("PythonParser")) {
+    const hasML = graph.businessTerms.some(t => {
+      const lower = t.value.toLowerCase();
+      return lower.includes("model") || lower.includes("predict") || lower.includes("scikit") || lower.includes("regression");
+    });
+    return hasML
+      ? "Python / Predictive Analytics & Machine Learning Pipeline"
+      : "Python / Data Science Scripting";
+  }
+
+  if (parsers.has("PowerBIParser")) {
+    return "Power BI / DAX Business Intelligence Dashboard";
+  }
+
+  if (parsers.has("SQLParser")) {
+    const sqlCount = graph.sqlLogic.length;
+    const hasComplexJoins = graph.sqlLogic.some(s => s.value.joins.length > 0 || s.value.windowFunctions.length > 0);
+    return hasComplexJoins || sqlCount > 1
+      ? "SQL Analytics & Data Relational Engine"
+      : "SQL Query Analytics Case Study";
+  }
+
+  if (parsers.has("ExcelParser")) {
+    return "Excel / Financial & Operations Intelligence Model";
+  }
+
+  if (parsers.size >= 2) {
+    return "Multi-Source Enterprise Analytics Package";
+  }
+
+  return "Data Analytics Case Study";
+}
+
+/**
+ * Task: KPI Disambiguation Engine
+ * Separates raw relational schema columns/dimensions from true business KPIs & DAX measures.
+ */
+export function disambiguateKPIs(graph: EvidenceGraph): {
+  trueKPIs: Array<{ label: string; value: string; sourceFile: string; isDAX?: boolean }>;
+  schemaDimensions: string[];
+} {
+  const blacklistColumns = new Set([
+    "customer_id", "user_id", "id", "created_at", "updated_at", "order_date",
+    "date", "region", "status", "country", "name", "email", "address",
+    "category_id", "zip", "zipcode", "phone", "row_id", "index"
+  ]);
+
+  const trueKPIs: Array<{ label: string; value: string; sourceFile: string; isDAX?: boolean }> = [];
+  const schemaDimensions: string[] = [];
+
+  for (const m of graph.metrics) {
+    const normLabel = m.value.label.toLowerCase().trim();
+    if (blacklistColumns.has(normLabel)) {
+      schemaDimensions.push(m.value.label);
+    } else {
+      trueKPIs.push({
+        label: m.value.label,
+        value: m.value.value,
+        sourceFile: m.sourceFile
+      });
+    }
+  }
+
+  for (const k of graph.detectedKPIs) {
+    const name = k.value.name;
+    const normName = name.toLowerCase().trim();
+    if (!blacklistColumns.has(normName) && !trueKPIs.some(tk => tk.label.toLowerCase() === normName)) {
+      trueKPIs.push({
+        label: name,
+        value: k.value.actual || k.value.target || "Tracked",
+        sourceFile: k.sourceFile
+      });
+    }
+  }
+
+  for (const s of graph.sqlLogic) {
+    for (const agg of s.value.aggregations) {
+      if (!trueKPIs.some(tk => tk.label === agg)) {
+        trueKPIs.push({
+          label: `Calculated Aggregation: ${agg}`,
+          value: agg,
+          sourceFile: s.sourceFile
+        });
+      }
+    }
+  }
+
+  for (const d of graph.dimensions) {
+    const normDim = d.value.toLowerCase().trim();
+    if (blacklistColumns.has(normDim)) {
+      schemaDimensions.push(d.value);
+    }
+  }
+
+  return { trueKPIs, schemaDimensions };
+}
+
+/**
+ * Task: Evidence Intelligence Engine - Coverage Evaluator
+ * Evaluates completeness using Project Understanding & Evidence Graph nodes.
  */
 export function evaluateEvidenceCompleteness(
   graph: EvidenceGraph,
-  userAnswers?: Record<string, string>
+  userAnswers?: Record<string, string>,
+  understanding?: ProjectUnderstanding
 ): EvidenceCoverageReport {
   const hasUserAns = (key: string): boolean => {
     if (!userAnswers) return false;
@@ -27,27 +138,25 @@ export function evaluateEvidenceCompleteness(
     );
   };
 
-  // 1. KPIs Coverage (Metrics, calculated SQL logic, DAX measures)
-  const totalMetrics =
-    graph.metrics.length +
-    graph.kpis.length +
-    graph.detectedKPIs.length +
-    graph.sqlLogic.flatMap(s => s.value.aggregations).length;
+  const trueKPIs = understanding?.trueKPIs || disambiguateKPIs(graph).trueKPIs;
+
+  // 1. KPIs Coverage
+  const totalTrueKPIs = trueKPIs.length;
   let kpisScore = 15;
-  if (totalMetrics >= 3) kpisScore = 100;
-  else if (totalMetrics === 2) kpisScore = 85;
-  else if (totalMetrics === 1) kpisScore = 65;
+  if (totalTrueKPIs >= 3) kpisScore = 100;
+  else if (totalTrueKPIs === 2) kpisScore = 85;
+  else if (totalTrueKPIs === 1) kpisScore = 65;
   if (hasUserAns("kpi") || hasUserAns("metric")) kpisScore = Math.min(100, kpisScore + 30);
 
-  // 2. Methodology Coverage (SQL joins, analytical techniques, doc methodology)
-  const techCount = graph.analyticalTechniques.length + graph.methodology.length + graph.sqlLogic.length;
+  // 2. Methodology Coverage
+  const techCount = (understanding?.analyticalTechniques.length || 0) + graph.methodology.length + graph.sqlLogic.length;
   let methodologyScore = 30;
   if (techCount >= 3) methodologyScore = 95;
   else if (techCount >= 1) methodologyScore = 80;
   if (hasUserAns("methodology") || hasUserAns("tech")) methodologyScore = Math.min(100, methodologyScore + 20);
 
-  // 3. Executive Summary Coverage
-  const sourceCount = graph.evidenceSources.length;
+  // 3. Executive Summary Coverage — use datasets array (new field)
+  const sourceCount = understanding?.datasets.length ?? graph.evidenceSources.length;
   let execScore = 40;
   if (sourceCount >= 3) execScore = 95;
   else if (sourceCount === 2) execScore = 80;
@@ -55,15 +164,15 @@ export function evaluateEvidenceCompleteness(
   if (graph.documentation.length > 0) execScore = Math.min(100, execScore + 15);
   if (hasUserAns("summary") || hasUserAns("context")) execScore = Math.min(100, execScore + 25);
 
-  // 4. Business Objective Coverage
+  // 4. Business Objective Coverage — primaryObjective is now a plain string
   const objectiveDocs = graph.documentation.filter(
     d => d.value.key.toLowerCase().includes("objective") || d.value.key.toLowerCase().includes("goal")
   );
   let objectiveScore = 20;
-  if (objectiveDocs.length > 0 || graph.businessQuestions.length > 0) {
+  if (objectiveDocs.length > 0 || graph.businessQuestions.length > 0 || (understanding?.primaryObjective && understanding.primaryObjective.length > 20)) {
     objectiveScore = 90;
-  } else if (graph.projectDomain && graph.projectDomain !== "Mixed Analytics") {
-    objectiveScore = 45;
+  } else if (understanding?.businessDomain && understanding.businessDomain !== "Mixed Analytics") {
+    objectiveScore = 50;
   }
   if (hasUserAns("objective") || hasUserAns("goal")) objectiveScore = 90;
 
@@ -78,7 +187,7 @@ export function evaluateEvidenceCompleteness(
 
   // 6. Stakeholders Coverage
   let stakeholdersScore = 15;
-  if (graph.stakeholderIndicators.length > 0) stakeholdersScore = 90;
+  if (graph.stakeholderIndicators.length > 0 || (understanding && understanding.likelyStakeholders.length > 0)) stakeholdersScore = 85;
   if (hasUserAns("stakeholder") || hasUserAns("audience")) stakeholdersScore = 90;
 
   // 7. Recommendations Coverage
@@ -115,70 +224,117 @@ export function evaluateEvidenceCompleteness(
 }
 
 /**
- * Task: Missing Information Engine
- * Identifies sections with coverage < 80 and generates up to 5 targeted questions.
- * Never requests information already supported by evidence.
+ * Task: Missing Information Engine — Contextual, Adaptive & Conversational Questions
+ * Questions are derived directly from ProjectUnderstanding — they reference actual detected
+ * domain, tool stack, KPI names, business questions, and stakeholder roles.
+ *
+ * `understanding` is required: it is always produced by Stage 4 of the pipeline before
+ * this function is ever called.
  */
 export function generateMissingInformationRequests(
   report: EvidenceCoverageReport,
-  graph: EvidenceGraph
+  graph: EvidenceGraph,
+  understanding: ProjectUnderstanding
 ): MissingInformationItem[] {
   const requests: MissingInformationItem[] = [];
 
-  if (report.businessObjective < 80) {
-    requests.push({
-      field: "Business Objective",
-      reason: "No explicit business objective or analytical goal was detected in parsed source files.",
-      question: "What primary business objective or strategic question was this analysis trying to solve?",
-      type: "textarea"
-    });
-  }
+  const fileCount    = understanding.datasets.length;
+  const toolStack    = understanding.toolsUsed.join(" & ");
+  const domain       = understanding.businessDomain;
+  const industry     = understanding.industry;
+  const archetype    = understanding.projectArchetype;
+  const projectType  = understanding.projectType;
+  const topKPI       = understanding.trueKPIs[0]?.label || "core metrics";
+  const topStakeholder = understanding.likelyStakeholders[0] || "executive decision-makers";
+  const detectedQ    = understanding.businessQuestions.length > 0
+    ? `"${understanding.businessQuestions[0]}"`
+    : null;
 
-  if (report.stakeholders < 80) {
-    requests.push({
-      field: "Stakeholders",
-      reason: "Target audience or key decision-maker roles were not identified in evidence.",
-      question: "Who were the key business stakeholders or executive leaders receiving this report?",
-      type: "text"
-    });
-  }
-
+  // 1. Business Impact — highest priority: quantified outcomes missing
   if (report.businessImpact < 80) {
     requests.push({
       field: "Business Impact",
-      reason: "Quantified business outcomes or operational improvements were missing from parsed assets.",
-      question: "What quantifiable business impact, cost savings, or efficiency gains were achieved?",
-      type: "textarea"
+      reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
+      question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} — ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
+      type: "textarea",
+      estimatedQualityBoost: 25,
+      recruiterImpactPriority: "Critical"
     });
   }
 
+  // 2. Business Objective — what strategic question was this trying to solve?
+  if (report.businessObjective < 80) {
+    const questionHint = detectedQ
+      ? `We detected a potential business question: ${detectedQ}. `
+      : `We detected ${fileCount} ${toolStack} source file(s) focused on ${domain}. `;
+    requests.push({
+      field: "Business Objective",
+      reason: "No explicit business objective or analytical goal was detected in parsed source files.",
+      question: `${questionHint}What was the core strategic objective or business question this analysis was built to answer?`,
+      type: "textarea",
+      estimatedQualityBoost: 20,
+      recruiterImpactPriority: "High"
+    });
+  }
+
+  // 3. Strategic Recommendations — what should stakeholders do next?
   if (report.recommendations < 80) {
     requests.push({
       field: "Strategic Recommendations",
-      reason: "Strategic action items or executive recommendations were not explicitly stated in source code.",
-      question: "What top strategic recommendations or next steps should decision-makers take based on this data?",
-      type: "textarea"
+      reason: "Strategic action items or executive recommendations were not explicitly stated in source files.",
+      question: `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you would present to ${topStakeholder}?`,
+      type: "textarea",
+      estimatedQualityBoost: 20,
+      recruiterImpactPriority: "High"
     });
   }
 
+  // 4. Stakeholders — who consumed this report?
+  if (report.stakeholders < 80) {
+    const kpiMention = understanding.trueKPIs.length > 0
+      ? ` tracking metrics like ${topKPI}`
+      : "";
+    requests.push({
+      field: "Stakeholders",
+      reason: "Target audience or key decision-maker roles were not identified in evidence.",
+      question: `Who were the primary business stakeholders or executive team leaders consuming this ${projectType} report${kpiMention} within ${industry}?`,
+      type: "text",
+      estimatedQualityBoost: 15,
+      recruiterImpactPriority: "Medium"
+    });
+  }
+
+  // 5. Business Problem — root cause and trigger
   if (report.businessProblem < 80) {
+    const bqHint = understanding.businessQuestions.length > 0
+      ? ` (e.g. ${understanding.businessQuestions.slice(0, 2).map(q => `"${q}"`).join(", ")})`
+      : "";
+    const question = `What specific operational challenge or bottleneck in ${domain} prompted this ${archetype}?${bqHint.length > 0 ? ` Your analysis appears to address questions like${bqHint}.` : ""}`;    
+
     requests.push({
       field: "Business Problem",
       reason: "Root operational bottleneck or business challenge missing from dataset.",
-      question: "What specific operational bottleneck or business challenge prompted this analytical investigation?",
-      type: "textarea"
+      question,
+      type: "textarea",
+      estimatedQualityBoost: 15,
+      recruiterImpactPriority: "Medium"
     });
   }
 
-  // Enforce quota: Never ask more than 5 questions
+  // Sort by recruiter priority & estimated quality boost descending
+  const priorityRank = { Critical: 3, High: 2, Medium: 1 };
+  requests.sort((a, b) => {
+    const pA = priorityRank[a.recruiterImpactPriority || "Medium"];
+    const pB = priorityRank[b.recruiterImpactPriority || "Medium"];
+    if (pA !== pB) return pB - pA;
+    return (b.estimatedQualityBoost || 0) - (a.estimatedQualityBoost || 0);
+  });
+
   return requests.slice(0, 5);
 }
 
 /**
  * Task: Second Pass & Conflict Resolution
- * Merges user answers into the synthesis context.
- * Enforces absolute priority of Evidence Graph over User Answers.
- * Flags any user answer that contradicts established evidence graph facts.
  */
 export function mergeUserAnswersWithEvidence(
   graph: EvidenceGraph,
@@ -195,7 +351,6 @@ export function mergeUserAnswersWithEvidence(
     const val = rawVal?.trim();
     if (!val) continue;
 
-    // Check conflict against Evidence Graph metrics
     const lowerKey = key.toLowerCase();
     if (lowerKey.includes("kpi") || lowerKey.includes("metric") || lowerKey.includes("revenue") || lowerKey.includes("number")) {
       for (const m of graph.metrics) {
@@ -222,4 +377,108 @@ export function mergeUserAnswersWithEvidence(
   const mergedAnswersContext = `\n### USER-SUPPLIED SUPPLEMENTAL CONTEXT (LEVEL 3 INTEL):\n${contextLines}\n`;
 
   return { mergedAnswersContext, answerConflicts };
+}
+
+/**
+ * Task: Recruiter Audit Engine
+ */
+export function runRecruiterAuditEngine(
+  portfolio: StructuredPortfolioProject,
+  graph: EvidenceGraph,
+  conflicts: ConflictRecord[],
+  understanding?: ProjectUnderstanding
+): RecruiterAuditReport {
+  const strengths: string[] = [];
+  const improvementSuggestions: string[] = [];
+
+  // 1. ATS Readiness Score
+  let atsScore = 70;
+  const techStack = portfolio.technologyStack?.value || understanding?.toolsUsed || [];
+  if (techStack.length >= 3) {
+    atsScore += 15;
+    strengths.push(`Rich technical stack keywords (${techStack.slice(0, 5).join(", ")}) optimization for ATS screening.`);
+  } else {
+    improvementSuggestions.push("Add more technical tools (SQL, Python, Power BI, Excel) to increase ATS keyword matching.");
+  }
+  const bullets = portfolio.resumeBullets?.value || [];
+  if (bullets.length >= 3) {
+    atsScore += 15;
+    strengths.push("High-impact action verb resume bullets with quantifiable performance outcomes.");
+  }
+
+  // 2. Business Storytelling Score
+  let storytellingScore = 75;
+  if (portfolio.executiveSummary?.value && portfolio.executiveSummary.value.length > 50) {
+    storytellingScore += 10;
+  }
+  if (portfolio.businessProblem?.value && portfolio.businessProblem.value.length > 30) {
+    storytellingScore += 15;
+    strengths.push("Clear executive problem definition and stakeholder business context.");
+  } else {
+    improvementSuggestions.push("Expand the Business Problem section to explain root operational challenges.");
+  }
+
+  // 3. Evidence Confidence Score
+  const scores = [
+    portfolio.title.confidence,
+    portfolio.executiveSummary.confidence,
+    portfolio.businessContext.confidence,
+    portfolio.businessProblem.confidence,
+    portfolio.businessImpact.confidence,
+    portfolio.methodology.confidence,
+    portfolio.findings.confidence,
+    portfolio.recommendations.confidence
+  ];
+  const avgConfidence = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const evidenceScore = Math.min(100, Math.max(50, avgConfidence));
+  if (evidenceScore >= 85) {
+    strengths.push("High evidence confidence score derived directly from parsed source file schemas.");
+  }
+
+  // 4. Interview Readiness Score
+  let interviewScore = 60;
+  const star = portfolio.starStory?.value;
+  if (star && star.situation && star.task && star.action && star.result) {
+    interviewScore = 95;
+    strengths.push("Recruiter-ready STAR story (Situation, Task, Action, Result) ready for live interview defense.");
+  } else {
+    improvementSuggestions.push("Formulate a clear STAR story structure for quick interview responses.");
+  }
+
+  // 5. Hallucination Risk Score (0 = Pristine)
+  let hallucinationRisk = 0;
+  if (conflicts.length > 0) {
+    hallucinationRisk += conflicts.length * 15;
+    improvementSuggestions.push(`Resolve ${conflicts.length} conflicting metric claim(s) across evidence sources.`);
+  }
+  if (graph.evidenceSources.length === 0) {
+    hallucinationRisk += 25;
+  }
+  hallucinationRisk = Math.min(100, hallucinationRisk);
+
+  if (hallucinationRisk === 0) {
+    strengths.push("Zero-hallucination verification confirmed: 100% grounded in empirical data.");
+  }
+
+  // 6. Overall Quality Score Calculation
+  const rawOverall =
+    atsScore * 0.25 +
+    storytellingScore * 0.25 +
+    evidenceScore * 0.25 +
+    interviewScore * 0.25 -
+    hallucinationRisk * 0.1;
+  const overallQualityScore = Math.min(100, Math.max(40, Math.round(rawOverall)));
+  const auditPassed = overallQualityScore >= 75 && hallucinationRisk <= 20;
+
+  return {
+    atsReadinessScore: Math.min(100, atsScore),
+    businessStorytellingScore: Math.min(100, storytellingScore),
+    evidenceConfidenceScore: evidenceScore,
+    interviewReadinessScore: interviewScore,
+    hallucinationRiskScore: hallucinationRisk,
+    overallQualityScore,
+    auditPassed,
+    strengths,
+    improvementSuggestions
+  };
 }

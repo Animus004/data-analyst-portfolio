@@ -9,7 +9,8 @@ import {
   StructuredPortfolioProject,
   ConflictRecord,
   ExtractedProject,
-  PipelineError
+  PipelineError,
+  ProjectUnderstanding
 } from "../types/index";
 
 let aiClient: any = null;
@@ -647,7 +648,9 @@ export async function compilePortfolioWithGemini(
   graph: EvidenceGraph,
   conflicts: ConflictRecord[],
   rawBaseProject: ExtractedProject,
-  userAnswersContext?: string
+  userAnswersContext?: string,
+  projectArchetype?: string,
+  understanding?: ProjectUnderstanding
 ): Promise<{ structured: StructuredPortfolioProject; raw: ExtractedProject }> {
   console.log({
     hasGeminiKey: !!process.env.GEMINI_API_KEY,
@@ -675,23 +678,50 @@ export async function compilePortfolioWithGemini(
     throw new PipelineError("Evidence Prioritization", `Evidence prioritization failed: ${err.message}`, err.name || "EvidencePrioritizationError", err);
   }
 
+  // Serialize the ProjectUnderstanding as a grounded context block for the prompt.
+  // Gemini must NOT re-derive any fields present here — it uses them as authoritative truth.
+  const puContext = understanding ? `
+### AUTHORITATIVE PROJECT UNDERSTANDING (pre-synthesized by Project Understanding Engine):
+> Do NOT re-derive, reinterpret, or contradict any of the fields below. Treat them as ground truth.
+
+- **Project Archetype**: ${understanding.projectArchetype}
+- **Industry**: ${understanding.industry}
+- **Business Domain**: ${understanding.businessDomain}
+- **Business Problem**: ${understanding.businessProblem}
+- **Primary Objective**: ${understanding.primaryObjective}
+- **Stakeholders**: ${understanding.likelyStakeholders.join(", ")}
+- **Business Questions This Project Answers**:
+${understanding.businessQuestions.map(q => `  • ${q}`).join("\n") || "  (not detected)"}
+- **True Business KPIs**:
+${understanding.trueKPIs.slice(0, 8).map(k => `  • ${k.label}: ${k.value}`).join("\n") || "  (not detected)"}
+- **Tools Used**: ${understanding.toolsUsed.join(", ")}
+- **Analytical Techniques**: ${understanding.analyticalTechniques.join(", ")}
+- **Source Datasets**: ${understanding.datasets.map(d => `${d.fileName} (${d.fileType})`).join(", ")}
+- **PUE Confidence Score**: ${understanding.confidence}/100
+- **Strongly-Preferred Title Candidates** (use as starting point):
+${understanding.suggestedTitles.map(t => `  • "${t.title}" [${t.confidence}%] — ${t.rationale}`).join("\n")}
+` : "### PROJECT UNDERSTANDING: (not available — derive from evidence payload below)";
+
   const prompt = `
 You are the world's leading Senior Portfolio Reviewer & Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
 Your primary role is to act as an evidence-first reasoning engine that transforms grounded analytical evidence into recruiter-ready case studies.
 
+${puContext}
+
 ### STRICT SENIOR PORTFOLIO REVIEWER DIRECTIVES (ZERO-HALLUCINATION GUARANTEE):
-1. **SENIOR CONSULTANT COPYWRITING**: Write like a Principal Business Intelligence Leader. Eliminate filler ("This project aims to", "The dashboard shows"). Use active consultant prose ("This analysis evaluates", "Empirical data reveals", "Strategic diagnostics indicate").
-2. **ZERO-HALLUCINATION POLICY**: Never fabricate metrics, percentages, dollar amounts, company names, stakeholders, or results that are unsupported by the evidence graph or user answers.
-3. **PORTFOLIO INTELLIGENCE LEVELS**:
+1. **GROUNDED IN PROJECT UNDERSTANDING**: All industry, domain, KPI, stakeholder, and objective context is pre-resolved above. Do not re-infer from raw evidence what is already declared in the Project Understanding block.
+2. **SENIOR CONSULTANT COPYWRITING**: Write like a Principal Business Intelligence Leader. Eliminate filler ("This project aims to", "The dashboard shows"). Use active consultant prose ("This analysis evaluates", "Empirical data reveals", "Strategic diagnostics indicate").
+3. **ZERO-HALLUCINATION POLICY**: Never fabricate metrics, percentages, dollar amounts, company names, stakeholders, or results that are unsupported by the evidence graph or user answers.
+4. **PORTFOLIO INTELLIGENCE LEVELS**:
    - Level 1 (Evidence Only): Use exact numbers, SQL tables, and metrics present in evidence nodes.
    - Level 2 (Safe Inference): Infer only obvious domain context and technical roles (e.g. SQL + Power BI = BI Engineer).
    - Level 3 (Evidence + User Answers): Incorporate user-provided answers seamlessly to complete missing narrative sections.
    - Level 4 (Recruiter Optimized): Rewrite language for ATS optimization without altering factual underlying numbers.
-4. **DYNAMIC CONFIDENCE SCORING**:
+5. **DYNAMIC CONFIDENCE SCORING**:
    - 1 evidence source: ~60% confidence
    - 2 agreeing evidence sources: ~85% confidence
    - 3+ agreeing evidence sources / user validated: ~95% confidence
-5. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
+6. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
 
 ### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
 ${JSON.stringify(prioritizedPayload, null, 2)}

@@ -290,6 +290,62 @@ export interface MissingInformationItem {
   question: string;
   type: "text" | "textarea" | "select";
   options?: string[];
+  estimatedQualityBoost?: number;
+  recruiterImpactPriority?: "Critical" | "High" | "Medium";
+}
+
+export interface RecruiterAuditReport {
+  atsReadinessScore: number;       // 0 - 100
+  businessStorytellingScore: number; // 0 - 100
+  evidenceConfidenceScore: number; // 0 - 100
+  interviewReadinessScore: number; // 0 - 100
+  hallucinationRiskScore: number;  // 0 - 100 (0 = pristine/zero hallucination)
+  overallQualityScore: number;     // 0 - 100
+  auditPassed: boolean;
+  strengths: string[];
+  improvementSuggestions: string[];
+}
+
+export interface ProjectUnderstanding {
+  projectType: string;
+  projectArchetype: string;
+
+  industry: string;
+  businessDomain: string;
+
+  businessProblem: string;
+  primaryObjective: string;
+
+  likelyStakeholders: string[];
+
+  businessQuestions: string[];
+
+  trueKPIs: Array<{ label: string; value: string; sourceFile: string; isDAX?: boolean }>;
+
+  analyticalTechniques: string[];
+
+  toolsUsed: string[];
+
+  datasets: Array<{
+    fileName: string;
+    fileType: string;
+    schemaColumns: string[];
+    recordSummary?: string;
+  }>;
+
+  suggestedTitles: Array<{ title: string; confidence: number; rationale: string }>;
+  suggestedSummaries: Array<{ summary: string; confidence: number }>;
+
+  /** Overall synthesis confidence score (0-100) */
+  confidence: number;
+
+  /**
+   * Engine schema version stamped at synthesis time.
+   * Used by the LRU cache validation guard to auto-invalidate objects
+   * produced by older versions of the Project Understanding Engine.
+   * Bump PUE_SCHEMA_VERSION in projectUnderstandingEngine.ts to force re-synthesis.
+   */
+  schemaVersion?: string;
 }
 
 export type UserAnswerInput = Record<string, string>;
@@ -299,6 +355,8 @@ export type CompilerStatus = "COMPLETE" | "NEEDS_USER_INPUT";
 export interface UniversalCompilerOutput {
   status: CompilerStatus;
   projectType: string;
+  projectArchetype?: string;
+  projectUnderstanding?: ProjectUnderstanding;
   rawProject: ExtractedProject;
   conflicts: ConflictRecord[];
   fileCoverage: Array<{
@@ -310,6 +368,7 @@ export interface UniversalCompilerOutput {
   }>;
   coverageReport?: EvidenceCoverageReport;
   missingInformation?: MissingInformationItem[];
+  recruiterAudit?: RecruiterAuditReport;
   evidenceGraph?: EvidenceGraph;
   portfolioProject?: StructuredPortfolioProject;
   sourceAttributions?: Record<string, string[]>;

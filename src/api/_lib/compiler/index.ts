@@ -17,8 +17,12 @@ import { compilePortfolioWithGemini, formatDebugAiContext } from "../ai/portfoli
 import {
   evaluateEvidenceCompleteness,
   generateMissingInformationRequests,
-  mergeUserAnswersWithEvidence
+  mergeUserAnswersWithEvidence,
+  classifyProjectArchetype,
+  runRecruiterAuditEngine
 } from "../ai/evidenceEvaluator";
+import { getCachedOrSynthesizeUnderstanding } from "../ai/projectUnderstandingEngine";
+import { ProjectUnderstanding } from "../types/index";
 import crypto from "crypto";
 
 // Helper to normalize strings for metric matching
@@ -149,10 +153,11 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
 export async function compileProjectPackage(
   rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>,
   userAnswers?: Record<string, string>,
-  forceCompile?: boolean
+  forceCompile?: boolean,
+  existingUnderstanding?: ProjectUnderstanding
 ): Promise<UniversalCompilerOutput> {
   let projectType = "Mixed Analytics";
-  
+
   // Quotas
   const MAX_RAW_FILES = 50;
   if (rawFiles.length > MAX_RAW_FILES) {
@@ -160,6 +165,8 @@ export async function compileProjectPackage(
   }
 
   // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
+  // The package-level evidence hash is computed here (before parsing) so it can
+  // serve as the cache key for the Project Understanding Engine at Stage 4.
   const allFiles: Array<{ name: string; content: string; type: "text" | "binary"; size: number; sha256: string }> = [];
   const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
 
@@ -278,8 +285,26 @@ export async function compileProjectPackage(
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
 
-  // Stage 4: Evidence Completeness Evaluator Stage
-  const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers);
+  // Stage 4: Project Understanding Engine
+  // Three-tier optimization: (1) reuse caller-supplied understanding, (2) LRU cache hit,
+  // (3) Gemini synthesis only when no reusable understanding exists.
+  // The package evidence hash is the cache key — computed from sorted file SHA-256s.
+  const packageEvidenceHash = crypto.createHash("sha256")
+    .update(allFiles.map(f => f.sha256).sort().join(":"))
+    .digest("hex");
+
+  const projectUnderstanding = await getCachedOrSynthesizeUnderstanding(
+    evidenceGraph,
+    packageEvidenceHash,
+    existingUnderstanding
+  );
+
+  // Authoritative archetype comes from ProjectUnderstanding (Gemini-reasoned);
+  // classifyProjectArchetype is kept as a structural cross-reference only.
+  const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
+
+  // Stage 5: Evidence Completeness Evaluator (consumes ProjectUnderstanding)
+  const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
 
   // Merge User Answers with Evidence Graph (Evidence priority enforcement + conflict detection)
   const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
@@ -305,14 +330,19 @@ export async function compileProjectPackage(
   ];
   const isFullySufficient = requiredScores.every(score => score >= 80);
 
-  // Check if missing info request must be generated
+  // Stage 7: Decision Logic — if evidence is insufficient and user hasn't answered yet,
+  // return NEEDS_USER_INPUT with contextual questions AND the projectUnderstanding.
+  // The frontend must return projectUnderstanding in the subsequent request body so
+  // Stage 4 can skip Gemini entirely (Tier 1 passthrough).
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
-    const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph);
+    const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
       const rawProject = mergeExtractedProjects(parsedProjects);
       return {
         status: "NEEDS_USER_INPUT",
         projectType,
+        projectArchetype,
+        projectUnderstanding,
         rawProject: {
           ...rawProject,
           sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
@@ -334,13 +364,22 @@ export async function compileProjectPackage(
     keyLength: process.env.GEMINI_API_KEY?.length
   });
 
-  // Stage 8: AI Synthesis via Gemini Engine (Operates ONLY on Evidence Graph + Merged Level 3 User Context)
-  const synthesized = await compilePortfolioWithGemini(evidenceGraph, conflicts, rawProject, mergedAnswersContext);
+  // Stage 8: AI Portfolio Compiler — grounded in the unified ProjectUnderstanding.
+  // No re-derivation of industry, KPIs, or domain happens inside Gemini;
+  // all contextual reasoning flows from projectUnderstanding.
+  const synthesized = await compilePortfolioWithGemini(
+    evidenceGraph,
+    conflicts,
+    rawProject,
+    mergedAnswersContext,
+    projectArchetype,
+    projectUnderstanding
+  );
 
-  // Generate Master Package SHA-256 evidence hash
-  const packageEvidenceHash = crypto.createHash("sha256")
-    .update(allFiles.map(f => f.sha256).sort().join(":"))
-    .digest("hex");
+  // Stage 9: Recruiter Audit Engine
+  const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
+
+  // packageEvidenceHash already computed at Stage 4 — reused here for auditMetadata.
 
   // Construct source attributions and confidence map
   const sourceAttributions: Record<string, string[]> = {};
@@ -371,11 +410,14 @@ export async function compileProjectPackage(
   return {
     status: "COMPLETE",
     projectType,
+    projectArchetype,
+    projectUnderstanding,
     rawProject: {
       ...synthesized.raw,
       sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
     },
     coverageReport,
+    recruiterAudit,
     evidenceGraph,
     portfolioProject: synthesized.structured,
     conflicts,
@@ -387,9 +429,9 @@ export async function compileProjectPackage(
     linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: new Date().toISOString(),
-      parserVersions: "Portfolio OS AI Compiler Engine v3.5 (Evidence Graph + Completeness Evaluator + Gemini)",
+      parserVersions: "Portfolio OS AI Intelligence Engine v4.1 (PUE-Cached + Evidence Intelligence + Recruiter Audit + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v3.5",
+      projectVersion: "v4.1",
       totalFilesProcessed: allFiles.length,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     }
@@ -400,7 +442,8 @@ export async function parseUploadedPackage(
   fileName: string,
   buffer: Buffer,
   userAnswers?: Record<string, string>,
-  forceCompile?: boolean
+  forceCompile?: boolean,
+  existingUnderstanding?: ProjectUnderstanding
 ): Promise<UniversalCompilerOutput> {
   return compileProjectPackage(
     [{
@@ -410,7 +453,8 @@ export async function parseUploadedPackage(
       content: buffer.toString("base64")
     }],
     userAnswers,
-    forceCompile
+    forceCompile,
+    existingUnderstanding
   );
 }
 
@@ -418,7 +462,8 @@ export async function compileSourceCodeToProject(
   fileName: string,
   sourceCode: string,
   userAnswers?: Record<string, string>,
-  forceCompile?: boolean
+  forceCompile?: boolean,
+  existingUnderstanding?: ProjectUnderstanding
 ): Promise<UniversalCompilerOutput> {
   return compileProjectPackage(
     [{
@@ -428,6 +473,7 @@ export async function compileSourceCodeToProject(
       content: sourceCode
     }],
     userAnswers,
-    forceCompile
+    forceCompile,
+    existingUnderstanding
   );
 }

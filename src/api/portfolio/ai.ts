@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (pathname.includes("/ai-package-parse")) {
     try {
       const body = req.body || {};
-      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile } = body;
+      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
 
       const rawFilesToCompile: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }> = [];
 
@@ -124,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
 
-      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile);
+      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding);
 
       logExecution({
         endpoint: pathname,
