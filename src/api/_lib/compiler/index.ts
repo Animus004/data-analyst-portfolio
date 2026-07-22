@@ -207,7 +207,24 @@ export async function compileProjectPackage(
       console.log(`[CHECKPOINT S1-009] Extension resolved to '.${ext}'`);
 
       console.log(`[CHECKPOINT S1-010] Entering computeSha256 for '${file.name}'`);
-      const fileHash = computeSha256(file.content);
+      let fileHash: string;
+      try {
+        console.log(`[CHECKPOINT S1-010A] computeSha256: typeof file.content = "${typeof file.content}" | Buffer.isBuffer = ${Buffer.isBuffer(file.content)} | length = ${typeof file.content === "string" ? file.content.length : (file.content as Buffer).length}`);
+        const sha256Buf = typeof file.content === "string"
+          ? (console.log(`[CHECKPOINT S1-010B] computeSha256: calling Buffer.from(content, "base64") — string length: ${(file.content as string).length}`), Buffer.from(file.content as string, "base64"))
+          : (console.log(`[CHECKPOINT S1-010B] computeSha256: content is already a Buffer — byteLength: ${(file.content as Buffer).byteLength}`), file.content as Buffer);
+        console.log(`[CHECKPOINT S1-010C] computeSha256: Buffer.from/passthrough complete — sha256Buf.length: ${sha256Buf.length}`);
+        const sha256Hash = crypto.createHash("sha256");
+        console.log(`[CHECKPOINT S1-010D] computeSha256: crypto.createHash("sha256") created`);
+        sha256Hash.update(sha256Buf);
+        console.log(`[CHECKPOINT S1-010E] computeSha256: hash.update(buffer) complete`);
+        fileHash = sha256Hash.digest("hex");
+        console.log(`[CHECKPOINT S1-010F] computeSha256: hash.digest("hex") complete — hash prefix: ${fileHash.slice(0, 12)}`);
+      } catch (sha256Err: any) {
+        console.error(`[STAGE1 FAILURE] computeSha256 threw at '${file.name}':`, sha256Err?.message);
+        console.error(sha256Err?.stack);
+        throw sha256Err;
+      }
       console.log(`[CHECKPOINT S1-011] computeSha256 completed for '${file.name}' | SHA256: ${fileHash.slice(0, 12)}...`);
 
       console.log(`[CHECKPOINT S1-012] Entering validateFileSignature for '${file.name}'`);
