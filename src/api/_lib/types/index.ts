@@ -242,5 +242,6 @@ export interface UniversalCompilerOutput {
     packageId?: string;
     projectVersion: string;
     totalFilesProcessed: number;
+    debugAiContext?: any;
   };
 }

@@ -393,6 +393,106 @@ Return refined executive JSON matching the specified schema properties.
 }
 
 /**
+ * Formats full AI Context payload for debug inspection.
+ */
+export function formatDebugAiContext(graph: EvidenceGraph, conflicts: ConflictRecord[]) {
+  const excelAnalysis = graph.evidenceSources.filter(s => s.parser === "ExcelParser");
+  const sqlAnalysis = graph.evidenceSources.filter(s => s.parser === "SQLParser");
+  const powerbiAnalysis = graph.evidenceSources.filter(s => s.parser === "PowerBIParser");
+  const imageAnalysis = graph.evidenceSources.filter(s => s.parser === "ImageParser");
+  const readmeAnalysis = graph.evidenceSources.filter(s => s.parser === "MarkdownParser" || s.parser === "GitHubParser");
+  const pdfAnalysis = graph.evidenceSources.filter(s => s.parser === "PDFParser");
+  const wordAnalysis = graph.evidenceSources.filter(s => s.parser === "WordParser");
+
+  return {
+    timestamp: new Date().toISOString(),
+    evidenceGraphSummary: {
+      totalSourcesProcessed: graph.evidenceSources.length,
+      evidenceSources: graph.evidenceSources,
+      projectDomain: graph.projectDomain,
+      industry: graph.industry
+    },
+    parserAnalysisBreakdown: {
+      excelAnalysis: {
+        sources: excelAnalysis,
+        sheetCount: graph.dashboardInsights.filter(d => d.parser === "ExcelParser").length,
+        extractedMetrics: graph.metrics.filter(m => m.parser === "ExcelParser"),
+        extractedDimensions: graph.dimensions.filter(d => d.parser === "ExcelParser"),
+        formulas: graph.analyticalTechniques.filter(t => t.parser === "ExcelParser")
+      },
+      sqlAnalysis: {
+        sources: sqlAnalysis,
+        sqlQueriesExtracted: graph.sqlLogic,
+        calculatedMetrics: graph.metrics.filter(m => m.parser === "SQLParser"),
+        businessQuestions: graph.businessQuestions.filter(q => q.parser === "SQLParser")
+      },
+      powerbiAnalysis: {
+        sources: powerbiAnalysis,
+        visuals: graph.charts.filter(c => c.parser === "PowerBIParser"),
+        daxMeasures: graph.metrics.filter(m => m.parser === "PowerBIParser"),
+        kpis: graph.kpis.filter(k => k.parser === "PowerBIParser")
+      },
+      imageAnalysis: {
+        sources: imageAnalysis,
+        screenshotsDetected: graph.screenshots,
+        visualCards: graph.charts.filter(c => c.parser === "ImageParser"),
+        kpisDetected: graph.kpis.filter(k => k.parser === "ImageParser")
+      },
+      readmeAnalysis: {
+        sources: readmeAnalysis,
+        documentationNodes: graph.documentation,
+        methodology: graph.methodology,
+        recommendations: graph.recommendations
+      },
+      pdfAnalysis: {
+        sources: pdfAnalysis,
+        sections: graph.documentation.filter(d => d.parser === "PDFParser"),
+        extractedTerms: graph.businessTerms.filter(t => t.parser === "PDFParser")
+      },
+      wordAnalysis: {
+        sources: wordAnalysis,
+        sections: graph.documentation.filter(d => d.parser === "WordParser"),
+        extractedTerms: graph.businessTerms.filter(t => t.parser === "WordParser")
+      }
+    },
+    detectedSemanticEvidence: {
+      detectedKPIs: [
+        ...graph.detectedKPIs.map(k => ({ name: k.value.name, target: k.value.target, actual: k.value.actual, source: k.sourceFile })),
+        ...graph.kpis.map(k => ({ name: k.value.name, target: k.value.target, actual: k.value.value, source: k.sourceFile }))
+      ],
+      detectedBusinessTerms: [
+        ...graph.businessTerms.map(t => ({ term: t.value, source: t.sourceFile })),
+        ...graph.businessEntities.map(e => ({ entity: e.value, source: e.sourceFile }))
+      ],
+      detectedCharts: [
+        ...graph.charts.map(c => ({ title: c.value.title, type: c.value.type, source: c.sourceFile })),
+        ...graph.visualNarratives.map(v => ({ narrative: v.value, source: v.sourceFile }))
+      ],
+      detectedDimensions: [
+        ...graph.detectedDimensions.map(d => ({ dimension: d.value, source: d.sourceFile })),
+        ...graph.dimensions.map(d => ({ dimension: d.value, source: d.sourceFile })),
+        ...graph.timeDimensions.map(t => ({ timeDimension: t.value, source: t.sourceFile }))
+      ],
+      detectedMeasures: [
+        ...graph.detectedMeasures.map(m => ({ measure: m.value, source: m.sourceFile })),
+        ...graph.metrics.map(m => ({ label: m.value.label, value: m.value.value, source: m.sourceFile }))
+      ],
+      detectedDashboardTitles: [
+        ...graph.dashboards.map(d => ({ name: d.value.name, pages: d.value.pages, source: d.sourceFile })),
+        ...graph.dashboardInsights.map(i => ({ insight: i.value, source: i.sourceFile }))
+      ],
+      detectedMethodology: [
+        ...graph.methodology.map(m => ({ methodology: m.value, source: m.sourceFile })),
+        ...graph.analyticalTechniques.map(a => ({ technique: a.value, source: a.sourceFile }))
+      ],
+      detectedParserEvidence: graph.evidenceSources
+    },
+    fullCanonicalEvidenceGraph: graph,
+    identifiedConflicts: conflicts
+  };
+}
+
+/**
  * AI Portfolio Compiler Service (Gemini Reasoning Engine)
  * Synthesizes EvidenceGraph into a recruiter-ready StructuredPortfolioProject.
  * Operates ONLY on EvidenceGraph nodes and parser summaries—NEVER raw binary files.
@@ -402,6 +502,13 @@ export async function compilePortfolioWithGemini(
   conflicts: ConflictRecord[],
   rawBaseProject: ExtractedProject
 ): Promise<{ structured: StructuredPortfolioProject; raw: ExtractedProject }> {
+  const debugAiContext = formatDebugAiContext(graph, conflicts);
+  console.log("\n==========================================================");
+  console.log("             [DEBUG MODE: AI CONTEXT INSPECTOR]           ");
+  console.log("==========================================================");
+  console.log(JSON.stringify(debugAiContext, null, 2));
+  console.log("==========================================================\n");
+
   const ai = getAiClient();
   if (!ai) {
     console.warn("[portfolioCompiler] Gemini client unconfigured. Returning evidence-graph fallback.");

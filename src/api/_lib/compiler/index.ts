@@ -12,7 +12,7 @@ import {
 } from "../types/index";
 import { validateFileSignature, computeSha256, executeWithTimeout } from "../utils/security";
 import { mergeToEvidenceGraph, detectEvidenceConflicts } from "../evidence/graph";
-import { compilePortfolioWithGemini } from "../ai/portfolioCompiler";
+import { compilePortfolioWithGemini, formatDebugAiContext } from "../ai/portfolioCompiler";
 import crypto from "crypto";
 
 // Helper to normalize strings for metric matching
@@ -328,7 +328,8 @@ export async function compileProjectPackage(
       parserVersions: "Portfolio OS AI Compiler Engine v3.0 (Evidence Graph + Gemini)",
       evidenceHash: packageEvidenceHash,
       projectVersion: "v3",
-      totalFilesProcessed: allFiles.length
+      totalFilesProcessed: allFiles.length,
+      debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     }
   };
 }
