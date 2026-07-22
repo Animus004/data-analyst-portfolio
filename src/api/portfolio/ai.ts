@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!enforceOwnerPermission(req, res)) return;
 
   const logger = createStepLogger("API Endpoint /ai-package-parse");
-  const handlerStep = logger.start("Full Request Handler Execution");
+  const handlerStep = logger.start("HTTP Handler /api/portfolio/ai");
 
   const startTime = Date.now();
   const rawUrl = req.url || "";
@@ -36,10 +36,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Action: AI Package Parse (PBIT, ZIP, DAX, etc.)
   if (pathname.includes("/ai-package-parse")) {
+    const profiler = new PipelineProfiler();
     try {
+      // Stage 1: Receive request
+      const st1 = profiler.profileStageStart(1, "Receive request", `${JSON.stringify(req.body || {}).length} bytes`);
+
       const prepStep = logger.start("Stage 0: Payload Parsing & Storage Resolution");
       const body = req.body || {};
       const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
+
+      profiler.profileStageEnd(st1, `${Array.isArray(files) ? files.length : 0} file(s)`);
+
+      // Stage 2: Validate descriptors
+      const st2 = profiler.profileStageStart(2, "Validate descriptors", `${Array.isArray(files) ? files.length : 0} descriptor(s)`);
 
       // SERVER AUDIT 1: Raw req.body.files[0] immediately after parsing
       console.log(`\n==========================================================`);
@@ -62,14 +71,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
 
-          // SERVER AUDIT 2: Descriptor immediately before attempting Supabase download
-          console.log(`\n----------------------------------------------------------`);
-          console.log(`[SERVER AUDIT 2: Descriptor BEFORE Supabase Download]`);
-          console.log(`File Name: "${name}"`);
-          console.log(`storagePath: "${fileMeta.storagePath || "NONE"}"`);
-          console.log(`fallbackContent present? ${Boolean(fileMeta.fallbackContent)}`);
-          console.log(`Complete Descriptor:\n${JSON.stringify(fileMeta, null, 2)}`);
-          console.log(`----------------------------------------------------------\n`);
+          profiler.profileStageEnd(st2, `Validated file '${name}'`);
+
+          // Stage 3: Download from Supabase
+          const st3 = profiler.profileStageStart(3, `Download from Supabase [${name}]`, fileMeta.storagePath || "No Path");
 
           let buffer: Buffer | null = null;
           let resolutionSource = "None";
@@ -93,43 +98,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   buffer = Buffer.from(arrayBuffer);
                   resolutionSource = "Supabase Storage Download";
                   dlStep.end(buffer.length);
+                  profiler.recordAllocation(`Supabase Storage Buffer [${name}]`, buffer.length);
+                  profiler.profileStageEnd(st3, `${buffer.length} bytes`);
                 } else if (downloadRes.error) {
                   dlStep.end("Failed");
                   const { category, message } = categorizeStorageError(downloadRes.error);
                   storageDownloadErrorMsg = `Category ${category}: ${message}`;
                   console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
+                  profiler.profileStageEnd(st3, "0 bytes", "FAILED", storageDownloadErrorMsg);
                 }
               } catch (downloadErr: any) {
                 dlStep.end("Timeout/Error");
                 storageDownloadErrorMsg = downloadErr.message || "Timeout downloading from Supabase Storage";
                 console.warn(`[ai-package-parse] Exception or timeout downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                profiler.profileStageEnd(st3, "0 bytes", "TIMED OUT", storageDownloadErrorMsg);
               }
             } else {
               storageDownloadErrorMsg = "Supabase client unconfigured on server environment.";
+              profiler.profileStageEnd(st3, "0 bytes", "FAILED", storageDownloadErrorMsg);
             }
+          } else {
+            profiler.profileStageEnd(st3, "No Storage Path", "END");
           }
+
+          // Stage 4: Resolve buffers
+          const st4 = profiler.profileStageStart(4, `Resolve buffers [${name}]`, `Storage Buffer: ${buffer ? buffer.length : 0} bytes`);
 
           // 2. Fall back seamlessly to fallbackContent if storage download is unavailable
           if (!buffer && fileMeta.fallbackContent) {
             try {
               buffer = Buffer.from(fileMeta.fallbackContent, "base64");
               resolutionSource = "In-Memory Browser Fallback (Base64)";
+              profiler.recordAllocation(`Fallback Base64 Buffer [${name}]`, buffer.length);
             } catch (fallbackErr: any) {
               console.warn(`Error decoding fallbackContent for '${name}':`, fallbackErr.message);
             }
           }
 
-          // SERVER AUDIT 3: Descriptor immediately after download/fallback resolution
-          console.log(`\n----------------------------------------------------------`);
-          console.log(`[SERVER AUDIT 3: Descriptor AFTER Download/Fallback Resolution]`);
-          console.log(`File Name: "${name}"`);
-          console.log(`Resolution Source: ${resolutionSource}`);
-          console.log(`Resolved Buffer Size: ${buffer ? buffer.length : 0} bytes`);
-          console.log(`Complete Descriptor:\n${JSON.stringify(fileMeta, null, 2)}`);
-          console.log(`----------------------------------------------------------\n`);
-
           // 3. Return HTTP 400 only when both storagePath download and fallbackContent fail to yield content
           if (!buffer) {
+            profiler.profileStageEnd(st4, "0 bytes", "FAILED", storageDownloadErrorMsg);
             const hasPath = Boolean(fileMeta.storagePath);
             const hasFallback = Boolean(fileMeta.fallbackContent);
             if (!hasPath && !hasFallback) {
@@ -141,8 +149,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const validation = validateFileBuffer(buffer, name);
           if (!validation.isValid) {
+            profiler.profileStageEnd(st4, "0 bytes", "FAILED", validation.error);
             return sendError(res, 400, validation.error || `Corrupted file buffer for '${name}'.`);
           }
+
+          profiler.profileStageEnd(st4, `Resolved Buffer: ${buffer.length} bytes`);
 
           rawFilesToCompile.push({
             name,
@@ -179,24 +190,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       prepStep.end(`${rawFilesToCompile.length} file(s) resolved`);
 
-      // SERVER AUDIT 4: Descriptor immediately before compileProjectPackage() is called
-      console.log(`\n==========================================================`);
-      console.log(`[SERVER AUDIT 4: Descriptors BEFORE compileProjectPackage()]`);
-      console.log(`Total rawFilesToCompile: ${rawFilesToCompile.length}`);
-      rawFilesToCompile.forEach((rf, idx) => {
-        console.log(`File [${idx}]: name="${rf.name}" | size=${rf.size} | type="${rf.type}" | storagePath="${rf.storagePath || "NONE"}" | contentLen=${rf.content ? rf.content.length : 0}`);
-      });
-      console.log(`First Compiled File Descriptor:\n${JSON.stringify(rawFilesToCompile[0] ? { name: rawFilesToCompile[0].name, size: rawFilesToCompile[0].size, type: rawFilesToCompile[0].type, storagePath: rawFilesToCompile[0].storagePath, contentLength: rawFilesToCompile[0].content ? rawFilesToCompile[0].content.length : 0 } : null, null, 2)}`);
-      console.log(`==========================================================\n`);
-
       // Execute package compiler with a strict 25-second hard deadline
       const compileStep = logger.start("Package Compiler Pipeline Execution");
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
-        () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding),
+        () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
         25000
       );
       compileStep.end(JSON.stringify(output).length);
+
+      // Stage 15: Final JSON serialization
+      const st15 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
+      const jsonOutputString = JSON.stringify(output);
+      profiler.recordAllocation("Final Output JSON String", jsonOutputString.length);
+      profiler.profileStageEnd(st15, `${jsonOutputString.length} bytes`);
+
+      // Stage 16: HTTP Response
+      const st16 = profiler.profileStageStart(16, "HTTP Response", `${jsonOutputString.length} bytes`);
 
       logExecution({
         endpoint: pathname,
@@ -204,8 +214,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       handlerStep.end("200 OK Response Sent");
+      profiler.profileStageEnd(st16, "HTTP 200 OK Sent");
+
+      profiler.printFinalReport();
       return sendSuccess(res, output);
     } catch (err: any) {
+      profiler.printFinalReport();
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const timestamp = new Date().toISOString();
       const stage: PipelineStage = err.stage || "File Upload";

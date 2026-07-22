@@ -24,6 +24,7 @@ import {
 import { getCachedOrSynthesizeUnderstanding } from "../ai/projectUnderstandingEngine";
 import { ProjectUnderstanding } from "../types/index";
 import crypto from "crypto";
+import { PipelineProfiler } from "../utils/pipelineProfiler";
 
 // Helper to normalize strings for metric matching
 function normalizeLabel(label: string): string {
@@ -154,7 +155,8 @@ export async function compileProjectPackage(
   rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>,
   userAnswers?: Record<string, string>,
   forceCompile?: boolean,
-  existingUnderstanding?: ProjectUnderstanding
+  existingUnderstanding?: ProjectUnderstanding,
+  profiler?: PipelineProfiler
 ): Promise<UniversalCompilerOutput> {
   const logger = createStepLogger("Compiler Pipeline");
   const pipelineStep = logger.start("Full compileProjectPackage Execution");
@@ -250,6 +252,17 @@ export async function compileProjectPackage(
     const parser = PARSER_REGISTRY[ext];
 
     if (parser) {
+      let stageNum = 5;
+      let stageName = `Excel parser [${file.name}]`;
+      if (ext === "pdf") {
+        stageNum = 6;
+        stageName = `PDF parser [${file.name}]`;
+      } else if (["png", "jpg", "jpeg"].includes(ext)) {
+        stageNum = 7;
+        stageName = `Image parser [${file.name}]`;
+      }
+
+      const st = profiler ? profiler.profileStageStart(stageNum, stageName, `${file.size} bytes`) : null;
       try {
         const pStart = Date.now();
         const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
@@ -263,6 +276,11 @@ export async function compileProjectPackage(
         evidenceNodes.push(result.evidenceNode);
         parserFileStep.end(JSON.stringify(result.evidenceNode).length);
 
+        if (profiler) {
+          profiler.recordAllocation(`EvidenceNode [${file.name}]`, JSON.stringify(result.evidenceNode).length);
+          profiler.profileStageEnd(st!, `${JSON.stringify(result.evidenceNode).length} bytes`);
+        }
+
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
@@ -272,6 +290,7 @@ export async function compileProjectPackage(
         });
       } catch (err: any) {
         console.error(`Sandboxed parser failure for '${file.name}':`, err.message);
+        if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
         fileCoverage.push({
           fileName: file.name,
           status: "Failed",
@@ -304,6 +323,7 @@ export async function compileProjectPackage(
   }
 
   // Stage 3: Build Canonical Evidence Graph
+  const st8 = profiler ? profiler.profileStageStart(8, "Evidence Graph generation", `${evidenceNodes.length} nodes`) : null;
   const s3 = logger.start("Stage 3: Building Canonical Evidence Graph");
   console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
   const stage3Start = Date.now();
@@ -312,13 +332,19 @@ export async function compileProjectPackage(
     evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
     evidenceGraph.projectDomain = projectType;
   } catch (err: any) {
+    if (profiler && st8) profiler.profileStageEnd(st8, "0 bytes", "FAILED", err.message);
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
   const stage3Duration = Date.now() - stage3Start;
   s3.end(JSON.stringify(evidenceGraph).length);
+  if (profiler && st8) {
+    profiler.recordAllocation("Evidence Graph Object", JSON.stringify(evidenceGraph).length);
+    profiler.profileStageEnd(st8, `${JSON.stringify(evidenceGraph).length} bytes`);
+  }
   console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
 
   // Stage 4: Project Understanding Engine
+  const st9 = profiler ? profiler.profileStageStart(9, "Project Understanding Engine", "Evidence Graph") : null;
   const s4 = logger.start("Stage 4: Project Understanding Engine (PUE)");
   console.log("[Pipeline] Stage 4 Start: Project Understanding Engine (PUE)");
   const stage4Start = Date.now();
@@ -326,24 +352,35 @@ export async function compileProjectPackage(
     .update(allFiles.map(f => f.sha256).sort().join(":"))
     .digest("hex");
 
-  const projectUnderstanding = await getCachedOrSynthesizeUnderstanding(
-    evidenceGraph,
-    packageEvidenceHash,
-    existingUnderstanding
+  const projectUnderstanding = await executeWithTimeout(
+    "Project Understanding Engine (PUE)",
+    () => getCachedOrSynthesizeUnderstanding(evidenceGraph, packageEvidenceHash, existingUnderstanding),
+    15000
   );
   const stage4Duration = Date.now() - stage4Start;
   s4.end(JSON.stringify(projectUnderstanding).length);
+  if (profiler && st9) {
+    profiler.recordAllocation("Project Understanding Object", JSON.stringify(projectUnderstanding).length);
+    profiler.profileStageEnd(st9, `${JSON.stringify(projectUnderstanding).length} bytes`);
+  }
   console.log(`[Pipeline] Stage 4 Complete (${stage4Duration}ms)`);
 
+  // Stage 10: Evidence Intelligence
+  const st10 = profiler ? profiler.profileStageStart(10, "Evidence Intelligence", "PUE Object") : null;
   const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
+  if (profiler && st10) profiler.profileStageEnd(st10, `Archetype: ${projectArchetype}`);
 
-  // Stage 5: Evidence Completeness Evaluator & Conflicts
+  // Stage 11: Completeness Engine
+  const st11 = profiler ? profiler.profileStageStart(11, "Completeness Engine", "Evidence Graph & PUE") : null;
   const s5 = logger.start("Stage 5: Completeness Evaluator & Conflict Detection");
   console.log("[Pipeline] Stage 5 Start: Completeness Evaluator & Conflict Detection");
   const stage5Start = Date.now();
   const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
   const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
+  if (profiler && st11) profiler.profileStageEnd(st11, "Coverage Evaluated");
 
+  // Stage 12: Conflict Resolution
+  const st12 = profiler ? profiler.profileStageStart(12, "Conflict Resolution", "Extracted Projects") : null;
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
     ...detectEvidenceConflicts(evidenceGraph),
@@ -351,6 +388,7 @@ export async function compileProjectPackage(
   ];
   const stage5Duration = Date.now() - stage5Start;
   s5.end(`${conflicts.length} conflict(s) detected`);
+  if (profiler && st12) profiler.profileStageEnd(st12, `${conflicts.length} conflicts resolved/detected`);
   console.log(`[Pipeline] Stage 5 Complete (${stage5Duration}ms)`);
 
   // Stage 6: Decision Logic: Evaluate Completeness Thresholds
@@ -407,7 +445,8 @@ export async function compileProjectPackage(
     }
   }
 
-  // Stage 7: Baseline Merged Raw Project Assembly
+  // Stage 13: Portfolio Compiler (Gemini)
+  const st13 = profiler ? profiler.profileStageStart(13, "Portfolio Compiler (Gemini)", "Evidence Graph & Merged Context") : null;
   const s7 = logger.start("Stage 7: Baseline Merged Raw Project Assembly");
   console.log("[Pipeline] Stage 7 Start: Baseline Merged Raw Project Assembly");
   const stage7Start = Date.now();
@@ -421,24 +460,34 @@ export async function compileProjectPackage(
   const s8 = logger.start("Stage 8: AI Portfolio Compiler Synthesis");
   console.log("[Pipeline] Stage 8 Start: AI Portfolio Compiler Synthesis");
   const stage8Start = Date.now();
-  const synthesized = await compilePortfolioWithGemini(
-    evidenceGraph,
-    conflicts,
-    rawProject,
-    mergedAnswersContext,
-    projectArchetype,
-    projectUnderstanding
+  const synthesized = await executeWithTimeout(
+    "Portfolio Compiler (Gemini)",
+    () => compilePortfolioWithGemini(
+      evidenceGraph,
+      conflicts,
+      rawProject,
+      mergedAnswersContext,
+      projectArchetype,
+      projectUnderstanding
+    ),
+    15000
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);
+  if (profiler && st13) {
+    profiler.recordAllocation("Gemini Portfolio Output", JSON.stringify(synthesized.structured).length);
+    profiler.profileStageEnd(st13, `${JSON.stringify(synthesized.structured).length} bytes`);
+  }
   console.log(`[Pipeline] Stage 8 Complete (${stage8Duration}ms)`);
   stageTimings.push({ stage: "Stage 8 (Gemini Synthesis)", durationMs: stage8Duration, status: "Completed" as const });
 
-  // Stage 9: Recruiter Audit Engine Evaluation
+  // Stage 14: Recruiter Audit
+  const st14 = profiler ? profiler.profileStageStart(14, "Recruiter Audit", "Synthesized Project") : null;
   console.log("[Pipeline] Stage 9 Start: Recruiter Audit Engine Evaluation");
   const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
   const stage9Duration = Date.now() - stage9Start;
+  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallScore}`);
   console.log(`[Pipeline] Stage 9 Complete (${stage9Duration}ms)`);
   stageTimings.push({ stage: "Stage 9 (Recruiter Audit Engine)", durationMs: stage9Duration, status: "Completed" as const });
 

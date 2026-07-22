@@ -139,10 +139,16 @@ export async function executeWithTimeout<T>(
   fn: () => Promise<T>,
   timeoutMs: number = 15000
 ): Promise<T> {
+  const startTime = Date.now();
   let timeoutHandle: NodeJS.Timeout;
+  let isTimedOut = false;
+
+  console.log(`[ASYNC EXECUTION] BEGIN task '${taskName}' (Timeout limit: ${timeoutMs}ms)`);
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
+      isTimedOut = true;
+      console.warn(`[ASYNC EXECUTION] TIMED OUT task '${taskName}' after ${Date.now() - startTime}ms (exceeded ${timeoutMs}ms limit)`);
       reject(new Error(`Execution threshold exceeded (${timeoutMs}ms) for '${taskName}'. Terminated for safety.`));
     }, timeoutMs);
   });
@@ -150,9 +156,13 @@ export async function executeWithTimeout<T>(
   try {
     const result = await Promise.race([fn(), timeoutPromise]);
     clearTimeout(timeoutHandle!);
+    console.log(`[ASYNC EXECUTION] END task '${taskName}' (Duration: ${Date.now() - startTime}ms)`);
     return result;
-  } catch (err) {
+  } catch (err: any) {
     clearTimeout(timeoutHandle!);
+    if (!isTimedOut) {
+      console.error(`[ASYNC EXECUTION] FAILED task '${taskName}' after ${Date.now() - startTime}ms:`, err?.message || err);
+    }
     throw err;
   }
 }
