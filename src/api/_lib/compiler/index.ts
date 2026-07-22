@@ -11,7 +11,7 @@ import {
   ParserEvidenceNode,
   PipelineError
 } from "../types/index";
-import { validateFileSignature, computeSha256, executeWithTimeout, createStepLogger } from "../utils/security";
+import { validateFileSignature, computeSha256, executeWithTimeout, getAdaptiveParserTimeout, createStepLogger } from "../utils/security";
 import { mergeToEvidenceGraph, detectEvidenceConflicts } from "../evidence/graph";
 import { compilePortfolioWithGemini, formatDebugAiContext } from "../ai/portfolioCompiler";
 import {
@@ -266,11 +266,17 @@ export async function compileProjectPackage(
       try {
         const pStart = Date.now();
         const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
-        // Sandboxed execution with 4 second timeout per file
+        const adaptiveTimeoutMs = getAdaptiveParserTimeout({
+          fileName: file.name,
+          fileSize: file.size,
+          parserName: parser.name
+        });
+
+        // Sandboxed execution with production-grade adaptive timeout
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
-          4000
+          adaptiveTimeoutMs
         );
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);

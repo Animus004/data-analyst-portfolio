@@ -926,6 +926,58 @@ function createStepLogger(scope) {
     }
   };
 }
+function getAdaptiveParserTimeout(options) {
+  const { fileName, fileSize, parserName, remainingRequestBudgetMs } = options;
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const sizeMb = fileSize / (1024 * 1024);
+  let baseTimeoutMs = 3e3;
+  let reason = "";
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext) || parserName === "ImageParser") {
+    baseTimeoutMs = 2e3;
+    reason = "Image asset parsing (small static buffer)";
+  } else if (["md", "txt", "csv", "json", "sql", "py", "dax"].includes(ext) || parserName === "MarkdownParser") {
+    baseTimeoutMs = 3e3;
+    reason = "Text/Script source parsing (lightweight string scan)";
+  } else if (["pdf", "docx"].includes(ext) || parserName === "PDFParser" || parserName === "WordParser") {
+    if (sizeMb > 10) {
+      baseTimeoutMs = 12e3;
+      reason = `Large document extraction (${sizeMb.toFixed(2)} MB > 10 MB)`;
+    } else if (sizeMb > 2) {
+      baseTimeoutMs = 8e3;
+      reason = `Medium document extraction (${sizeMb.toFixed(2)} MB > 2 MB)`;
+    } else {
+      baseTimeoutMs = 5e3;
+      reason = "Standard document extraction (<= 2 MB)";
+    }
+  } else if (["xlsx", "xls", "pbix"].includes(ext) || parserName === "ExcelParser" || parserName === "StreamExcelParser") {
+    if (sizeMb > 50) {
+      baseTimeoutMs = 25e3;
+      reason = `Very large spreadsheet streaming (${sizeMb.toFixed(2)} MB > 50 MB)`;
+    } else if (sizeMb > 20) {
+      baseTimeoutMs = 18e3;
+      reason = `Large spreadsheet streaming (${sizeMb.toFixed(2)} MB > 20 MB)`;
+    } else if (sizeMb > 5) {
+      baseTimeoutMs = 12e3;
+      reason = `Medium spreadsheet streaming (${sizeMb.toFixed(2)} MB > 5 MB)`;
+    } else {
+      baseTimeoutMs = 5e3;
+      reason = "Small spreadsheet parsing (<= 5 MB)";
+    }
+  } else {
+    reason = "Default fallback parser timeout";
+  }
+  let selectedTimeoutMs = baseTimeoutMs;
+  let budgetCapReason = "";
+  if (remainingRequestBudgetMs !== void 0 && remainingRequestBudgetMs > 0) {
+    const safeBudgetMs = Math.max(2e3, remainingRequestBudgetMs - 3e3);
+    if (selectedTimeoutMs > safeBudgetMs) {
+      selectedTimeoutMs = safeBudgetMs;
+      budgetCapReason = ` (Capped by remaining request budget of ${remainingRequestBudgetMs}ms)`;
+    }
+  }
+  console.log(`[ADAPTIVE TIMEOUT] Selected timeout: ${selectedTimeoutMs}ms | Reason: ${reason}${budgetCapReason} | File size: ${fileSize} bytes | Parser: ${parserName}`);
+  return selectedTimeoutMs;
+}
 async function executeWithTimeout(taskName, fn, timeoutMs = 15e3) {
   const startTime = Date.now();
   let timeoutHandle;
@@ -3257,10 +3309,15 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
       try {
         const pStart = Date.now();
         const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
+        const adaptiveTimeoutMs = getAdaptiveParserTimeout({
+          fileName: file.name,
+          fileSize: file.size,
+          parserName: parser.name
+        });
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
-          4e3
+          adaptiveTimeoutMs
         );
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);
@@ -3943,7 +4000,6 @@ async function handler(req, res) {
           if (!isAllowedFileType(name)) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
-          profiler.profileStageEnd(st2, `Validated file '${name}'`);
           const st3 = profiler.profileStageStart(3, `Download from Supabase [${name}]`, fileMeta.storagePath || "No Path");
           let buffer = null;
           let resolutionSource = "None";
@@ -4020,6 +4076,7 @@ async function handler(req, res) {
             storagePath: fileMeta.storagePath
           });
         }
+        profiler.profileStageEnd(st2, `${rawFilesToCompile.length} file descriptor(s) validated`);
       } else if (fileName && fileDataBase64) {
         if (!isAllowedFileType(fileName)) {
           return sendError(res, 400, "Unsupported file format uploaded.");

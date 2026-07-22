@@ -72,8 +72,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
 
-          profiler.profileStageEnd(st2, `Validated file '${name}'`);
-
           // Stage 3: Download from Supabase
           const st3 = profiler.profileStageStart(3, `Download from Supabase [${name}]`, fileMeta.storagePath || "No Path");
 
@@ -164,6 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             storagePath: fileMeta.storagePath
           });
         }
+        profiler.profileStageEnd(st2, `${rawFilesToCompile.length} file descriptor(s) validated`);
       } else if (fileName && fileDataBase64) {
         // Legacy Payload Format ({ fileName, fileDataBase64 })
         if (!isAllowedFileType(fileName)) {

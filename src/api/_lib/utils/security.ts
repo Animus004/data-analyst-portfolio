@@ -131,6 +131,74 @@ export function createStepLogger(scope: string) {
   };
 }
 
+export interface AdaptiveTimeoutOptions {
+  fileName: string;
+  fileSize: number;
+  parserName: string;
+  remainingRequestBudgetMs?: number;
+}
+
+/**
+ * Production-grade adaptive timeout policy based on file size, file extension, parser type, and request budget.
+ */
+export function getAdaptiveParserTimeout(options: AdaptiveTimeoutOptions): number {
+  const { fileName, fileSize, parserName, remainingRequestBudgetMs } = options;
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const sizeMb = fileSize / (1024 * 1024);
+
+  let baseTimeoutMs = 3000;
+  let reason = "";
+
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext) || parserName === "ImageParser") {
+    baseTimeoutMs = 2000;
+    reason = "Image asset parsing (small static buffer)";
+  } else if (["md", "txt", "csv", "json", "sql", "py", "dax"].includes(ext) || parserName === "MarkdownParser") {
+    baseTimeoutMs = 3000;
+    reason = "Text/Script source parsing (lightweight string scan)";
+  } else if (["pdf", "docx"].includes(ext) || parserName === "PDFParser" || parserName === "WordParser") {
+    if (sizeMb > 10) {
+      baseTimeoutMs = 12000;
+      reason = `Large document extraction (${sizeMb.toFixed(2)} MB > 10 MB)`;
+    } else if (sizeMb > 2) {
+      baseTimeoutMs = 8000;
+      reason = `Medium document extraction (${sizeMb.toFixed(2)} MB > 2 MB)`;
+    } else {
+      baseTimeoutMs = 5000;
+      reason = "Standard document extraction (<= 2 MB)";
+    }
+  } else if (["xlsx", "xls", "pbix"].includes(ext) || parserName === "ExcelParser" || parserName === "StreamExcelParser") {
+    if (sizeMb > 50) {
+      baseTimeoutMs = 25000;
+      reason = `Very large spreadsheet streaming (${sizeMb.toFixed(2)} MB > 50 MB)`;
+    } else if (sizeMb > 20) {
+      baseTimeoutMs = 18000;
+      reason = `Large spreadsheet streaming (${sizeMb.toFixed(2)} MB > 20 MB)`;
+    } else if (sizeMb > 5) {
+      baseTimeoutMs = 12000;
+      reason = `Medium spreadsheet streaming (${sizeMb.toFixed(2)} MB > 5 MB)`;
+    } else {
+      baseTimeoutMs = 5000;
+      reason = "Small spreadsheet parsing (<= 5 MB)";
+    }
+  } else {
+    reason = "Default fallback parser timeout";
+  }
+
+  let selectedTimeoutMs = baseTimeoutMs;
+  let budgetCapReason = "";
+  if (remainingRequestBudgetMs !== undefined && remainingRequestBudgetMs > 0) {
+    const safeBudgetMs = Math.max(2000, remainingRequestBudgetMs - 3000);
+    if (selectedTimeoutMs > safeBudgetMs) {
+      selectedTimeoutMs = safeBudgetMs;
+      budgetCapReason = ` (Capped by remaining request budget of ${remainingRequestBudgetMs}ms)`;
+    }
+  }
+
+  console.log(`[ADAPTIVE TIMEOUT] Selected timeout: ${selectedTimeoutMs}ms | Reason: ${reason}${budgetCapReason} | File size: ${fileSize} bytes | Parser: ${parserName}`);
+
+  return selectedTimeoutMs;
+}
+
 /**
  * Sandboxed parser execution wrapper with configurable timeout threshold.
  */
