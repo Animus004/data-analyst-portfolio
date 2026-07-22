@@ -21,6 +21,7 @@ import {
 } from "../../services/exportService";
 import { storageService } from "../../services/storageService";
 import { uploadProjectPackage } from "../../services/packageUploadService";
+import { authenticatedFetch, getOwnerKey, setOwnerKey } from "../../services/apiClient";
 import { 
   Plus, 
   Edit, 
@@ -643,6 +644,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   const [activeDiffField, setActiveDiffField] = useState<string | null>(null);
   const [reviewTab, setReviewTab] = useState<"overview" | "fields" | "traceability" | "history">("overview");
   const [expandedSection, setExpandedSection] = useState<"portfolio" | "ai" | "data" | "system" | null>(null);
+  const [ownerKeyInput, setOwnerKeyInput] = useState<string>(getOwnerKey());
+  const [showOwnerKeyModal, setShowOwnerKeyModal] = useState<boolean>(false);
 
   // Helper to detect file types automatically
   const detectFileType = (fileName: string, mimeType: string) => {
@@ -758,7 +761,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       setUploadProgressText("Analyzing and synthesizing package with Gemini...");
 
       // 2. Send lightweight metadata payload to serverless endpoint (< 5 KB JSON)
-      const res = await fetch("/api/portfolio/ai-package-parse", {
+      const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -814,7 +817,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setAiParseError(null);
     try {
       const packageId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `pkg-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
-      const res = await fetch("/api/portfolio/ai-package-parse", {
+      const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1064,7 +1067,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       // Perform direct Supabase cloud save from client
       const supaResult = await storageService.saveToServer(profile, projects);
 
-      const res = await fetch("/api/portfolio/publish", { method: "POST" });
+      const res = await authenticatedFetch("/api/portfolio/publish", { method: "POST" });
       const responseData = await res.json();
 
       setTimeout(() => {
@@ -1507,9 +1510,14 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                 Primary Workflow: AI Project Intake & Portfolio Synthesizer
               </CardTitle>
             </div>
-            <span className="text-[10px] bg-emerald-950/60 border border-emerald-900 text-emerald-400 font-mono px-2 py-0.5 rounded font-bold">
-              Owner Mode Active
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowOwnerKeyModal(true)}
+              className="text-[10px] bg-emerald-950/60 border border-emerald-900 text-emerald-400 hover:border-emerald-500 font-mono px-2 py-0.5 rounded font-bold cursor-pointer transition-all flex items-center gap-1"
+              title="Click to manage Owner Access Key"
+            >
+              <Lock className="w-3 h-3" /> Owner Mode Active
+            </button>
           </div>
           <CardDescription className="text-slate-400 text-xs">
             Upload your raw project folder or files. Portfolio OS automatically detects business context, extracts metrics, generates recruiter-ready case studies, and provides 1-click publishing.
@@ -3371,6 +3379,61 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
           </Card>
         </div>
       </div>
+
+      {/* 🔐 OWNER ACCESS KEY MODAL */}
+      {showOwnerKeyModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-fade-in text-left">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Lock className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-sm font-bold font-mono text-white uppercase">Owner Access Secret Key</h3>
+              </div>
+              <button
+                onClick={() => setShowOwnerKeyModal(false)}
+                className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Portfolio OS uses a single-owner permission model. Enter your secret key below. This key is stored locally in your browser and automatically attached to all outgoing API write requests (<code className="text-indigo-400">Authorization: Bearer</code> / <code className="text-indigo-400">x-owner-access-key</code>).
+            </p>
+
+            <Input
+              label="Secret Owner Access Key"
+              type="password"
+              value={ownerKeyInput}
+              onChange={(e) => setOwnerKeyInput(e.target.value)}
+              placeholder="e.g. owner-authenticated-session or PORTFOLIO_OWNER_KEY"
+              className="bg-slate-950 border-slate-800 text-slate-100 font-mono text-xs"
+            />
+
+            <div className="pt-2 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowOwnerKeyModal(false)}
+                className="text-xs border-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setOwnerKey(ownerKeyInput);
+                  setShowOwnerKeyModal(false);
+                }}
+                className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+              >
+                Save Owner Secret Key
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
