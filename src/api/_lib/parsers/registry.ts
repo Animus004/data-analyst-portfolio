@@ -42,7 +42,7 @@ function createEmptyProject(fileName: string, parserName: string): ExtractedProj
     role: "",
     duration: "",
     date: new Date().toISOString().split("T")[0],
-    tags: [parserName.replace("Parser", "")],
+    tags: [],
     categories: [],
     objective: "",
     businessProblem: "",
@@ -67,7 +67,7 @@ export const ExcelParser: Parser = {
   extensions: ["xlsx", "xls"],
   async parse(fileName, content) {
     const proj = createEmptyProject(fileName, "ExcelParser");
-    proj.tags = ["Excel", "Spreadsheets"];
+    proj.tags = ["Excel", "Pivot Tables", "Business Analytics", "KPI Reporting"];
     proj.categories = ["Financial Modeling", "Business Analytics"];
 
     const excelEvidence: ExcelEvidence = {
@@ -312,7 +312,7 @@ export const SQLParser: Parser = {
   extensions: ["sql"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "SQLParser");
-    proj.tags = ["SQL", "Relational Database"];
+    proj.tags = ["SQL", "Relational Database Querying", "Data Aggregation", "Window Functions"];
     proj.categories = ["Data Engineering", "Database Querying"];
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
@@ -418,7 +418,7 @@ export const PythonParser: Parser = {
   extensions: ["py"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "PythonParser");
-    proj.tags = ["Python"];
+    proj.tags = ["Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis"];
     proj.categories = ["Data Science", "Data Engineering"];
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
@@ -428,7 +428,7 @@ export const PythonParser: Parser = {
       sourceFile: fileName,
       parser: "PythonParser",
       confidence: 90,
-      sections: [{ heading: "Python Source Code", content: text.slice(0, 3000) }],
+      sections: [{ heading: "Python Analytics Script", content: text.slice(0, 3000) }],
       extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
     };
 
@@ -478,7 +478,7 @@ export const NotebookParser: Parser = {
   extensions: ["ipynb"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "NotebookParser");
-    proj.tags = ["Python", "Jupyter Notebook"];
+    proj.tags = ["Python", "Exploratory Data Analysis", "Interactive Analytics", "Statistical Modeling"];
     proj.categories = ["Data Science", "Interactive Analytics"];
     proj.role = "Data Scientist";
 
@@ -552,7 +552,7 @@ export const PowerBIParser: Parser = {
   extensions: ["pbix", "dax"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "PowerBIParser");
-    proj.tags = ["Power BI", "DAX"];
+    proj.tags = ["Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
@@ -612,7 +612,7 @@ export const MarkdownParser: Parser = {
   extensions: ["md", "txt"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "MarkdownParser");
-    proj.tags = ["Markdown", "Documentation"];
+    proj.tags = ["Business Reporting", "Documentation", "Executive Communication"];
     proj.categories = ["Technical Writing", "Reporting"];
 
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
@@ -668,7 +668,7 @@ export const WordParser: Parser = {
   extensions: ["docx"],
   async parse(fileName, content) {
     const proj = createEmptyProject(fileName, "WordParser");
-    proj.tags = ["Word", "Technical Report"];
+    proj.tags = ["Business Analysis", "Executive Reporting", "Documentation"];
     proj.categories = ["Business Analysis", "Documentation"];
 
     const docEvidence: DocumentEvidence = {
@@ -713,7 +713,7 @@ export const CSVParser: Parser = {
   extensions: ["csv"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "CSVParser");
-    proj.tags = ["CSV", "Flat File"];
+    proj.tags = ["Data Cleaning", "Tabular Analysis", "Data Profiling"];
     proj.categories = ["Data Prep", "Tabular Analysis"];
 
     const excelEvidence: ExcelEvidence = {
@@ -770,7 +770,7 @@ export const PDFParser: Parser = {
   extensions: ["pdf"],
   async parse(fileName) {
     const proj = createEmptyProject(fileName, "PDFParser");
-    proj.tags = ["PDF", "Acrobat Document"];
+    proj.tags = ["Data Extraction", "Business Reporting", "Documentation"];
     proj.categories = ["Data Extract", "Reporting"];
 
     const docEvidence: DocumentEvidence = {
@@ -778,8 +778,8 @@ export const PDFParser: Parser = {
       parser: "PDFParser",
       confidence: 85,
       title: fileName,
-      sections: [{ heading: "PDF Grounded Extraction", content: `Evidence extracted from PDF file: ${fileName}` }],
-      extractedTerms: ["PDF Document"]
+      sections: [{ heading: "Document Analysis", content: "Extracted document section for business evaluation." }],
+      extractedTerms: ["Document"]
     };
 
     return {
@@ -797,9 +797,9 @@ export const ImageParser: Parser = {
   extensions: ["png", "jpg", "jpeg"],
   async parse(fileName) {
     const proj = createEmptyProject(fileName, "ImageParser");
-    proj.tags = ["Visual Assets", "Images"];
+    proj.tags = ["Dashboarding", "Data Visualization", "Telemetry Reporting"];
     proj.categories = ["Telemetry Visualization"];
-    proj.objective = `Visual asset evidence payload: ${fileName}`;
+    proj.objective = "";
 
     const imgEvidence: ImageEvidence = {
       sourceFile: fileName,
@@ -828,14 +828,14 @@ export const GitHubParser: Parser = {
   extensions: ["git"],
   async parse(fileName) {
     const proj = createEmptyProject(fileName, "GitHubParser");
-    proj.tags = ["GitHub", "Source Control"];
+    proj.tags = ["Version Control", "Analytics Engineering"];
     proj.categories = ["DevOps", "Data Engineering"];
 
     const docEvidence: DocumentEvidence = {
       sourceFile: fileName,
       parser: "GitHubParser",
       confidence: 90,
-      sections: [{ heading: "GitHub Repository Structure", content: `Repository files extracted from ${fileName}` }],
+      sections: [{ heading: "Repository Structure", content: "Repository code layout." }],
       extractedTerms: ["Git", "Repository"]
     };
 

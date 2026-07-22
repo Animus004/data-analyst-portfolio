@@ -84,6 +84,77 @@ function inferTitleFromEvidence(graph: EvidenceGraph): string {
   return `${domain} Performance & Optimization Project`;
 }
 
+const FORBIDDEN_FORMAT_TAG_PATTERNS = [
+  /^pdf$/i, /^acrobat/i, /^word$/i, /^docx$/i, /^document/i, /^flat file$/i,
+  /^csv$/i, /^text$/i, /^txt$/i, /^png$/i, /^jpg$/i, /^jpeg$/i, /^images?$/i,
+  /^visual assets$/i, /^markdown$/i, /^md$/i, /^zip$/i, /^archive$/i, /^file$/i,
+  /^parser$/i, /^ipynb$/i, /^pbix$/i, /^git$/i, /^github$/i
+];
+
+export function sanitizeRecruiterTags(
+  rawTags: string[],
+  techStack: string[] = [],
+  techniques: string[] = [],
+  projectType: string = ""
+): string[] {
+  const cleanTags: string[] = [];
+  const candidatePool: string[] = [...rawTags, ...techStack, ...techniques];
+
+  const typeLower = (projectType || "").toLowerCase();
+  if (typeLower.includes("excel") || typeLower.includes("spreadsheet")) {
+    candidatePool.push("Excel", "Pivot Tables", "Business Analytics", "KPI Reporting");
+  }
+  if (typeLower.includes("sql") || typeLower.includes("relational")) {
+    candidatePool.push("SQL", "Relational Database Querying", "Data Aggregation", "Window Functions");
+  }
+  if (typeLower.includes("power") || typeLower.includes("bi") || typeLower.includes("dax")) {
+    candidatePool.push("Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization");
+  }
+  if (typeLower.includes("python") || typeLower.includes("notebook")) {
+    candidatePool.push("Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis");
+  }
+
+  candidatePool.push("Business Intelligence", "Data Profiling", "Executive Reporting", "Business Analysis");
+
+  for (const tag of candidatePool) {
+    if (!tag || typeof tag !== "string") continue;
+    const trimmed = tag.trim();
+    if (!trimmed || trimmed.length < 2) continue;
+
+    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some(pat => pat.test(trimmed));
+    if (!isForbidden && !cleanTags.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
+      cleanTags.push(trimmed);
+    }
+  }
+
+  return cleanTags.slice(0, 8);
+}
+
+export function sanitizeBusinessObjective(
+  rawObjective: string,
+  domain: string = "Analytics",
+  industry: string = "Business Intelligence",
+  topKPI?: string
+): string {
+  if (rawObjective && typeof rawObjective === "string") {
+    const isJunk =
+      rawObjective.includes("payload") ||
+      rawObjective.includes("Extraction") ||
+      rawObjective.includes("Visual asset") ||
+      rawObjective.includes("PDF Grounded") ||
+      rawObjective.includes("file:") ||
+      /\.(png|jpg|jpeg|pdf|docx|xlsx|csv|sql|py|ipynb)\b/i.test(rawObjective) ||
+      rawObjective.length < 25;
+
+    if (!isJunk) {
+      return rawObjective.trim();
+    }
+  }
+
+  const kpiMention = topKPI ? ` tracking key performance indicators such as ${topKPI}` : "";
+  return `This project evaluates operational telemetry and performance trends within the ${domain} domain in ${industry}${kpiMention}. The primary objective is to analyze metric variances, isolate operational bottlenecks, and formulate strategic business recommendations for executive decision-makers.`;
+}
+
 /**
  * Builds a deterministic fallback StructuredPortfolioProject from EvidenceGraph
  * if Gemini API is unconfigured or synthesis fails.
@@ -105,7 +176,12 @@ export function buildFallbackStructuredProject(
   const synthesizedSummary = `This analysis evaluates transactional data structures and operational telemetry across parsed artifacts (${graph.evidenceSources.map(s => s.fileName).join(", ")}), delivering executive-level business intelligence and strategic growth recommendations.`;
   const synthesizedContext = `Operating within the ${graph.projectDomain || 'Analytics'} domain, key stakeholders require empirical visibility into performance metrics to drive resource allocation and operational optimization.`;
   const synthesizedProblem = `Strategic decision-makers lack consolidated visibility into underlying operational trends and KPI variances across source data files (${primarySource}).`;
-  const synthesizedObjective = `Synthesize multi-source analytical evidence to evaluate performance trends, isolate operational bottlenecks, and formulate strategic business recommendations.`;
+  const synthesizedObjective = sanitizeBusinessObjective(
+    rawBaseProject.objective,
+    graph.projectDomain || "Analytics & Business Intelligence",
+    "Business Analytics",
+    graph.metrics[0]?.value?.label
+  );
   const synthesizedImpact = `Enables executive stakeholders to streamline decision-making workflows, eliminate operational friction, and align tactical execution with high-level performance targets.`;
   const synthesizedMethodology = `1. Ingested raw analytical artifacts and normalized tabular schemas into a canonical evidence graph.\n2. Executed statistical queries, metric aggregations, and dimensional profiling.\n3. Verified data lineage and computed evidence confidence scores.`;
   const synthesizedFindings = graph.metrics.length > 0 
@@ -1094,7 +1170,12 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       evidence: defaultEvidence 
     },
     businessObjective: { 
-      value: parsed.businessObjective?.value || "Deliver evidence-grounded performance metrics and recommendations.", 
+      value: sanitizeBusinessObjective(
+        parsed.businessObjective?.value || rawBaseProject.objective,
+        graph.projectDomain || "Analytics & Business Intelligence",
+        parsed.industry?.value || "Business Analytics",
+        understanding?.trueKPIs[0]?.label || graph.metrics[0]?.value?.label
+      ), 
       confidence: parsed.businessObjective?.confidence || dynamicConfidence, 
       evidence: defaultEvidence 
     },
@@ -1215,12 +1296,32 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       confidence: m.confidence || dynamicConfidence,
       sourceFile: m.sourceFile || primarySource
     })),
-    tags: parsed.tags || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"]),
+    tags: sanitizeRecruiterTags(
+      parsed.tags || rawBaseProject.tags || [],
+      parsed.technologyStack?.value || [],
+      parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map(t => t.value) : []),
+      graph.projectDomain || parsed.industry?.value || ""
+    ),
     categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
   };
 
   // Task 8: Run automated internal AI Quality Review audit & refinement loop
   structured = await reviewAndRefinePortfolio(structured, graph);
+
+  // Guarantee clean Business Objective & Tags after AI refinement
+  structured.businessObjective.value = sanitizeBusinessObjective(
+    structured.businessObjective.value,
+    graph.projectDomain || "Analytics & Business Intelligence",
+    structured.industry.value,
+    understanding?.trueKPIs[0]?.label || graph.metrics[0]?.value?.label
+  );
+
+  structured.tags = sanitizeRecruiterTags(
+    structured.tags,
+    structured.technologyStack.value,
+    structured.analyticalTechniques.value,
+    structured.industry.value
+  );
 
   // Update raw base project with Gemini's synthesized narrative for backwards compatibility
   const rawUpdated: ExtractedProject = {

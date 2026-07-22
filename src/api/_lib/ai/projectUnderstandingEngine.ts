@@ -300,6 +300,19 @@ function buildFallbackUnderstanding(graph: EvidenceGraph): ProjectUnderstanding 
   const cleanSource   = primarySource.split(".")[0].replace(/[^a-zA-Z0-9\s]/g, " ").trim();
   const titleCap      = cleanSource ? cleanSource.charAt(0).toUpperCase() + cleanSource.slice(1) : "Business Intelligence";
 
+  const rawObjText = objectiveDoc?.value.text || "";
+  const isJunkObj = !rawObjText ||
+    rawObjText.includes("payload") ||
+    rawObjText.includes("Extraction") ||
+    rawObjText.includes("Visual asset") ||
+    rawObjText.includes("PDF Grounded") ||
+    rawObjText.includes("file:") ||
+    rawObjText.length < 20;
+
+  const fallbackObjective = `This project evaluates key operational performance indicators and transactional trends. The primary objective is to analyze metric variances, identify operational bottlenecks, and formulate strategic business recommendations for decision-makers.`;
+
+  const primaryObjective = !isJunkObj ? rawObjText : fallbackObjective;
+
   return {
     projectType,
     projectArchetype,
@@ -307,10 +320,7 @@ function buildFallbackUnderstanding(graph: EvidenceGraph): ProjectUnderstanding 
     businessDomain:    "Operations & Data Analytics",
     businessProblem:   problemDoc?.value.text ||
       `Analytical gaps identified across ${graph.evidenceSources.length} source file(s) requiring structured evaluation.`,
-    primaryObjective:  objectiveDoc?.value.text ||
-      (graph.businessQuestions.length > 0
-        ? `Answer key business inquiry: ${graph.businessQuestions[0].value}`
-        : `Evaluate key performance metrics and optimize business decisions across ${graph.evidenceSources.length} source file(s).`),
+    primaryObjective,
     likelyStakeholders: graph.stakeholderIndicators.length > 0
       ? graph.stakeholderIndicators.map(s => s.value)
       : ["Executive Leadership", "Analytics Leads", "Operations Managers"],
