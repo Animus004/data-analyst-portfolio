@@ -1,9 +1,15 @@
 // @ts-nocheck
 // src/api/_lib/parsers/registry.ts
-import * as XLSX from "xlsx";
 import mammoth from "mammoth";
+import JSZip2 from "jszip";
+
+// src/api/_lib/parsers/streamExcel.ts
 import JSZip from "jszip";
-function createEmptyProject(fileName, parserName) {
+import * as XLSX from "xlsx";
+function decodeXmlEntities(str) {
+  return str.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+}
+function createEmptyProject(fileName) {
   return {
     title: "",
     subtitle: "",
@@ -12,7 +18,266 @@ function createEmptyProject(fileName, parserName) {
     role: "",
     duration: "",
     date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-    tags: [parserName.replace("Parser", "")],
+    tags: ["Excel", "Pivot Tables", "Business Analytics", "KPI Reporting"],
+    categories: ["Financial Modeling", "Business Analytics"],
+    objective: "",
+    businessProblem: "",
+    methodology: "",
+    datasetDesc: "",
+    dataCleaning: "",
+    findings: "",
+    recommendations: "",
+    challengesText: "",
+    lessonsLearned: "",
+    metrics: [],
+    storyBlocks: [],
+    sourceFiles: [fileName]
+  };
+}
+async function parseStreamExcel(fileName, content) {
+  const parseStart = Date.now();
+  const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
+  const proj = createEmptyProject(fileName);
+  const excelBuffer = Buffer.from(content, "base64");
+  const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
+  const excelEvidence = {
+    sourceFile: fileName,
+    parser: "StreamExcelParser",
+    confidence: 95,
+    sheetNames: [],
+    metrics: [],
+    kpis: [],
+    charts: [],
+    pivots: [],
+    dashboardTitles: [],
+    formulas: [],
+    dimensions: [],
+    measures: [],
+    businessTerms: [],
+    worksheets: [],
+    namedRanges: [],
+    calculatedColumns: [],
+    workbookMetadata: {},
+    isAdaptivelySampled: excelBuffer.length > 5 * 1024 * 1024,
+    samplingStrategy: excelBuffer.length > 5 * 1024 * 1024 ? `Asynchronous Stream XML Parsing (${fileSizeMb} MB). Extracted sheet metadata, headers, formulas, and pivots in non-blocking event loop.` : void 0
+  };
+  const isZipArchive = excelBuffer.length >= 4 && excelBuffer[0] === 80 && excelBuffer[1] === 75;
+  if (isZipArchive && excelBuffer.length > 5 * 1024 * 1024) {
+    try {
+      const zip = await JSZip.loadAsync(excelBuffer);
+      const workbookXmlStr = await zip.file("xl/workbook.xml")?.async("string");
+      const sheetNameMap = [];
+      if (workbookXmlStr) {
+        const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*sheetId="([^"]+)"/g;
+        let match;
+        while ((match = sheetRegex.exec(workbookXmlStr)) !== null) {
+          const name = decodeXmlEntities(match[1]);
+          sheetNameMap.push({ id: match[2], name });
+          excelEvidence.sheetNames.push(name);
+        }
+      }
+      if (sheetNameMap.length === 0) {
+        const sheetFiles = Object.keys(zip.files).filter((k) => k.startsWith("xl/worksheets/sheet"));
+        sheetFiles.forEach((f, idx) => {
+          const name = `Sheet${idx + 1}`;
+          sheetNameMap.push({ id: String(idx + 1), name });
+          excelEvidence.sheetNames.push(name);
+        });
+      }
+      const sharedStrings = [];
+      const sharedStringsXmlStr = await zip.file("xl/sharedStrings.xml")?.async("string");
+      if (sharedStringsXmlStr) {
+        const tRegex = /<t[^>]*>([\s\S]*?)<\/t>/g;
+        let tMatch;
+        let count = 0;
+        while ((tMatch = tRegex.exec(sharedStringsXmlStr)) !== null && count < 2e3) {
+          sharedStrings.push(decodeXmlEntities(tMatch[1]).trim());
+          count++;
+        }
+      }
+      const pivotFiles = Object.keys(zip.files).filter((k) => k.startsWith("xl/pivotTables/"));
+      pivotFiles.forEach((_, idx) => {
+        excelEvidence.pivots.push(`Pivot Table ${idx + 1}`);
+      });
+      const drawingFiles = Object.keys(zip.files).filter((k) => k.startsWith("xl/drawings/"));
+      drawingFiles.forEach((_, idx) => {
+        excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
+      });
+      let totalRowCount2 = 0;
+      let totalFormulaCount = 0;
+      const formulaSet = /* @__PURE__ */ new Set();
+      const measureSet = /* @__PURE__ */ new Set();
+      for (let i = 0; i < sheetNameMap.length; i++) {
+        const sheetMeta = sheetNameMap[i];
+        const sheetFileName = `xl/worksheets/sheet${i + 1}.xml`;
+        const sheetZipFile = zip.file(sheetFileName) || zip.file(`xl/worksheets/sheet${sheetMeta.id}.xml`);
+        await new Promise((resolve) => setImmediate(resolve));
+        let role = "Analytical Worksheet";
+        const nameLower = sheetMeta.name.toLowerCase().replace(/\s+/g, "");
+        if (nameLower.includes("dashboard") || nameLower.includes("summary") || nameLower.includes("kpi")) {
+          role = "Executive Dashboard";
+          excelEvidence.dashboardTitles.push(sheetMeta.name);
+        } else if (nameLower.includes("model") || nameLower.includes("forecast") || nameLower.includes("budget")) {
+          role = "Financial Model";
+        } else if (nameLower.includes("pivot") || nameLower.includes("crosstab")) {
+          role = "Pivot Analysis";
+        } else if (nameLower.includes("data") || nameLower.includes("raw") || nameLower.includes("source")) {
+          role = "Data Source";
+        }
+        const sheetColumns = [];
+        let sheetRowCount = 0;
+        if (sheetZipFile) {
+          const sheetXmlStr = await sheetZipFile.async("string");
+          const dimMatch = sheetXmlStr.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
+          if (dimMatch) {
+            sheetRowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
+          } else {
+            const rowMatches = sheetXmlStr.match(/<row\s+r="(\d+)"/g);
+            sheetRowCount = rowMatches ? rowMatches.length : 0;
+          }
+          totalRowCount2 += sheetRowCount;
+          const row1Match = sheetXmlStr.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
+          if (row1Match) {
+            const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
+            let cMatch;
+            while ((cMatch = cRegex.exec(row1Match[1])) !== null && sheetColumns.length < 30) {
+              const val = cMatch[1];
+              if (val !== void 0) {
+                let cellText = val;
+                if (cMatch[0].includes('t="s"')) {
+                  const sIdx = parseInt(val, 10);
+                  if (!isNaN(sIdx) && sharedStrings[sIdx]) {
+                    cellText = sharedStrings[sIdx];
+                  }
+                }
+                const cleaned = cellText.trim();
+                if (cleaned && !cleaned.match(/^Column\d+$/i)) {
+                  sheetColumns.push(cleaned);
+                  if (!excelEvidence.dimensions.includes(cleaned)) {
+                    excelEvidence.dimensions.push(cleaned);
+                  }
+                }
+              }
+            }
+          }
+          const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
+          let fMatch;
+          let sheetFormulas = 0;
+          while ((fMatch = formulaRegex.exec(sheetXmlStr)) !== null && sheetFormulas < 100) {
+            totalFormulaCount++;
+            sheetFormulas++;
+            const formulaText = decodeXmlEntities(fMatch[1]).trim();
+            const upperF = formulaText.toUpperCase();
+            if (upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") || upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") || upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")) {
+              if (formulaSet.size < 30) {
+                formulaSet.add(`${sheetMeta.name}: =${formulaText}`);
+              }
+              const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+              if (matchFn && matchFn[1]) {
+                measureSet.add(`Formula: ${matchFn[1]} in ${sheetMeta.name}`);
+              }
+            }
+          }
+        }
+        excelEvidence.worksheets.push({
+          name: sheetMeta.name,
+          role,
+          rowCount: sheetRowCount,
+          columnCount: sheetColumns.length,
+          columns: sheetColumns.slice(0, 20)
+        });
+      }
+      excelEvidence.formulas = Array.from(formulaSet);
+      excelEvidence.measures = Array.from(measureSet);
+      const memAfter = process.memoryUsage().heapUsed / (1024 * 1024);
+      const totalDuration = Date.now() - parseStart;
+      console.log(`
+==========================================================`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] File Name: ${fileName}`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] File Size: ${fileSizeMb} MB`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] Total Worksheets: ${excelEvidence.sheetNames.length}`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] Total Aggregate Rows: ${totalRowCount2.toLocaleString()}`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] Formulas Detected: ${totalFormulaCount.toLocaleString()}`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] Pivots Detected: ${excelEvidence.pivots.length}`);
+      console.log(`[STREAM EXCEL PARSER PROFILE] Duration: ${totalDuration} ms (Mem delta: +${(memAfter - memBefore).toFixed(1)} MB)`);
+      console.log(`==========================================================
+`);
+      const evidenceNode2 = {
+        nodeId: `node-excel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        sourceFile: fileName,
+        parserType: "Excel",
+        extractedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        confidence: excelEvidence.confidence,
+        data: excelEvidence
+      };
+      return { project: proj, evidenceNode: evidenceNode2 };
+    } catch (err) {
+      console.warn(`[StreamExcelParser] Async ZIP streaming failed for '${fileName}', falling back to standard XLSX reader:`, err?.message);
+    }
+  }
+  const workbook = XLSX.read(excelBuffer, {
+    type: "buffer",
+    cellFormula: true,
+    sheetStubs: false
+  });
+  excelEvidence.sheetNames = workbook.SheetNames;
+  let totalRowCount = 0;
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const sheetColumns = [];
+    let rowCount = 0;
+    if (sheet["!ref"]) {
+      try {
+        const range = XLSX.utils.decode_range(sheet["!ref"]);
+        rowCount = Math.max(0, range.e.r - range.s.r);
+        totalRowCount += rowCount;
+        for (let c = range.s.c; c <= range.e.c && c <= 30; c++) {
+          const cellAddr = XLSX.utils.encode_cell({ r: range.s.r, c });
+          const cell = sheet[cellAddr];
+          if (cell && cell.v !== void 0) {
+            const cleaned = String(cell.v).trim();
+            if (cleaned && !cleaned.match(/^Column\d+$/i)) {
+              sheetColumns.push(cleaned);
+              if (!excelEvidence.dimensions.includes(cleaned)) {
+                excelEvidence.dimensions.push(cleaned);
+              }
+            }
+          }
+        }
+      } catch (_) {
+      }
+    }
+    excelEvidence.worksheets.push({
+      name: sheetName,
+      role: "Analytical Worksheet",
+      rowCount,
+      columnCount: sheetColumns.length,
+      columns: sheetColumns.slice(0, 20)
+    });
+  });
+  const evidenceNode = {
+    nodeId: `node-excel-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    sourceFile: fileName,
+    parserType: "Excel",
+    extractedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    confidence: excelEvidence.confidence,
+    data: excelEvidence
+  };
+  return { project: proj, evidenceNode };
+}
+
+// src/api/_lib/parsers/registry.ts
+function createEmptyProject2(fileName, parserName) {
+  return {
+    title: "",
+    subtitle: "",
+    summary: "",
+    industry: "",
+    role: "",
+    duration: "",
+    date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+    tags: [],
     categories: [],
     objective: "",
     businessProblem: "",
@@ -32,105 +297,15 @@ var ExcelParser = {
   name: "ExcelParser",
   extensions: ["xlsx", "xls"],
   async parse(fileName, content) {
-    const proj = createEmptyProject(fileName, "ExcelParser");
-    proj.tags = ["Excel", "Spreadsheets"];
-    proj.categories = ["Financial Modeling", "Business Analytics"];
-    const excelEvidence = {
-      sourceFile: fileName,
-      parser: "ExcelParser",
-      confidence: 95,
-      sheetNames: [],
-      metrics: [],
-      kpis: [],
-      charts: [],
-      pivots: [],
-      dashboardTitles: [],
-      formulas: [],
-      dimensions: [],
-      measures: [],
-      businessTerms: []
-    };
-    try {
-      const excelBuffer = Buffer.from(content, "base64");
-      const workbook = XLSX.read(excelBuffer, { type: "buffer", cellFormula: true });
-      excelEvidence.sheetNames = workbook.SheetNames;
-      let projectsRaw = [];
-      let metricsRaw = [];
-      workbook.SheetNames.forEach((sheetName) => {
-        const nameLower = sheetName.toLowerCase().replace(/\s+/g, "");
-        const sheet = workbook.Sheets[sheetName];
-        if (nameLower.includes("dashboard") || nameLower.includes("summary")) {
-          excelEvidence.dashboardTitles.push(sheetName);
-        }
-        if (nameLower.includes("pivot")) {
-          excelEvidence.pivots.push(sheetName);
-        }
-        Object.keys(sheet).forEach((cellAddr) => {
-          if (cellAddr.startsWith("!")) return;
-          const cell = sheet[cellAddr];
-          if (cell && cell.f) {
-            excelEvidence.formulas.push(`${cellAddr}: =${cell.f}`);
-          }
-        });
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        if (jsonData.length > 0 && Array.isArray(jsonData[0])) {
-          jsonData[0].forEach((colHeader) => {
-            if (colHeader && typeof colHeader === "string") {
-              excelEvidence.dimensions.push(colHeader.trim());
-            }
-          });
-        }
-        if (nameLower === "projects" || nameLower === "casestudies") {
-          projectsRaw = XLSX.utils.sheet_to_json(sheet);
-        } else if (nameLower === "metrics" || nameLower === "kpis") {
-          metricsRaw = XLSX.utils.sheet_to_json(sheet);
-        }
-      });
-      if (projectsRaw.length > 0) {
-        const firstProj = projectsRaw[0];
-        proj.title = firstProj.title || proj.title;
-        proj.subtitle = firstProj.subtitle || proj.subtitle;
-        proj.objective = firstProj.objective || firstProj.businessProblem || proj.objective;
-        proj.businessProblem = firstProj.businessProblem || proj.businessProblem;
-        proj.methodology = firstProj.methodology || proj.methodology;
-        proj.datasetDesc = firstProj.datasetDesc || proj.datasetDesc;
-        proj.dataCleaning = firstProj.dataCleaning || proj.dataCleaning;
-        proj.findings = firstProj.findings || proj.findings;
-        proj.recommendations = firstProj.recommendations || proj.recommendations;
-        proj.challengesText = firstProj.challengesText || proj.challengesText;
-        proj.lessonsLearned = firstProj.lessonsLearned || proj.lessonsLearned;
-      }
-      metricsRaw.forEach((m, mIdx) => {
-        const label = String(m.label || m.name || m.title || "KPI Metric").trim();
-        const value = String(m.value || m.amount || "N/A").trim();
-        const desc = String(m.description || m.details || "").trim();
-        proj.metrics.push({
-          id: `xls-metric-${mIdx}-${Date.now()}`,
-          label,
-          value,
-          description: desc,
-          iconName: m.iconName || m.icon || "Activity",
-          sourceFile: fileName,
-          sourceLocation: `Sheet: Metrics, Row ${mIdx + 2}`
-        });
-        excelEvidence.metrics.push({ label, value, description: desc });
-        excelEvidence.kpis.push({ name: label, actual: value });
-      });
-    } catch (err) {
-      console.error("ExcelParser Error:", err);
-    }
-    return {
-      project: proj,
-      evidenceNode: { type: "excel", data: excelEvidence }
-    };
+    return parseStreamExcel(fileName, content);
   }
 };
 var SQLParser = {
   name: "SQLParser",
   extensions: ["sql"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "SQLParser");
-    proj.tags = ["SQL", "Relational Database"];
+    const proj = createEmptyProject2(fileName, "SQLParser");
+    proj.tags = ["SQL", "Relational Database Querying", "Data Aggregation", "Window Functions"];
     proj.categories = ["Data Engineering", "Database Querying"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -214,8 +389,8 @@ var PythonParser = {
   name: "PythonParser",
   extensions: ["py"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "PythonParser");
-    proj.tags = ["Python"];
+    const proj = createEmptyProject2(fileName, "PythonParser");
+    proj.tags = ["Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis"];
     proj.categories = ["Data Science", "Data Engineering"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -223,7 +398,7 @@ var PythonParser = {
       sourceFile: fileName,
       parser: "PythonParser",
       confidence: 90,
-      sections: [{ heading: "Python Source Code", content: text.slice(0, 3e3) }],
+      sections: [{ heading: "Python Analytics Script", content: text.slice(0, 3e3) }],
       extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
     };
     lines.forEach((line, lineIdx) => {
@@ -265,8 +440,8 @@ var NotebookParser = {
   name: "NotebookParser",
   extensions: ["ipynb"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "NotebookParser");
-    proj.tags = ["Python", "Jupyter Notebook"];
+    const proj = createEmptyProject2(fileName, "NotebookParser");
+    proj.tags = ["Python", "Exploratory Data Analysis", "Interactive Analytics", "Statistical Modeling"];
     proj.categories = ["Data Science", "Interactive Analytics"];
     proj.role = "Data Scientist";
     const docEvidence = {
@@ -329,8 +504,8 @@ var PowerBIParser = {
   name: "PowerBIParser",
   extensions: ["pbix", "dax"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "PowerBIParser");
-    proj.tags = ["Power BI", "DAX"];
+    const proj = createEmptyProject2(fileName, "PowerBIParser");
+    proj.tags = ["Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const pbiEvidence = {
@@ -379,8 +554,8 @@ var MarkdownParser = {
   name: "MarkdownParser",
   extensions: ["md", "txt"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "MarkdownParser");
-    proj.tags = ["Markdown", "Documentation"];
+    const proj = createEmptyProject2(fileName, "MarkdownParser");
+    proj.tags = ["Business Reporting", "Documentation", "Executive Communication"];
     proj.categories = ["Technical Writing", "Reporting"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const readmeEvidence = {
@@ -424,8 +599,8 @@ var WordParser = {
   name: "WordParser",
   extensions: ["docx"],
   async parse(fileName, content) {
-    const proj = createEmptyProject(fileName, "WordParser");
-    proj.tags = ["Word", "Technical Report"];
+    const proj = createEmptyProject2(fileName, "WordParser");
+    proj.tags = ["Business Analysis", "Executive Reporting", "Documentation"];
     proj.categories = ["Business Analysis", "Documentation"];
     const docEvidence = {
       sourceFile: fileName,
@@ -460,8 +635,8 @@ var CSVParser = {
   name: "CSVParser",
   extensions: ["csv"],
   async parse(fileName, content, type) {
-    const proj = createEmptyProject(fileName, "CSVParser");
-    proj.tags = ["CSV", "Flat File"];
+    const proj = createEmptyProject2(fileName, "CSVParser");
+    proj.tags = ["Data Cleaning", "Tabular Analysis", "Data Profiling"];
     proj.categories = ["Data Prep", "Tabular Analysis"];
     const excelEvidence = {
       sourceFile: fileName,
@@ -509,16 +684,16 @@ var PDFParser = {
   name: "PDFParser",
   extensions: ["pdf"],
   async parse(fileName) {
-    const proj = createEmptyProject(fileName, "PDFParser");
-    proj.tags = ["PDF", "Acrobat Document"];
+    const proj = createEmptyProject2(fileName, "PDFParser");
+    proj.tags = ["Data Extraction", "Business Reporting", "Documentation"];
     proj.categories = ["Data Extract", "Reporting"];
     const docEvidence = {
       sourceFile: fileName,
       parser: "PDFParser",
       confidence: 85,
       title: fileName,
-      sections: [{ heading: "PDF Grounded Extraction", content: `Evidence extracted from PDF file: ${fileName}` }],
-      extractedTerms: ["PDF Document"]
+      sections: [{ heading: "Document Analysis", content: "Extracted document section for business evaluation." }],
+      extractedTerms: ["Document"]
     };
     return {
       project: proj,
@@ -530,10 +705,10 @@ var ImageParser = {
   name: "ImageParser",
   extensions: ["png", "jpg", "jpeg"],
   async parse(fileName) {
-    const proj = createEmptyProject(fileName, "ImageParser");
-    proj.tags = ["Visual Assets", "Images"];
+    const proj = createEmptyProject2(fileName, "ImageParser");
+    proj.tags = ["Dashboarding", "Data Visualization", "Telemetry Reporting"];
     proj.categories = ["Telemetry Visualization"];
-    proj.objective = `Visual asset evidence payload: ${fileName}`;
+    proj.objective = "";
     const imgEvidence = {
       sourceFile: fileName,
       parser: "ImageParser",
@@ -575,7 +750,7 @@ async function unpackZipFile(base64Content) {
   let totalUncompressedBytes = 0;
   try {
     const zipBuffer = Buffer.from(base64Content, "base64");
-    const zip = new JSZip();
+    const zip = new JSZip2();
     const contents = await zip.loadAsync(zipBuffer);
     const entries = Object.entries(contents.files);
     if (entries.length > MAX_EXTRACTED_FILES) {
@@ -727,19 +902,52 @@ function isAllowedFileType(fileName) {
   const allowed = ["zip", "pbit", "pbix", "xlsx", "xls", "docx", "pdf", "py", "ipynb", "sql", "dax", "csv", "json", "md", "txt", "png", "jpg", "jpeg"];
   return allowed.includes(ext);
 }
+function createStepLogger(scope) {
+  const scopeStart = Date.now();
+  return {
+    start: (stepName) => {
+      const sStart = Date.now();
+      console.log(`[INSTRUMENTATION] [${scope}] START: ${stepName} @ T+${sStart - scopeStart}ms`);
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - sStart;
+        if (elapsed >= 2e3) {
+          console.warn(`[INSTRUMENTATION] [${scope}] CHECKPOINT (WARN >2s): '${stepName}' is taking long... (Elapsed: ${elapsed}ms)`);
+        }
+      }, 2e3);
+      return {
+        end: (outputSizeInfo) => {
+          clearInterval(interval);
+          const duration = Date.now() - sStart;
+          const sizeStr = outputSizeInfo !== void 0 ? ` | Output Size: ${typeof outputSizeInfo === "number" ? `${(outputSizeInfo / 1024).toFixed(1)} KB` : outputSizeInfo}` : "";
+          console.log(`[INSTRUMENTATION] [${scope}] END: ${stepName} | Elapsed: ${duration}ms${sizeStr}`);
+          return duration;
+        }
+      };
+    }
+  };
+}
 async function executeWithTimeout(taskName, fn, timeoutMs = 15e3) {
+  const startTime = Date.now();
   let timeoutHandle;
+  let isTimedOut = false;
+  console.log(`[ASYNC EXECUTION] BEGIN task '${taskName}' (Timeout limit: ${timeoutMs}ms)`);
   const timeoutPromise = new Promise((_, reject) => {
     timeoutHandle = setTimeout(() => {
+      isTimedOut = true;
+      console.warn(`[ASYNC EXECUTION] TIMED OUT task '${taskName}' after ${Date.now() - startTime}ms (exceeded ${timeoutMs}ms limit)`);
       reject(new Error(`Execution threshold exceeded (${timeoutMs}ms) for '${taskName}'. Terminated for safety.`));
     }, timeoutMs);
   });
   try {
     const result = await Promise.race([fn(), timeoutPromise]);
     clearTimeout(timeoutHandle);
+    console.log(`[ASYNC EXECUTION] END task '${taskName}' (Duration: ${Date.now() - startTime}ms)`);
     return result;
   } catch (err) {
     clearTimeout(timeoutHandle);
+    if (!isTimedOut) {
+      console.error(`[ASYNC EXECUTION] FAILED task '${taskName}' after ${Date.now() - startTime}ms:`, err?.message || err);
+    }
     throw err;
   }
 }
@@ -795,6 +1003,14 @@ function enforceOwnerPermission(req, res) {
 }
 
 // src/api/_lib/evidence/graph.ts
+function safeForEach(arr, varName, callback) {
+  if (!arr) return;
+  if (!Array.isArray(arr)) {
+    console.error(`[DATA SHAPE ASSERTION ERROR] Expected array for '${varName}', got:`, typeof arr, arr);
+    return;
+  }
+  arr.forEach(callback);
+}
 function mergeToEvidenceGraph(extractedNodes) {
   const graph = {
     projectDomain: void 0,
@@ -822,8 +1038,13 @@ function mergeToEvidenceGraph(extractedNodes) {
     recommendations: [],
     evidenceSources: []
   };
+  if (!Array.isArray(extractedNodes)) {
+    console.error("[DATA SHAPE ASSERTION ERROR] mergeToEvidenceGraph: extractedNodes is not an array", extractedNodes);
+    return graph;
+  }
   const sourceMap = /* @__PURE__ */ new Map();
   for (const node of extractedNodes) {
+    if (!node || !node.data) continue;
     const { type, data } = node;
     const { sourceFile, parser, confidence, location } = data;
     if (!sourceMap.has(sourceFile)) {
@@ -832,26 +1053,26 @@ function mergeToEvidenceGraph(extractedNodes) {
     const sourceMeta = sourceMap.get(sourceFile);
     switch (type) {
       case "excel": {
-        data.metrics.forEach((m) => {
+        safeForEach(data.metrics, "excel.metrics", (m) => {
           graph.metrics.push({ value: m, sourceFile, parser, confidence, location });
           graph.detectedKPIs.push({ value: { name: m.label, actual: m.value }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
-        data.kpis.forEach((k) => {
+        safeForEach(data.kpis, "excel.kpis", (k) => {
           graph.kpis.push({ value: { name: k.name, target: k.target, value: k.actual }, sourceFile, parser, confidence, location });
           graph.detectedKPIs.push({ value: { name: k.name, target: k.target, actual: k.actual }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
-        data.charts.forEach((c) => {
+        safeForEach(data.charts, "excel.charts", (c) => {
           graph.charts.push({ value: { title: c.title, type: c.chartType }, sourceFile, parser, confidence, location });
           graph.visualNarratives.push({ value: `Visual Chart: ${c.title} (${c.chartType || "Standard Visual"})`, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
-        data.businessTerms.forEach((t) => {
+        safeForEach(data.businessTerms, "excel.businessTerms", (t) => {
           graph.businessTerms.push({ value: t, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
-        data.dimensions.forEach((d) => {
+        safeForEach(data.dimensions, "excel.dimensions", (d) => {
           graph.dimensions.push({ value: d, sourceFile, parser, confidence, location });
           graph.detectedDimensions.push({ value: d, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
@@ -863,45 +1084,71 @@ function mergeToEvidenceGraph(extractedNodes) {
             graph.businessEntities.push({ value: d, sourceFile, parser, confidence, location });
           }
         });
-        if (data.formulas.length > 0) {
+        safeForEach(data.measures, "excel.measures", (m) => {
+          graph.detectedMeasures.push({ value: m, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        });
+        safeForEach(data.calculatedColumns, "excel.calculatedColumns", (cc) => {
+          graph.analyticalTechniques.push({
+            value: `Calculated Column '${cc.column}' in ${cc.sheet} (Formula: =${cc.formula})`,
+            sourceFile,
+            parser,
+            confidence
+          });
+          sourceMeta.nodesExtracted++;
+        });
+        safeForEach(data.worksheets, "excel.worksheets", (ws) => {
+          const colList = Array.isArray(ws.columns) ? ws.columns.slice(0, 5).join(", ") : "";
+          graph.dashboardInsights.push({
+            value: `Worksheet [${ws.name}] (${ws.role}): ${ws.rowCount} rows, ${ws.columnCount} columns (${colList})`,
+            sourceFile,
+            parser,
+            confidence
+          });
+          sourceMeta.nodesExtracted++;
+        });
+        if (data.workbookMetadata && Object.keys(data.workbookMetadata).length > 0) {
+          const metaText = Object.entries(data.workbookMetadata).map(([k, v]) => `${k}: ${v}`).join("; ");
+          graph.documentation.push({ value: { key: "Workbook Metadata", text: metaText }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (Array.isArray(data.formulas) && data.formulas.length > 0) {
           graph.analyticalTechniques.push({ value: `Spreadsheet Formulas (${data.formulas.length} calculated cells)`, sourceFile, parser, confidence, location });
         }
-        if (data.pivots.length > 0) {
+        if (Array.isArray(data.pivots) && data.pivots.length > 0) {
           graph.analyticalTechniques.push({ value: `Pivot Table Analysis (${data.pivots.join(", ")})`, sourceFile, parser, confidence, location });
         }
-        if (data.dashboardTitles.length > 0) {
-          data.dashboardTitles.forEach((t) => {
-            graph.dashboards.push({ value: { name: t, pages: data.sheetNames }, sourceFile, parser, confidence, location });
-            graph.dashboardInsights.push({ value: `Dashboard Layout Sheet: ${t}`, sourceFile, parser, confidence, location });
-            sourceMeta.nodesExtracted++;
-          });
-        }
+        safeForEach(data.dashboardTitles, "excel.dashboardTitles", (t) => {
+          graph.dashboards.push({ value: { name: t, pages: data.sheetNames }, sourceFile, parser, confidence, location });
+          graph.dashboardInsights.push({ value: `Dashboard Layout Sheet: ${t}`, sourceFile, parser, confidence, location });
+          sourceMeta.nodesExtracted++;
+        });
         break;
       }
       case "sql": {
-        if (data.tables.length > 0 || data.joins.length > 0 || data.aggregations.length > 0) {
+        if (Array.isArray(data.tables)) {
           graph.sqlLogic.push({
             value: {
               tables: data.tables,
-              joins: data.joins,
-              aggregations: data.aggregations,
-              windowFunctions: data.windowFunctions
+              joins: data.joins || [],
+              aggregations: data.aggregations || [],
+              windowFunctions: data.windowFunctions || []
             },
             sourceFile,
             parser,
             confidence,
             location
           });
-          data.tables.forEach((t) => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
-          if (data.joins.length > 0) {
+          safeForEach(data.tables, "sql.tables", (t) => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
+          if (Array.isArray(data.joins) && data.joins.length > 0) {
             graph.analyticalTechniques.push({ value: `Relational Join Modeling (${data.joins.length} join criteria)`, sourceFile, parser, confidence });
           }
-          if (data.windowFunctions.length > 0) {
+          if (Array.isArray(data.windowFunctions) && data.windowFunctions.length > 0) {
             graph.analyticalTechniques.push({ value: `Advanced SQL Window Functions (${data.windowFunctions.length} window definitions)`, sourceFile, parser, confidence });
           }
           sourceMeta.nodesExtracted++;
         }
-        data.calculatedMetrics.forEach((cm) => {
+        safeForEach(data.calculatedMetrics, "sql.calculatedMetrics", (cm) => {
           graph.metrics.push({
             value: { label: cm.name, value: cm.formula, description: "Calculated SQL Metric" },
             sourceFile,
@@ -912,7 +1159,7 @@ function mergeToEvidenceGraph(extractedNodes) {
           graph.detectedMeasures.push({ value: `${cm.name} (${cm.formula})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
-        data.businessQuestions.forEach((q) => {
+        safeForEach(data.businessQuestions, "sql.businessQuestions", (q) => {
           graph.businessTerms.push({ value: q, sourceFile, parser, confidence, location });
           graph.businessQuestions.push({ value: q, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
@@ -920,22 +1167,22 @@ function mergeToEvidenceGraph(extractedNodes) {
         break;
       }
       case "powerbi": {
-        data.visuals.forEach((v) => {
+        safeForEach(data.visuals, "powerbi.visuals", (v) => {
           graph.charts.push({ value: { title: v.title, type: v.type }, sourceFile, parser, confidence, location });
           graph.visualNarratives.push({ value: `Visual Card: ${v.title} (${v.type})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
-        data.kpis.forEach((k) => {
+        safeForEach(data.kpis, "powerbi.kpis", (k) => {
           graph.kpis.push({ value: { name: k.label, value: k.value }, sourceFile, parser, confidence, location });
           graph.detectedKPIs.push({ value: { name: k.label, actual: k.value }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
-        if (data.pages.length > 0) {
-          graph.dashboards.push({ value: { name: `${sourceFile} Dashboard`, pages: data.pages, visualCount: data.visuals.length }, sourceFile, parser, confidence, location });
+        if (Array.isArray(data.pages) && data.pages.length > 0) {
+          graph.dashboards.push({ value: { name: `${sourceFile} Dashboard`, pages: data.pages, visualCount: (data.visuals || []).length }, sourceFile, parser, confidence, location });
           graph.dashboardInsights.push({ value: `Power BI Dashboard Pages: ${data.pages.join(", ")}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
-        data.daxMeasures.forEach((dax) => {
+        safeForEach(data.daxMeasures, "powerbi.daxMeasures", (dax) => {
           graph.metrics.push({
             value: { label: dax.name, value: dax.expression, description: "DAX Measure" },
             sourceFile,
@@ -969,12 +1216,10 @@ function mergeToEvidenceGraph(extractedNodes) {
           graph.recommendations.push({ value: data.recommendations, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
-        if (data.tools) {
-          data.tools.forEach((t) => {
-            graph.businessTerms.push({ value: `Tool: ${t}`, sourceFile, parser, confidence });
-            sourceMeta.nodesExtracted++;
-          });
-        }
+        safeForEach(data.tools, "readme.tools", (t) => {
+          graph.businessTerms.push({ value: `Tool: ${t}`, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        });
         break;
       }
       case "document": {
@@ -982,36 +1227,40 @@ function mergeToEvidenceGraph(extractedNodes) {
           graph.documentation.push({ value: { key: "Document Title", text: data.title }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
-        data.sections.forEach((s) => {
+        safeForEach(data.sections, "document.sections", (s) => {
           graph.documentation.push({ value: { key: s.heading, text: s.content }, sourceFile, parser, confidence, location: s.heading });
           if (s.heading.toLowerCase().includes("question") || s.heading.toLowerCase().includes("objective")) {
             graph.businessQuestions.push({ value: s.content.slice(0, 150), sourceFile, parser, confidence, location: s.heading });
           }
           sourceMeta.nodesExtracted++;
         });
-        data.extractedTerms.forEach((t) => {
+        safeForEach(data.extractedTerms, "document.extractedTerms", (t) => {
           graph.businessTerms.push({ value: t, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         break;
       }
       case "image": {
+        const kpiCards = data.kpiCards || [];
+        const charts = data.charts || [];
+        const tables = data.tables || [];
+        const filters = data.filters || [];
         if (data.dashboardDetected) {
-          graph.dashboards.push({ value: { name: `Image Visual: ${sourceFile}`, visualCount: data.charts.length + data.kpiCards.length }, sourceFile, parser, confidence });
+          graph.dashboards.push({ value: { name: `Image Visual: ${sourceFile}`, visualCount: charts.length + kpiCards.length }, sourceFile, parser, confidence });
           graph.dashboardInsights.push({ value: `Visual Dashboard Screenshot: ${sourceFile}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
-        data.kpiCards.forEach((k) => {
+        safeForEach(kpiCards, "image.kpiCards", (k) => {
           graph.kpis.push({ value: { name: k }, sourceFile, parser, confidence });
           graph.detectedKPIs.push({ value: { name: k }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
-        data.charts.forEach((c) => {
+        safeForEach(charts, "image.charts", (c) => {
           graph.charts.push({ value: { title: c }, sourceFile, parser, confidence });
           graph.visualNarratives.push({ value: `Visual Image Element: ${c}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
-        const detected = [...data.kpiCards, ...data.charts, ...data.tables, ...data.filters];
+        const detected = [...kpiCards, ...charts, ...tables, ...filters];
         if (detected.length > 0) {
           graph.screenshots.push({ value: { detectedElements: detected }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
@@ -1026,26 +1275,36 @@ function mergeToEvidenceGraph(extractedNodes) {
 function detectEvidenceConflicts(graph) {
   const conflicts = [];
   const metricGroups = /* @__PURE__ */ new Map();
-  graph.metrics.forEach((mNode) => {
-    const labelNorm = mNode.value.label.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-    if (labelNorm) {
-      if (!metricGroups.has(labelNorm)) {
-        metricGroups.set(labelNorm, []);
-      }
-      metricGroups.get(labelNorm).push({
-        value: `${mNode.value.label}: ${mNode.value.value}`,
-        sourceFile: mNode.sourceFile,
-        location: mNode.location
-      });
+  safeForEach(graph.metrics, "graph.metrics", (mNode) => {
+    const label = mNode.value.label.trim();
+    const normLabel = label.toLowerCase();
+    if (!metricGroups.has(normLabel)) {
+      metricGroups.set(normLabel, []);
     }
+    metricGroups.get(normLabel).push({
+      value: mNode.value.value,
+      sourceFile: mNode.sourceFile,
+      confidence: mNode.confidence
+    });
   });
   metricGroups.forEach((group, normLabel) => {
     if (group.length > 1) {
-      const uniqueVals = new Set(group.map((g) => g.value.toLowerCase().trim()));
-      if (uniqueVals.size > 1) {
+      const firstVal = group[0].value;
+      const hasConflict = group.some((item) => item.value !== firstVal);
+      if (hasConflict) {
         conflicts.push({
-          field: `Metric Discrepancy (${group[0].value.split(":")[0]})`,
-          values: group
+          id: `conflict-${normLabel}-${Date.now()}`,
+          fieldName: `Metric: ${group[0].value}`,
+          fieldLabel: `Conflicting values for KPI Metric '${group[0].value}'`,
+          conflictType: "Metric Discrepancy",
+          competingValues: group.map((g) => ({
+            sourceFile: g.sourceFile,
+            value: g.value,
+            confidence: g.confidence
+          })),
+          resolvedValue: void 0,
+          isUserResolved: false,
+          impactScore: 85
         });
       }
     }
@@ -1108,6 +1367,70 @@ function inferTitleFromEvidence(graph) {
   const domain = graph.projectDomain && graph.projectDomain !== "Mixed Analytics" ? graph.projectDomain : "Data Analytics";
   return `${domain} Performance & Optimization Project`;
 }
+var FORBIDDEN_FORMAT_TAG_PATTERNS = [
+  /^pdf$/i,
+  /^acrobat/i,
+  /^word$/i,
+  /^docx$/i,
+  /^document/i,
+  /^flat file$/i,
+  /^csv$/i,
+  /^text$/i,
+  /^txt$/i,
+  /^png$/i,
+  /^jpg$/i,
+  /^jpeg$/i,
+  /^images?$/i,
+  /^visual assets$/i,
+  /^markdown$/i,
+  /^md$/i,
+  /^zip$/i,
+  /^archive$/i,
+  /^file$/i,
+  /^parser$/i,
+  /^ipynb$/i,
+  /^pbix$/i,
+  /^git$/i,
+  /^github$/i
+];
+function sanitizeRecruiterTags(rawTags, techStack = [], techniques = [], projectType = "") {
+  const cleanTags = [];
+  const candidatePool = [...rawTags, ...techStack, ...techniques];
+  const typeLower = (projectType || "").toLowerCase();
+  if (typeLower.includes("excel") || typeLower.includes("spreadsheet")) {
+    candidatePool.push("Excel", "Pivot Tables", "Business Analytics", "KPI Reporting");
+  }
+  if (typeLower.includes("sql") || typeLower.includes("relational")) {
+    candidatePool.push("SQL", "Relational Database Querying", "Data Aggregation", "Window Functions");
+  }
+  if (typeLower.includes("power") || typeLower.includes("bi") || typeLower.includes("dax")) {
+    candidatePool.push("Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization");
+  }
+  if (typeLower.includes("python") || typeLower.includes("notebook")) {
+    candidatePool.push("Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis");
+  }
+  candidatePool.push("Business Intelligence", "Data Profiling", "Executive Reporting", "Business Analysis");
+  for (const tag of candidatePool) {
+    if (!tag || typeof tag !== "string") continue;
+    const trimmed = tag.trim();
+    if (!trimmed || trimmed.length < 2) continue;
+    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some((pat) => pat.test(trimmed));
+    if (!isForbidden && !cleanTags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) {
+      cleanTags.push(trimmed);
+    }
+  }
+  return cleanTags.slice(0, 8);
+}
+function sanitizeBusinessObjective(rawObjective, domain = "Analytics", industry = "Business Intelligence", topKPI) {
+  if (rawObjective && typeof rawObjective === "string") {
+    const isJunk = rawObjective.includes("payload") || rawObjective.includes("Extraction") || rawObjective.includes("Visual asset") || rawObjective.includes("PDF Grounded") || rawObjective.includes("file:") || /\.(png|jpg|jpeg|pdf|docx|xlsx|csv|sql|py|ipynb)\b/i.test(rawObjective) || rawObjective.length < 25;
+    if (!isJunk) {
+      return rawObjective.trim();
+    }
+  }
+  const kpiMention = topKPI ? ` tracking key performance indicators such as ${topKPI}` : "";
+  return `This project evaluates operational telemetry and performance trends within the ${domain} domain in ${industry}${kpiMention}. The primary objective is to analyze metric variances, isolate operational bottlenecks, and formulate strategic business recommendations for executive decision-makers.`;
+}
 async function reviewAndRefinePortfolio(structured, graph) {
   const ai = getAiClient();
   if (!ai) return structured;
@@ -1139,42 +1462,46 @@ ${JSON.stringify({
 Return refined executive JSON matching the specified schema properties.
 `;
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: reviewPrompt,
-      config: {
-        systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            subtitle: { type: Type.STRING },
-            executiveSummary: { type: Type.STRING },
-            businessContext: { type: Type.STRING },
-            businessProblem: { type: Type.STRING },
-            businessObjective: { type: Type.STRING },
-            businessImpact: { type: Type.STRING },
-            findings: { type: Type.STRING },
-            recommendations: { type: Type.STRING },
-            resumeBullets: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            linkedInSummary: { type: Type.STRING },
-            starStory: {
-              type: Type.OBJECT,
-              properties: {
-                situation: { type: Type.STRING },
-                task: { type: Type.STRING },
-                action: { type: Type.STRING },
-                result: { type: Type.STRING }
+    const response = await executeWithTimeout(
+      "Gemini Portfolio Compiler",
+      () => ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: reviewPrompt,
+        config: {
+          systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              subtitle: { type: Type.STRING },
+              executiveSummary: { type: Type.STRING },
+              businessContext: { type: Type.STRING },
+              businessProblem: { type: Type.STRING },
+              businessObjective: { type: Type.STRING },
+              businessImpact: { type: Type.STRING },
+              findings: { type: Type.STRING },
+              recommendations: { type: Type.STRING },
+              resumeBullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              linkedInSummary: { type: Type.STRING },
+              starStory: {
+                type: Type.OBJECT,
+                properties: {
+                  situation: { type: Type.STRING },
+                  task: { type: Type.STRING },
+                  action: { type: Type.STRING },
+                  result: { type: Type.STRING }
+                }
               }
             }
           }
         }
-      }
-    });
+      }),
+      15e3
+    );
     const refined = JSON.parse(response.text.trim());
     if (refined.title) structured.title.value = refined.title;
     if (refined.subtitle) structured.subtitle.value = refined.subtitle;
@@ -1467,286 +1794,290 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
   for (const model of candidateModels) {
     try {
       usedModel = model;
-      response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction: "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              subtitle: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              executiveSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessContext: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessProblem: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessObjective: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              businessImpact: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              stakeholders: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              datasetDescription: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              methodology: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              dataCleaning: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              analysisProcess: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              analyticalTechniques: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              industry: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              role: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              duration: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              findings: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              recommendations: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              challenges: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              lessonsLearned: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              technologyStack: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              skillsDemonstrated: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              resumeBullets: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              linkedInSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              gitHubReadmeSummary: {
-                type: Type.OBJECT,
-                properties: {
-                  value: { type: Type.STRING },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              starStory: {
-                type: Type.OBJECT,
-                properties: {
-                  value: {
-                    type: Type.OBJECT,
-                    properties: {
-                      situation: { type: Type.STRING },
-                      task: { type: Type.STRING },
-                      action: { type: Type.STRING },
-                      result: { type: Type.STRING }
-                    },
-                    required: ["situation", "task", "action", "result"]
-                  },
-                  confidence: { type: Type.INTEGER }
-                },
-                required: ["value", "confidence"]
-              },
-              metrics: {
-                type: Type.ARRAY,
-                items: {
+      response = await executeWithTimeout(
+        `Gemini Compiler Model[${model}]`,
+        () => ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction: "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: {
                   type: Type.OBJECT,
                   properties: {
-                    label: { type: Type.STRING },
                     value: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    iconName: { type: Type.STRING },
-                    confidence: { type: Type.INTEGER },
-                    sourceFile: { type: Type.STRING }
+                    confidence: { type: Type.INTEGER }
                   },
-                  required: ["label", "value", "description", "confidence"]
+                  required: ["value", "confidence"]
+                },
+                subtitle: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                executiveSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessContext: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessProblem: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessObjective: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                businessImpact: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                stakeholders: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                datasetDescription: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                methodology: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                dataCleaning: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                analysisProcess: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                analyticalTechniques: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                industry: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                role: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                duration: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                findings: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                recommendations: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                challenges: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                lessonsLearned: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                technologyStack: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                skillsDemonstrated: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                resumeBullets: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING }
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                linkedInSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                gitHubReadmeSummary: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: { type: Type.STRING },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                starStory: {
+                  type: Type.OBJECT,
+                  properties: {
+                    value: {
+                      type: Type.OBJECT,
+                      properties: {
+                        situation: { type: Type.STRING },
+                        task: { type: Type.STRING },
+                        action: { type: Type.STRING },
+                        result: { type: Type.STRING }
+                      },
+                      required: ["situation", "task", "action", "result"]
+                    },
+                    confidence: { type: Type.INTEGER }
+                  },
+                  required: ["value", "confidence"]
+                },
+                metrics: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      label: { type: Type.STRING },
+                      value: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      iconName: { type: Type.STRING },
+                      confidence: { type: Type.INTEGER },
+                      sourceFile: { type: Type.STRING }
+                    },
+                    required: ["label", "value", "description", "confidence"]
+                  }
+                },
+                tags: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                categories: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
                 }
               },
-              tags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              categories: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            },
-            required: [
-              "title",
-              "executiveSummary",
-              "businessProblem",
-              "businessObjective",
-              "methodology",
-              "findings",
-              "recommendations",
-              "resumeBullets",
-              "linkedInSummary",
-              "starStory"
-            ]
+              required: [
+                "title",
+                "executiveSummary",
+                "businessProblem",
+                "businessObjective",
+                "methodology",
+                "findings",
+                "recommendations",
+                "resumeBullets",
+                "linkedInSummary",
+                "starStory"
+              ]
+            }
           }
-        }
-      });
+        }),
+        15e3
+      );
       if (response && response.text) {
         break;
       }
@@ -1813,7 +2144,12 @@ ${response.text}`);
       evidence: defaultEvidence
     },
     businessObjective: {
-      value: parsed.businessObjective?.value || "Deliver evidence-grounded performance metrics and recommendations.",
+      value: sanitizeBusinessObjective(
+        parsed.businessObjective?.value || rawBaseProject.objective,
+        graph.projectDomain || "Analytics & Business Intelligence",
+        parsed.industry?.value || "Business Analytics",
+        understanding?.trueKPIs[0]?.label || graph.metrics[0]?.value?.label
+      ),
       confidence: parsed.businessObjective?.confidence || dynamicConfidence,
       evidence: defaultEvidence
     },
@@ -1936,10 +2272,27 @@ ${parsed.executiveSummary?.value || ""}`,
       confidence: m.confidence || dynamicConfidence,
       sourceFile: m.sourceFile || primarySource
     })),
-    tags: parsed.tags || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"]),
+    tags: sanitizeRecruiterTags(
+      parsed.tags || rawBaseProject.tags || [],
+      parsed.technologyStack?.value || [],
+      parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map((t) => t.value) : []),
+      graph.projectDomain || parsed.industry?.value || ""
+    ),
     categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
   };
   structured = await reviewAndRefinePortfolio(structured, graph);
+  structured.businessObjective.value = sanitizeBusinessObjective(
+    structured.businessObjective.value,
+    graph.projectDomain || "Analytics & Business Intelligence",
+    structured.industry.value,
+    understanding?.trueKPIs[0]?.label || graph.metrics[0]?.value?.label
+  );
+  structured.tags = sanitizeRecruiterTags(
+    structured.tags,
+    structured.technologyStack.value,
+    structured.analyticalTechniques.value,
+    structured.industry.value
+  );
   const rawUpdated = {
     ...rawBaseProject,
     title: structured.title.value,
@@ -2139,6 +2492,29 @@ function evaluateEvidenceCompleteness(graph, userAnswers, understanding) {
     interviewStory: storyScore
   };
 }
+function hasProductionDeploymentEvidence(graph, understanding) {
+  const keywords = [
+    "production deployment",
+    "deployed to",
+    "live client",
+    "client engagement",
+    "actual revenue impact",
+    "realized cost savings",
+    "roi achieved",
+    "production database",
+    "live server",
+    "enterprise rollout",
+    "organization deployment",
+    "client implementation",
+    "deployed in production"
+  ];
+  const docsText = graph.documentation.map((d) => d.value.text.toLowerCase()).join(" ");
+  const termsText = graph.businessTerms.map((t) => t.value.toLowerCase()).join(" ");
+  const problemText = (understanding.businessProblem || "").toLowerCase();
+  const summaryText = (understanding.suggestedSummaries?.[0]?.summary || "").toLowerCase();
+  const combinedText = `${docsText} ${termsText} ${problemText} ${summaryText}`;
+  return keywords.some((kw) => combinedText.includes(kw));
+}
 function generateMissingInformationRequests(report, graph, understanding) {
   const requests = [];
   const fileCount = understanding.datasets.length;
@@ -2150,15 +2526,27 @@ function generateMissingInformationRequests(report, graph, understanding) {
   const topKPI = understanding.trueKPIs[0]?.label || "core metrics";
   const topStakeholder = understanding.likelyStakeholders[0] || "executive decision-makers";
   const detectedQ = understanding.businessQuestions.length > 0 ? `"${understanding.businessQuestions[0]}"` : null;
+  const isProduction = hasProductionDeploymentEvidence(graph, understanding);
   if (report.businessImpact < 80) {
-    requests.push({
-      field: "Business Impact",
-      reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
-      question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} \u2014 ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
-      type: "textarea",
-      estimatedQualityBoost: 25,
-      recruiterImpactPriority: "Critical"
-    });
+    if (isProduction) {
+      requests.push({
+        field: "Business Impact",
+        reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
+        question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} \u2014 ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
+        type: "textarea",
+        estimatedQualityBoost: 25,
+        recruiterImpactPriority: "Critical"
+      });
+    } else {
+      requests.push({
+        field: "Business Recommendations & Priorities",
+        reason: `Key strategic recommendations or management priority actions missing for ${domain}.`,
+        question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} \u2014 ${toolStack}) analyzes ${topKPI}. What top business recommendations emerged from your findings, and which action should management prioritize first?`,
+        type: "textarea",
+        estimatedQualityBoost: 25,
+        recruiterImpactPriority: "Critical"
+      });
+    }
   }
   if (report.businessObjective < 80) {
     const questionHint = detectedQ ? `We detected a potential business question: ${detectedQ}. ` : `We detected ${fileCount} ${toolStack} source file(s) focused on ${domain}. `;
@@ -2172,21 +2560,22 @@ function generateMissingInformationRequests(report, graph, understanding) {
     });
   }
   if (report.recommendations < 80) {
+    const recQuestion = isProduction ? `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you presented to ${topStakeholder}?` : `Based on your ${industry} analysis of ${topKPI}, what key business recommendations emerged, and which analytical insight surprised you most?`;
     requests.push({
       field: "Strategic Recommendations",
       reason: "Strategic action items or executive recommendations were not explicitly stated in source files.",
-      question: `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you would present to ${topStakeholder}?`,
+      question: recQuestion,
       type: "textarea",
       estimatedQualityBoost: 20,
       recruiterImpactPriority: "High"
     });
   }
   if (report.stakeholders < 80) {
-    const kpiMention = understanding.trueKPIs.length > 0 ? ` tracking metrics like ${topKPI}` : "";
+    const question = isProduction ? `Who were the primary business stakeholders consuming this ${projectType} report within ${industry}?` : `Which key stakeholder (${topStakeholder}) benefits most from this ${projectType} analysis, and which KPI (such as ${topKPI}) should they monitor going forward?`;
     requests.push({
-      field: "Stakeholders",
-      reason: "Target audience or key decision-maker roles were not identified in evidence.",
-      question: `Who were the primary business stakeholders or executive team leaders consuming this ${projectType} report${kpiMention} within ${industry}?`,
+      field: "Stakeholders & KPI Focus",
+      reason: "Target audience roles or key monitoring KPIs were not fully identified in evidence.",
+      question,
       type: "text",
       estimatedQualityBoost: 15,
       recruiterImpactPriority: "Medium"
@@ -2363,28 +2752,34 @@ function cacheSet(key, understanding) {
 }
 function buildEvidenceDigest(graph) {
   const parsers = Array.from(new Set(graph.evidenceSources.map((s) => s.parser)));
-  const kpiNames = [
+  const kpiNames = Array.from(/* @__PURE__ */ new Set([
     ...graph.detectedKPIs.map((k) => k.value.name),
     ...graph.kpis.map((k) => k.value.name),
     ...graph.metrics.map((m) => m.value.label)
-  ].filter(Boolean).slice(0, 30);
-  const colNames = [
+  ])).filter(Boolean).slice(0, 35);
+  const colNames = Array.from(/* @__PURE__ */ new Set([
     ...graph.detectedDimensions.map((d) => d.value),
     ...graph.dimensions.map((d) => d.value),
     ...graph.detectedMeasures.map((m) => m.value)
-  ].filter(Boolean).slice(0, 40);
+  ])).filter(Boolean).slice(0, 45);
+  const excelMeasures = Array.from(new Set(
+    graph.detectedMeasures.filter((m) => m.parser === "ExcelParser").map((m) => m.value)
+  )).slice(0, 20);
+  const excelInsights = graph.dashboardInsights.filter((d) => d.parser === "ExcelParser").map((d) => d.value).slice(0, 15);
   const sqlTables = graph.sqlLogic.flatMap((s) => s.value.tables).slice(0, 20);
   const sqlAggs = graph.sqlLogic.flatMap((s) => s.value.aggregations).slice(0, 20);
   const sqlWin = graph.sqlLogic.flatMap((s) => s.value.windowFunctions).slice(0, 10);
   const daxMeasures = graph.metrics.filter((m) => m.parser === "PowerBIParser").map((m) => m.value.label).slice(0, 20);
-  const businessTerms = graph.businessTerms.map((t) => t.value).slice(0, 30);
-  const businessEntities = graph.businessEntities.map((e) => e.value).slice(0, 20);
+  const businessTerms = Array.from(new Set(graph.businessTerms.map((t) => t.value))).slice(0, 35);
+  const businessEntities = Array.from(new Set(graph.businessEntities.map((e) => e.value))).slice(0, 25);
   const businessQuestions = graph.businessQuestions.map((q) => q.value).slice(0, 10);
   const dashboardPages = graph.dashboards.flatMap((d) => d.value.pages || [d.value.name]).slice(0, 15);
-  const docs = graph.documentation.map((d) => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 8);
-  const techniques = graph.analyticalTechniques.map((a) => a.value).slice(0, 15);
+  const docs = graph.documentation.map((d) => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 10);
+  const techniques = Array.from(new Set(graph.analyticalTechniques.map((a) => a.value))).slice(0, 20);
   const recommendations = graph.recommendations.map((r) => r.value).slice(0, 5);
-  const toolsRaw = graph.businessTerms.filter((t) => t.value.startsWith("Tool:")).map((t) => t.value.replace("Tool:", "").trim());
+  const toolsRaw = Array.from(new Set(
+    graph.businessTerms.filter((t) => t.value.startsWith("Tool:")).map((t) => t.value.replace("Tool:", "").trim())
+  ));
   const filesSummary = graph.evidenceSources.map((s) => ({
     file: s.fileName,
     parser: s.parser,
@@ -2396,6 +2791,8 @@ function buildEvidenceDigest(graph) {
     files: filesSummary,
     kpiNames,
     columnNames: colNames,
+    excelMeasures,
+    excelWorkbookTelemetry: excelInsights,
     sqlTables,
     sqlAggregations: sqlAggs,
     sqlWindowFunctions: sqlWin,
@@ -2531,13 +2928,17 @@ function buildFallbackUnderstanding(graph) {
   const primarySource = graph.evidenceSources[0]?.fileName || "Dataset";
   const cleanSource = primarySource.split(".")[0].replace(/[^a-zA-Z0-9\s]/g, " ").trim();
   const titleCap = cleanSource ? cleanSource.charAt(0).toUpperCase() + cleanSource.slice(1) : "Business Intelligence";
+  const rawObjText = objectiveDoc?.value.text || "";
+  const isJunkObj = !rawObjText || rawObjText.includes("payload") || rawObjText.includes("Extraction") || rawObjText.includes("Visual asset") || rawObjText.includes("PDF Grounded") || rawObjText.includes("file:") || rawObjText.length < 20;
+  const fallbackObjective = `This project evaluates key operational performance indicators and transactional trends. The primary objective is to analyze metric variances, identify operational bottlenecks, and formulate strategic business recommendations for decision-makers.`;
+  const primaryObjective = !isJunkObj ? rawObjText : fallbackObjective;
   return {
     projectType,
     projectArchetype,
     industry: "Analytics & Business Intelligence",
     businessDomain: "Operations & Data Analytics",
     businessProblem: problemDoc?.value.text || `Analytical gaps identified across ${graph.evidenceSources.length} source file(s) requiring structured evaluation.`,
-    primaryObjective: objectiveDoc?.value.text || (graph.businessQuestions.length > 0 ? `Answer key business inquiry: ${graph.businessQuestions[0].value}` : `Evaluate key performance metrics and optimize business decisions across ${graph.evidenceSources.length} source file(s).`),
+    primaryObjective,
     likelyStakeholders: graph.stakeholderIndicators.length > 0 ? graph.stakeholderIndicators.map((s) => s.value) : ["Executive Leadership", "Analytics Leads", "Operations Managers"],
     businessQuestions: graph.businessQuestions.map((q) => q.value),
     trueKPIs,
@@ -2607,24 +3008,28 @@ ${digest}
 - suggestedSummaries: 1-2 executive summary paragraph suggestions.
 - confidence: Your overall confidence in this synthesis (0-100).
 `;
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const candidateModels = ["gemini-3.5-flash", "gemini-2.5-flash"];
   for (const model of candidateModels) {
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: PUE_RESPONSE_SCHEMA
-        }
-      });
+      const response = await executeWithTimeout(
+        `Gemini PUE Model[${model}]`,
+        () => ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: PUE_RESPONSE_SCHEMA
+          }
+        }),
+        12e3
+      );
       const raw = JSON.parse(response.text.trim());
       const normalized = normalizeUnderstanding(raw, graph);
       console.log(`[PUE] Synthesized via Gemini/${model} (confidence: ${normalized.confidence})`);
       return normalized;
     } catch (err) {
-      console.warn(`[PUE] Gemini model ${model} failed: ${err.message}`);
+      console.warn(`[PUE] Gemini model ${model} failed or timed out: ${err.message}`);
     }
   }
   return null;
@@ -2756,12 +3161,30 @@ function mergeExtractedProjects(projects) {
   });
   return merged;
 }
-async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existingUnderstanding) {
+async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existingUnderstanding, profiler) {
+  const logger = createStepLogger("Compiler Pipeline");
+  const pipelineStep = logger.start("Full compileProjectPackage Execution");
+  const firstRaw = Array.isArray(rawFiles) && rawFiles[0] ? rawFiles[0] : null;
+  console.log(`
+----------------------------------------------------------`);
+  console.log(`[STAGE 8: compileProjectPackage Input]`);
+  console.log(`typeof rawFiles: "${typeof rawFiles}"`);
+  console.log(`Array.isArray(rawFiles): ${Array.isArray(rawFiles)}`);
+  console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
+  console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
+  console.log(`RAW FILE DESCRIPTOR:
+${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? firstRaw.content.length : 0 } : null, null, 2)}`);
+  console.log(`----------------------------------------------------------
+`);
+  const pipelineStartTime = Date.now();
   let projectType = "Mixed Analytics";
   const MAX_RAW_FILES = 50;
   if (rawFiles.length > MAX_RAW_FILES) {
     throw new Error(`Package exceeds maximum file limit (${MAX_RAW_FILES} files). Please reduce file count.`);
   }
+  const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
+  console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
+  const stage1Start = Date.now();
   const allFiles = [];
   const fileCoverage = [];
   for (const file of rawFiles) {
@@ -2809,29 +3232,53 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
       });
     }
   }
+  const stage1Duration = Date.now() - stage1Start;
+  s1.end(`${allFiles.length} file(s) prepared`);
+  console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);
+  const s2 = logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction");
+  console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
+  const stage2Start = Date.now();
   const parsedProjects = [];
   const evidenceNodes = [];
   for (const file of allFiles) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     const parser = PARSER_REGISTRY[ext];
     if (parser) {
+      let stageNum = 5;
+      let stageName = `Excel parser [${file.name}]`;
+      if (ext === "pdf") {
+        stageNum = 6;
+        stageName = `PDF parser [${file.name}]`;
+      } else if (["png", "jpg", "jpeg"].includes(ext)) {
+        stageNum = 7;
+        stageName = `Image parser [${file.name}]`;
+      }
+      const st = profiler ? profiler.profileStageStart(stageNum, stageName, `${file.size} bytes`) : null;
       try {
+        const pStart = Date.now();
+        const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
-          15e3
+          4e3
         );
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);
+        parserFileStep.end(JSON.stringify(result.evidenceNode).length);
+        if (profiler) {
+          profiler.recordAllocation(`EvidenceNode [${file.name}]`, JSON.stringify(result.evidenceNode).length);
+          profiler.profileStageEnd(st, `${JSON.stringify(result.evidenceNode).length} bytes`);
+        }
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
-          reason: `Parsed via specialized Vercel-native ${parser.name}. SHA-256 verified.`,
+          reason: `Parsed via specialized Vercel-native ${parser.name} in ${Date.now() - pStart}ms. SHA-256 verified.`,
           size: file.size,
           sha256: file.sha256
         });
       } catch (err) {
         console.error(`Sandboxed parser failure for '${file.name}':`, err.message);
+        if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
         fileCoverage.push({
           fileName: file.name,
           status: "Failed",
@@ -2850,6 +3297,9 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
       });
     }
   }
+  const stage2Duration = Date.now() - stage2Start;
+  s2.end(`${evidenceNodes.length} evidence node(s) extracted`);
+  console.log(`[Pipeline] Stage 2 Complete (${stage2Duration}ms)`);
   if (parsedProjects.length === 1 && projectType !== "ZIP Package") {
     const ext = rawFiles[0].name.split(".").pop()?.toLowerCase() || "";
     if (ext === "xlsx" || ext === "xls") projectType = "Excel Analytics";
@@ -2858,27 +3308,65 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
     else if (ext === "ipynb") projectType = "Python";
     else if (ext === "pbix" || ext === "dax") projectType = "Power BI";
   }
+  const st8 = profiler ? profiler.profileStageStart(8, "Evidence Graph generation", `${evidenceNodes.length} nodes`) : null;
+  const s3 = logger.start("Stage 3: Building Canonical Evidence Graph");
+  console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
+  const stage3Start = Date.now();
   let evidenceGraph;
   try {
     evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
     evidenceGraph.projectDomain = projectType;
   } catch (err) {
+    if (profiler && st8) profiler.profileStageEnd(st8, "0 bytes", "FAILED", err.message);
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
+  const stage3Duration = Date.now() - stage3Start;
+  s3.end(JSON.stringify(evidenceGraph).length);
+  if (profiler && st8) {
+    profiler.recordAllocation("Evidence Graph Object", JSON.stringify(evidenceGraph).length);
+    profiler.profileStageEnd(st8, `${JSON.stringify(evidenceGraph).length} bytes`);
+  }
+  console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
+  const st9 = profiler ? profiler.profileStageStart(9, "Project Understanding Engine", "Evidence Graph") : null;
+  const s4 = logger.start("Stage 4: Project Understanding Engine (PUE)");
+  console.log("[Pipeline] Stage 4 Start: Project Understanding Engine (PUE)");
+  const stage4Start = Date.now();
   const packageEvidenceHash = crypto2.createHash("sha256").update(allFiles.map((f) => f.sha256).sort().join(":")).digest("hex");
-  const projectUnderstanding = await getCachedOrSynthesizeUnderstanding(
-    evidenceGraph,
-    packageEvidenceHash,
-    existingUnderstanding
+  const projectUnderstanding = await executeWithTimeout(
+    "Project Understanding Engine (PUE)",
+    () => getCachedOrSynthesizeUnderstanding(evidenceGraph, packageEvidenceHash, existingUnderstanding),
+    15e3
   );
+  const stage4Duration = Date.now() - stage4Start;
+  s4.end(JSON.stringify(projectUnderstanding).length);
+  if (profiler && st9) {
+    profiler.recordAllocation("Project Understanding Object", JSON.stringify(projectUnderstanding).length);
+    profiler.profileStageEnd(st9, `${JSON.stringify(projectUnderstanding).length} bytes`);
+  }
+  console.log(`[Pipeline] Stage 4 Complete (${stage4Duration}ms)`);
+  const st10 = profiler ? profiler.profileStageStart(10, "Evidence Intelligence", "PUE Object") : null;
   const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
+  if (profiler && st10) profiler.profileStageEnd(st10, `Archetype: ${projectArchetype}`);
+  const st11 = profiler ? profiler.profileStageStart(11, "Completeness Engine", "Evidence Graph & PUE") : null;
+  const s5 = logger.start("Stage 5: Completeness Evaluator & Conflict Detection");
+  console.log("[Pipeline] Stage 5 Start: Completeness Evaluator & Conflict Detection");
+  const stage5Start = Date.now();
   const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
   const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
+  if (profiler && st11) profiler.profileStageEnd(st11, "Coverage Evaluated");
+  const st12 = profiler ? profiler.profileStageStart(12, "Conflict Resolution", "Extracted Projects") : null;
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
     ...detectEvidenceConflicts(evidenceGraph),
     ...answerConflicts
   ];
+  const stage5Duration = Date.now() - stage5Start;
+  s5.end(`${conflicts.length} conflict(s) detected`);
+  if (profiler && st12) profiler.profileStageEnd(st12, `${conflicts.length} conflicts resolved/detected`);
+  console.log(`[Pipeline] Stage 5 Complete (${stage5Duration}ms)`);
+  const s6 = logger.start("Stage 6: Decision Logic Evaluation");
+  console.log("[Pipeline] Stage 6 Start: Decision Logic Evaluation");
+  const stage6Start = Date.now();
   const requiredScores = [
     coverageReport.executiveSummary,
     coverageReport.businessObjective,
@@ -2891,10 +3379,23 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
     coverageReport.interviewStory
   ];
   const isFullySufficient = requiredScores.every((score) => score >= 80);
+  const stage6Duration = Date.now() - stage6Start;
+  s6.end(`Fully Sufficient: ${isFullySufficient}`);
+  console.log(`[Pipeline] Stage 6 Complete (${stage6Duration}ms)`);
+  const stageTimings = [
+    { stage: "Stage 1 (File Prep & Unpack)", durationMs: stage1Duration, status: "Completed" },
+    { stage: "Stage 2 (Sandboxed Parsers)", durationMs: stage2Duration, status: "Completed" },
+    { stage: "Stage 3 (Evidence Graph)", durationMs: stage3Duration, status: "Completed" },
+    { stage: "Stage 4 (Project Understanding)", durationMs: stage4Duration, status: "Completed" },
+    { stage: "Stage 5 (Completeness & Conflicts)", durationMs: stage5Duration, status: "Completed" },
+    { stage: "Stage 6 (Decision Logic)", durationMs: stage6Duration, status: "Completed" }
+  ];
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
     const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
       const rawProject2 = mergeExtractedProjects(parsedProjects);
+      console.log(`[Timing Profile] Total Pipeline Duration (NEEDS_USER_INPUT): ${Date.now() - pipelineStartTime}ms`);
+      pipelineStep.end("Terminated with NEEDS_USER_INPUT");
       return {
         status: "NEEDS_USER_INPUT",
         projectType,
@@ -2908,24 +3409,57 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
         missingInformation,
         conflicts,
         fileCoverage,
-        evidenceGraph
+        evidenceGraph,
+        stageTimings
       };
     }
   }
+  const st13 = profiler ? profiler.profileStageStart(13, "Portfolio Compiler (Gemini)", "Evidence Graph & Merged Context") : null;
+  const s7 = logger.start("Stage 7: Baseline Merged Raw Project Assembly");
+  console.log("[Pipeline] Stage 7 Start: Baseline Merged Raw Project Assembly");
+  const stage7Start = Date.now();
   const rawProject = mergeExtractedProjects(parsedProjects);
-  console.log({
-    hasGeminiKey: !!process.env.GEMINI_API_KEY,
-    keyLength: process.env.GEMINI_API_KEY?.length
-  });
-  const synthesized = await compilePortfolioWithGemini(
-    evidenceGraph,
-    conflicts,
-    rawProject,
-    mergedAnswersContext,
-    projectArchetype,
-    projectUnderstanding
+  const stage7Duration = Date.now() - stage7Start;
+  s7.end(JSON.stringify(rawProject).length);
+  console.log(`[Pipeline] Stage 7 Complete (${stage7Duration}ms)`);
+  stageTimings.push({ stage: "Stage 7 (Baseline Raw Project)", durationMs: stage7Duration, status: "Completed" });
+  const s8 = logger.start("Stage 8: AI Portfolio Compiler Synthesis");
+  console.log("[Pipeline] Stage 8 Start: AI Portfolio Compiler Synthesis");
+  const stage8Start = Date.now();
+  const synthesized = await executeWithTimeout(
+    "Portfolio Compiler (Gemini)",
+    () => compilePortfolioWithGemini(
+      evidenceGraph,
+      conflicts,
+      rawProject,
+      mergedAnswersContext,
+      projectArchetype,
+      projectUnderstanding
+    ),
+    15e3
   );
+  const stage8Duration = Date.now() - stage8Start;
+  s8.end(JSON.stringify(synthesized.structured).length);
+  if (profiler && st13) {
+    profiler.recordAllocation("Gemini Portfolio Output", JSON.stringify(synthesized.structured).length);
+    profiler.profileStageEnd(st13, `${JSON.stringify(synthesized.structured).length} bytes`);
+  }
+  console.log(`[Pipeline] Stage 8 Complete (${stage8Duration}ms)`);
+  stageTimings.push({ stage: "Stage 8 (Gemini Synthesis)", durationMs: stage8Duration, status: "Completed" });
+  const st14 = profiler ? profiler.profileStageStart(14, "Recruiter Audit", "Synthesized Project") : null;
+  console.log("[Pipeline] Stage 9 Start: Recruiter Audit Engine Evaluation");
+  const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
+  const stage9Duration = Date.now() - stage9Start;
+  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallScore}`);
+  console.log(`[Pipeline] Stage 9 Complete (${stage9Duration}ms)`);
+  stageTimings.push({ stage: "Stage 9 (Recruiter Audit Engine)", durationMs: stage9Duration, status: "Completed" });
+  const totalDuration = Date.now() - pipelineStartTime;
+  console.log(`
+==========================================================`);
+  console.log(`[PIPELINE TIMING PROFILE] Total Pipeline Execution: ${totalDuration}ms`);
+  console.log(`==========================================================
+`);
   const sourceAttributions = {};
   const confidenceScores = {};
   if (synthesized.structured) {
@@ -2975,7 +3509,8 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
       projectVersion: "v4.1",
       totalFilesProcessed: allFiles.length,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
-    }
+    },
+    stageTimings
   };
 }
 async function compileSourceCodeToProject(fileName, sourceCode, userAnswers, forceCompile, existingUnderstanding) {
@@ -3251,10 +3786,14 @@ function logExecution(stats) {
 
 // src/api/portfolio/ai.ts
 var config = {
-  runtime: "nodejs"
+  runtime: "nodejs",
+  maxDuration: 60
 };
 async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json");
   if (!enforceOwnerPermission(req, res)) return;
+  const logger = createStepLogger("API Endpoint /ai-package-parse");
+  const handlerStep = logger.start("HTTP Handler /api/portfolio/ai");
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);
@@ -3263,9 +3802,20 @@ async function handler(req, res) {
     return sendError(res, 405, "Method Not Allowed. Only POST is supported.");
   }
   if (pathname.includes("/ai-package-parse")) {
+    const profiler = new PipelineProfiler();
     try {
+      const st1 = profiler.profileStageStart(1, "Receive request", `${JSON.stringify(req.body || {}).length} bytes`);
+      const prepStep = logger.start("Stage 0: Payload Parsing & Storage Resolution");
       const body = req.body || {};
       const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
+      profiler.profileStageEnd(st1, `${Array.isArray(files) ? files.length : 0} file(s)`);
+      const st2 = profiler.profileStageStart(2, "Validate descriptors", `${Array.isArray(files) ? files.length : 0} descriptor(s)`);
+      console.log(`
+==========================================================`);
+      console.log(`[SERVER AUDIT 1: Raw req.body.files[0]]`);
+      console.log(JSON.stringify(req.body.files?.[0], null, 2));
+      console.log(`==========================================================
+`);
       const rawFilesToCompile = [];
       if (Array.isArray(files) && files.length > 0) {
         for (const fileMeta of files) {
@@ -3276,39 +3826,75 @@ async function handler(req, res) {
           if (!isAllowedFileType(name)) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
+          profiler.profileStageEnd(st2, `Validated file '${name}'`);
+          const st3 = profiler.profileStageStart(3, `Download from Supabase [${name}]`, fileMeta.storagePath || "No Path");
           let buffer = null;
+          let resolutionSource = "None";
+          let storageDownloadErrorMsg = "";
           if (fileMeta.storagePath) {
+            const dlStep = logger.start(`Supabase Storage Download [${name}]`);
             const client = getSupabaseClient();
             if (client) {
               try {
                 const bucket = process.env.SUPABASE_STORAGE_BUCKET || "portfolio-uploads";
-                const { data, error } = await client.storage.from(bucket).download(fileMeta.storagePath);
-                if (!error && data) {
-                  const arrayBuffer = await data.arrayBuffer();
+                const downloadRes = await executeWithTimeout(
+                  `Supabase Download [${name}]`,
+                  () => client.storage.from(bucket).download(fileMeta.storagePath),
+                  12e3
+                );
+                if (!downloadRes.error && downloadRes.data) {
+                  const arrayBuffer = await downloadRes.data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
-                } else if (error) {
-                  const { category, message } = categorizeStorageError(error);
+                  resolutionSource = "Supabase Storage Download";
+                  dlStep.end(buffer.length);
+                  profiler.recordAllocation(`Supabase Storage Buffer [${name}]`, buffer.length);
+                  profiler.profileStageEnd(st3, `${buffer.length} bytes`);
+                } else if (downloadRes.error) {
+                  dlStep.end("Failed");
+                  const { category, message } = categorizeStorageError(downloadRes.error);
+                  storageDownloadErrorMsg = `Category ${category}: ${message}`;
                   console.warn(`[ai-package-parse] Storage download failed for path '${fileMeta.storagePath}' [Category: ${category}]: ${message}`);
+                  profiler.profileStageEnd(st3, "0 bytes", "FAILED", storageDownloadErrorMsg);
                 }
               } catch (downloadErr) {
-                console.warn(`[ai-package-parse] Exception downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                dlStep.end("Timeout/Error");
+                storageDownloadErrorMsg = downloadErr.message || "Timeout downloading from Supabase Storage";
+                console.warn(`[ai-package-parse] Exception or timeout downloading storage path '${fileMeta.storagePath}':`, downloadErr.message);
+                profiler.profileStageEnd(st3, "0 bytes", "TIMED OUT", storageDownloadErrorMsg);
               }
+            } else {
+              storageDownloadErrorMsg = "Supabase client unconfigured on server environment.";
+              profiler.profileStageEnd(st3, "0 bytes", "FAILED", storageDownloadErrorMsg);
             }
+          } else {
+            profiler.profileStageEnd(st3, "No Storage Path", "END");
           }
+          const st4 = profiler.profileStageStart(4, `Resolve buffers [${name}]`, `Storage Buffer: ${buffer ? buffer.length : 0} bytes`);
           if (!buffer && fileMeta.fallbackContent) {
             try {
               buffer = Buffer.from(fileMeta.fallbackContent, "base64");
+              resolutionSource = "In-Memory Browser Fallback (Base64)";
+              profiler.recordAllocation(`Fallback Base64 Buffer [${name}]`, buffer.length);
             } catch (fallbackErr) {
               console.warn(`Error decoding fallbackContent for '${name}':`, fallbackErr.message);
             }
           }
           if (!buffer) {
-            return sendError(res, 400, `Both storagePath and fallbackContent are absent or unavailable for file '${name}'.`);
+            profiler.profileStageEnd(st4, "0 bytes", "FAILED", storageDownloadErrorMsg);
+            const hasPath = Boolean(fileMeta.storagePath);
+            const hasFallback = Boolean(fileMeta.fallbackContent);
+            if (!hasPath && !hasFallback) {
+              return sendError(res, 400, `Both storagePath and fallbackContent are absent on file descriptor for '${name}'.`);
+            } else {
+              return sendError(res, 400, `Failed to retrieve content for '${name}' (storagePath: '${fileMeta.storagePath || "NONE"}'). Storage download error: ${storageDownloadErrorMsg || "Download failed"} and no inline fallbackContent was available.`);
+            }
           }
           const validation = validateFileBuffer(buffer, name);
           if (!validation.isValid) {
+            profiler.profileStageEnd(st4, "0 bytes", "FAILED", validation.error);
             return sendError(res, 400, validation.error || `Corrupted file buffer for '${name}'.`);
           }
+          profiler.profileStageEnd(st4, `Resolved Buffer: ${buffer.length} bytes`);
           rawFilesToCompile.push({
             name,
             size: fileMeta.size || buffer.length,
@@ -3339,13 +3925,29 @@ async function handler(req, res) {
           "Invalid request payload. Must provide either legacy format ({ fileName, fileDataBase64 }) or new format ({ packageId, files })."
         );
       }
-      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding);
+      prepStep.end(`${rawFilesToCompile.length} file(s) resolved`);
+      const compileStep = logger.start("Package Compiler Pipeline Execution");
+      const output = await executeWithTimeout(
+        "Package Compiler Hard Deadline",
+        () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
+        25e3
+      );
+      compileStep.end(JSON.stringify(output).length);
+      const st15 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
+      const jsonOutputString = JSON.stringify(output);
+      profiler.recordAllocation("Final Output JSON String", jsonOutputString.length);
+      profiler.profileStageEnd(st15, `${jsonOutputString.length} bytes`);
+      const st16 = profiler.profileStageStart(16, "HTTP Response", `${jsonOutputString.length} bytes`);
       logExecution({
         endpoint: pathname,
         totalDurationMs: Date.now() - startTime
       });
+      handlerStep.end("200 OK Response Sent");
+      profiler.profileStageEnd(st16, "HTTP 200 OK Sent");
+      profiler.printFinalReport();
       return sendSuccess(res, output);
     } catch (err) {
+      profiler.printFinalReport();
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const timestamp = (/* @__PURE__ */ new Date()).toISOString();
       const stage = err.stage || "File Upload";

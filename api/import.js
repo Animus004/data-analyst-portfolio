@@ -1,8 +1,13 @@
 // @ts-nocheck
 // src/api/_lib/parsers/registry.ts
-import * as XLSX from "xlsx";
 import mammoth from "mammoth";
+import JSZip2 from "jszip";
+
+// src/api/_lib/parsers/streamExcel.ts
 import JSZip from "jszip";
+import * as XLSX from "xlsx";
+
+// src/api/_lib/parsers/registry.ts
 function createEmptyProject(fileName, parserName) {
   return {
     title: "",
@@ -12,7 +17,7 @@ function createEmptyProject(fileName, parserName) {
     role: "",
     duration: "",
     date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-    tags: [parserName.replace("Parser", "")],
+    tags: [],
     categories: [],
     objective: "",
     businessProblem: "",
@@ -33,7 +38,7 @@ var SQLParser = {
   extensions: ["sql"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "SQLParser");
-    proj.tags = ["SQL", "Relational Database"];
+    proj.tags = ["SQL", "Relational Database Querying", "Data Aggregation", "Window Functions"];
     proj.categories = ["Data Engineering", "Database Querying"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -118,7 +123,7 @@ var PythonParser = {
   extensions: ["py"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "PythonParser");
-    proj.tags = ["Python"];
+    proj.tags = ["Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis"];
     proj.categories = ["Data Science", "Data Engineering"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const lines = text.split("\n");
@@ -126,7 +131,7 @@ var PythonParser = {
       sourceFile: fileName,
       parser: "PythonParser",
       confidence: 90,
-      sections: [{ heading: "Python Source Code", content: text.slice(0, 3e3) }],
+      sections: [{ heading: "Python Analytics Script", content: text.slice(0, 3e3) }],
       extractedTerms: ["Python", "Pandas", "Scikit-Learn"]
     };
     lines.forEach((line, lineIdx) => {
@@ -169,7 +174,7 @@ var NotebookParser = {
   extensions: ["ipynb"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "NotebookParser");
-    proj.tags = ["Python", "Jupyter Notebook"];
+    proj.tags = ["Python", "Exploratory Data Analysis", "Interactive Analytics", "Statistical Modeling"];
     proj.categories = ["Data Science", "Interactive Analytics"];
     proj.role = "Data Scientist";
     const docEvidence = {
@@ -233,7 +238,7 @@ var PowerBIParser = {
   extensions: ["pbix", "dax"],
   async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "PowerBIParser");
-    proj.tags = ["Power BI", "DAX"];
+    proj.tags = ["Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
     const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
     const pbiEvidence = {
@@ -283,13 +288,13 @@ var GitHubParser = {
   extensions: ["git"],
   async parse(fileName) {
     const proj = createEmptyProject(fileName, "GitHubParser");
-    proj.tags = ["GitHub", "Source Control"];
+    proj.tags = ["Version Control", "Analytics Engineering"];
     proj.categories = ["DevOps", "Data Engineering"];
     const docEvidence = {
       sourceFile: fileName,
       parser: "GitHubParser",
       confidence: 90,
-      sections: [{ heading: "GitHub Repository Structure", content: `Repository files extracted from ${fileName}` }],
+      sections: [{ heading: "Repository Structure", content: "Repository code layout." }],
       extractedTerms: ["Git", "Repository"]
     };
     return {
