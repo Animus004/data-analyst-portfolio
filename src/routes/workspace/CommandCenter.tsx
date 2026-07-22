@@ -1883,6 +1883,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
       )}
     </div>
+  </div>
 
       {/* Grid: 1. Project Inventory Table, 2. Profile Management, 3. Backup JSON panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
