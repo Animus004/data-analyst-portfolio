@@ -308,7 +308,7 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
     if (!isValid) {
       invalidFiles.push(d.name);
     }
-  });
+  }
 
   const allValid = invalidFiles.length === 0 && descriptors.length > 0;
   console.log(`\n[PACKAGE-WIDE VALIDATION RESULT] ${allValid ? "PASSED ALL CHECKS ✓" : `FAILED ❌ (${invalidFiles.length} invalid files)`}\n`);
