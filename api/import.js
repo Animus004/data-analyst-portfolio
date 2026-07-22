@@ -40,7 +40,7 @@ var SQLParser = {
     const proj = createEmptyProject(fileName, "SQLParser");
     proj.tags = ["SQL", "Relational Database Querying", "Data Aggregation", "Window Functions"];
     proj.categories = ["Data Engineering", "Database Querying"];
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
     const lines = text.split("\n");
     const sqlEvidence = {
       sourceFile: fileName,
@@ -125,7 +125,7 @@ var PythonParser = {
     const proj = createEmptyProject(fileName, "PythonParser");
     proj.tags = ["Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis"];
     proj.categories = ["Data Science", "Data Engineering"];
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
     const lines = text.split("\n");
     const docEvidence = {
       sourceFile: fileName,
@@ -185,7 +185,7 @@ var NotebookParser = {
       extractedTerms: ["Jupyter", "Interactive Notebook"]
     };
     try {
-      const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+      const text = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
       const json = JSON.parse(text);
       const cells = json.cells || [];
       let markdownConcat = "";
@@ -240,7 +240,7 @@ var PowerBIParser = {
     const proj = createEmptyProject(fileName, "PowerBIParser");
     proj.tags = ["Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
     const pbiEvidence = {
       sourceFile: fileName,
       parser: "PowerBIParser",

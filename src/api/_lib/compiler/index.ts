@@ -184,24 +184,38 @@ export async function compileProjectPackage(
   // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
   const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
   console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
+  console.log("[CHECKPOINT S1-001] Stage 1 Start Logging Completed");
   const stage1Start = Date.now();
-  const allFiles: Array<{ name: string; content: string; type: "text" | "binary"; size: number; sha256: string }> = [];
+  console.log("[CHECKPOINT S1-002] stage1Start Timestamp Captured");
+  const allFiles: Array<{ name: string; content: string | Buffer; type: "text" | "binary"; size: number; sha256: string }> = [];
+  console.log("[CHECKPOINT S1-003] allFiles Array Initialized");
   const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
+  console.log("[CHECKPOINT S1-004] fileCoverage Array Initialized");
 
   let currentFileProcessing = "None";
+  let loopIndex = 0;
 
   try {
+    console.log(`[CHECKPOINT S1-005] Entering rawFiles loop | Total rawFiles: ${rawFiles.length}`);
     for (const file of rawFiles) {
+      console.log(`[CHECKPOINT S1-006] Loop iteration ${loopIndex} start`);
       currentFileProcessing = file.name;
+      console.log(`[CHECKPOINT S1-007] Processing file '${file.name}'`);
+
+      console.log(`[CHECKPOINT S1-008] Resolving extension for '${file.name}'`);
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      console.log(`[CHECKPOINT S1-009] Extension resolved to '.${ext}'`);
 
-      console.log(`[STAGE 1 TRACE] Processing file '${file.name}' | ext: '.${ext}' | size: ${file.size} bytes`);
+      console.log(`[CHECKPOINT S1-010] Entering computeSha256 for '${file.name}'`);
       const fileHash = computeSha256(file.content);
+      console.log(`[CHECKPOINT S1-011] computeSha256 completed for '${file.name}' | SHA256: ${fileHash.slice(0, 12)}...`);
 
-      // Validate binary signature (magic bytes)
+      console.log(`[CHECKPOINT S1-012] Entering validateFileSignature for '${file.name}'`);
       const sigCheck = validateFileSignature(file.name, file.content);
+      console.log(`[CHECKPOINT S1-013] validateFileSignature completed for '${file.name}' | isValid: ${sigCheck.isValid}`);
+
       if (!sigCheck.isValid) {
-        console.warn(`[STAGE 1 WARN] Signature check failed for '${file.name}': ${sigCheck.error}`);
+        console.log(`[CHECKPOINT S1-014] Signature check failed for '${file.name}'`);
         fileCoverage.push({
           fileName: file.name,
           status: "Failed",
@@ -209,28 +223,21 @@ export async function compileProjectPackage(
           size: file.size,
           sha256: fileHash
         });
+        loopIndex++;
         continue;
       }
 
       if (ext === "zip") {
+        console.log(`[CHECKPOINT S1-015] Setting projectType to ZIP Package`);
         projectType = "ZIP Package";
-        console.log(`\n----------------------------------------`);
-        console.log(`[AWAIT BEGIN] Line 210 | Function: compileProjectPackage`);
-        console.log(`Statement: await unpackZipFile(file.content)`);
-        console.log(`Target File: '${file.name}' (${file.size} bytes)`);
-        console.log(`----------------------------------------\n`);
 
-        const unpackStart = Date.now();
+        console.log(`[CHECKPOINT S1-016] BEFORE await unpackZipFile for '${file.name}'`);
         const unpacked = await unpackZipFile(file.content);
+        console.log(`[CHECKPOINT S1-017] AFTER await unpackZipFile for '${file.name}' | Unpacked count: ${unpacked.length}`);
 
-        console.log(`\n----------------------------------------`);
-        console.log(`[AWAIT END] Line 210 | Function: compileProjectPackage`);
-        console.log(`Statement: await unpackZipFile(file.content)`);
-        console.log(`Target File: '${file.name}'`);
-        console.log(`Status: SUCCESS | Unpacked Count: ${unpacked.length} files | Duration: ${Date.now() - unpackStart}ms`);
-        console.log(`----------------------------------------\n`);
-
+        let unpackIdx = 0;
         unpacked.forEach(u => {
+          console.log(`[CHECKPOINT S1-018] Processing unpacked file ${unpackIdx}: '${u.name}'`);
           const uHash = computeSha256(u.content);
           allFiles.push({
             name: u.name,
@@ -239,7 +246,10 @@ export async function compileProjectPackage(
             size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
             sha256: uHash
           });
+          unpackIdx++;
         });
+
+        console.log(`[CHECKPOINT S1-019] Pushing ZIP fileCoverage for '${file.name}'`);
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
@@ -248,7 +258,11 @@ export async function compileProjectPackage(
           sha256: fileHash
         });
       } else {
+        console.log(`[CHECKPOINT S1-020] Checking text extension for '${file.name}'`);
         const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
+        console.log(`[CHECKPOINT S1-021] isText: ${isText} for '${file.name}'`);
+
+        console.log(`[CHECKPOINT S1-022] Pushing raw file '${file.name}' to allFiles array`);
         allFiles.push({
           name: file.name,
           content: file.content,
@@ -256,21 +270,17 @@ export async function compileProjectPackage(
           size: file.size,
           sha256: fileHash
         });
+        console.log(`[CHECKPOINT S1-023] Pushed raw file '${file.name}' to allFiles array`);
       }
+      loopIndex++;
     }
+    console.log(`[CHECKPOINT S1-024] Exited rawFiles loop successfully`);
   } catch (stage1Err: any) {
-    console.error(`\n==========================================================`);
-    console.error(`[FIRST THROWN EXCEPTION DETECTED: Stage 1]`);
-    console.error(`Source File: src/api/_lib/compiler/index.ts`);
-    console.error(`Line Number: ~191-240`);
-    console.error(`Stage Name: Stage 1: File Detection, Signature Validation & ZIP Unpacking`);
-    console.error(`Current File Being Processed: '${currentFileProcessing}'`);
-    console.error(`Error Name: ${stage1Err?.name || "Stage1Error"}`);
-    console.error(`Error Message: ${stage1Err?.message || stage1Err}`);
-    console.error(`Stack Trace:\n${stage1Err?.stack || "No Stack Available"}`);
-    console.error(`==========================================================\n`);
+    console.error(`[CHECKPOINT S1-ERROR] Stage 1 Exception in file '${currentFileProcessing}':`, stage1Err?.message);
     throw stage1Err;
   }
+
+  console.log(`[CHECKPOINT S1-025] Finishing Stage 1 logging & metrics`);
 
   const stage1Duration = Date.now() - stage1Start;
   s1.end(`${allFiles.length} file(s) prepared`);

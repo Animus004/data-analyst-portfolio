@@ -84,7 +84,9 @@ export const SQLParser: Parser = {
     proj.tags = ["SQL", "Relational Database Querying", "Data Aggregation", "Window Functions"];
     proj.categories = ["Data Engineering", "Database Querying"];
 
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string"
+      ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+      : content.toString("utf-8");
     const lines = text.split("\n");
 
     const sqlEvidence: SqlEvidence = {
@@ -190,7 +192,9 @@ export const PythonParser: Parser = {
     proj.tags = ["Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis"];
     proj.categories = ["Data Science", "Data Engineering"];
 
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string"
+      ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+      : content.toString("utf-8");
     const lines = text.split("\n");
 
     const docEvidence: DocumentEvidence = {
@@ -260,7 +264,9 @@ export const NotebookParser: Parser = {
     };
 
     try {
-      const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+      const text = typeof content === "string"
+        ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+        : content.toString("utf-8");
       const json = JSON.parse(text);
       const cells = json.cells || [];
       let markdownConcat = "";
@@ -324,7 +330,9 @@ export const PowerBIParser: Parser = {
     proj.tags = ["Power BI", "DAX", "Dashboarding", "KPI Modeling", "Data Visualization"];
     proj.categories = ["Business Intelligence", "Dashboard Analytics"];
 
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string"
+      ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+      : content.toString("utf-8");
 
     const pbiEvidence: PowerBiEvidence = {
       sourceFile: fileName,
@@ -384,7 +392,9 @@ export const MarkdownParser: Parser = {
     proj.tags = ["Business Reporting", "Documentation", "Executive Communication"];
     proj.categories = ["Technical Writing", "Reporting"];
 
-    const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+    const text = typeof content === "string"
+      ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+      : content.toString("utf-8");
 
     const readmeEvidence: ReadmeEvidence = {
       sourceFile: fileName,
@@ -450,7 +460,7 @@ export const WordParser: Parser = {
     };
 
     try {
-      const buffer = Buffer.from(content, "base64");
+      const buffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
       const extractionResult = await mammoth.extractRawText({ buffer });
       const text = extractionResult.value;
 
@@ -502,7 +512,9 @@ export const CSVParser: Parser = {
     };
 
     try {
-      const text = type === "text" ? content : Buffer.from(content, "base64").toString("utf-8");
+      const text = typeof content === "string"
+        ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+        : content.toString("utf-8");
       const lines = text.split("\n").filter(l => l.trim() !== "");
       if (lines.length > 0) {
         const headers = lines[0].split(",").map(h => h.trim());
