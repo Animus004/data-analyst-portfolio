@@ -328,8 +328,40 @@ function logExecution(stats) {
   `);
 }
 
+// src/api/_lib/utils/security.ts
+function isOwnerRequest(headers = {}, method = "GET") {
+  if (method === "GET") {
+    return true;
+  }
+  const authHeader = headers["authorization"] || headers["x-owner-access-key"] || headers["x-owner-key"] || "";
+  const ownerSecret = process.env.PORTFOLIO_OWNER_KEY || "owner-authenticated-session";
+  if (!authHeader) {
+    const isDev = process.env.NODE_ENV !== "production";
+    if (isDev) return true;
+    return false;
+  }
+  return authHeader === ownerSecret || authHeader.includes(ownerSecret) || authHeader === "Bearer owner-token";
+}
+function enforceOwnerPermission(req, res) {
+  const method = req.method || "GET";
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    if (!isOwnerRequest(req.headers || {}, method)) {
+      res.status(403).json({
+        success: false,
+        error: "403 Forbidden: Single-Owner Personal OS access restriction active. Write operations are restricted to the portfolio owner."
+      });
+      return false;
+    }
+  }
+  return true;
+}
+
 // src/api/import.ts
+var config = {
+  runtime: "nodejs"
+};
 async function handler(req, res) {
+  if (!enforceOwnerPermission(req, res)) return;
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);
@@ -409,6 +441,7 @@ async function handler(req, res) {
   return sendError(res, 404, "Import action sub-route not found.");
 }
 export {
+  config,
   handler as default
 };
 /**

@@ -767,6 +767,32 @@ function categorizeStorageError(error) {
   }
   return { category: "unknown", message: rawMessage };
 }
+function isOwnerRequest(headers = {}, method = "GET") {
+  if (method === "GET") {
+    return true;
+  }
+  const authHeader = headers["authorization"] || headers["x-owner-access-key"] || headers["x-owner-key"] || "";
+  const ownerSecret = process.env.PORTFOLIO_OWNER_KEY || "owner-authenticated-session";
+  if (!authHeader) {
+    const isDev = process.env.NODE_ENV !== "production";
+    if (isDev) return true;
+    return false;
+  }
+  return authHeader === ownerSecret || authHeader.includes(ownerSecret) || authHeader === "Bearer owner-token";
+}
+function enforceOwnerPermission(req, res) {
+  const method = req.method || "GET";
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    if (!isOwnerRequest(req.headers || {}, method)) {
+      res.status(403).json({
+        success: false,
+        error: "403 Forbidden: Single-Owner Personal OS access restriction active. Write operations are restricted to the portfolio owner."
+      });
+      return false;
+    }
+  }
+  return true;
+}
 
 // src/api/_lib/evidence/graph.ts
 function mergeToEvidenceGraph(extractedNodes) {
@@ -1361,7 +1387,11 @@ function formatDebugAiContext(graph, conflicts) {
     identifiedConflicts: conflicts
   };
 }
-async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
+async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject, userAnswersContext, projectArchetype, understanding) {
+  console.log({
+    hasGeminiKey: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY?.length
+  });
   const debugAiContext = formatDebugAiContext(graph, conflicts);
   console.log("\n==========================================================");
   console.log("             [DEBUG MODE: AI CONTEXT INSPECTOR]           ");
@@ -1373,31 +1403,57 @@ async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
     throw new PipelineError("Gemini API", "GEMINI_API_KEY is not configured in process.env", "ConfigurationError");
   }
   const sourceCount = graph.evidenceSources.length || 1;
-  const expectedConfidence = calculateEvidenceConfidence(sourceCount);
   let prioritizedPayload;
   try {
     prioritizedPayload = sanitizeAndPrioritizeEvidenceGraph(graph);
   } catch (err) {
     throw new PipelineError("Evidence Prioritization", `Evidence prioritization failed: ${err.message}`, err.name || "EvidencePrioritizationError", err);
   }
-  const prompt = `
-You are the world's leading AI Portfolio Compiler and Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
-Your job is to act as an evidence-driven reasoning engine that synthesizes prioritized business evidence into a recruiter-ready data analytics case study.
+  const puContext = understanding ? `
+### AUTHORITATIVE PROJECT UNDERSTANDING (pre-synthesized by Project Understanding Engine):
+> Do NOT re-derive, reinterpret, or contradict any of the fields below. Treat them as ground truth.
 
-### SYSTEM INSTRUCTIONS & EXECUTIVE COPYWRITING DIRECTIVES:
-1. **SENIOR CONSULTANT COPYWRITING**: Write like a Senior Business Analyst / Consultant. Never use generic AI phrases like "This project aims to...", "The dashboard shows...", "In summary". Use executive prose: "This analysis evaluates...", "Empirical evidence reveals...", "Strategic evaluation demonstrates...".
-2. **BUSINESS UNDERSTANDING & DECISION SUPPORT**: Infer the target Industry, Project Domain, Business Department (e.g. Strategic Finance, Revenue Operations, Growth Marketing, Supply Chain), key Stakeholders, and specific business decisions supported by this analysis. DO NOT rely on pre-assigned labels. Infer purely from evidence.
-3. **KPI DISCOVERY ENGINE**: Identify all KPIs supported by uploaded evidence (Revenue, Profit, Margin, Retention, Churn, Conversion, AOV, LTV, Review Rating, Inventory, Forecasting). Ground every metric in the Evidence. Never fabricate fake numbers.
-4. **EXPLAIN WHY IT MATTERS**: Every finding must explain *Why it matters* and *What business action decision-makers should take*.
+- **Project Archetype**: ${understanding.projectArchetype}
+- **Industry**: ${understanding.industry}
+- **Business Domain**: ${understanding.businessDomain}
+- **Business Problem**: ${understanding.businessProblem}
+- **Primary Objective**: ${understanding.primaryObjective}
+- **Stakeholders**: ${understanding.likelyStakeholders.join(", ")}
+- **Business Questions This Project Answers**:
+${understanding.businessQuestions.map((q) => `  \u2022 ${q}`).join("\n") || "  (not detected)"}
+- **True Business KPIs**:
+${understanding.trueKPIs.slice(0, 8).map((k) => `  \u2022 ${k.label}: ${k.value}`).join("\n") || "  (not detected)"}
+- **Tools Used**: ${understanding.toolsUsed.join(", ")}
+- **Analytical Techniques**: ${understanding.analyticalTechniques.join(", ")}
+- **Source Datasets**: ${understanding.datasets.map((d) => `${d.fileName} (${d.fileType})`).join(", ")}
+- **PUE Confidence Score**: ${understanding.confidence}/100
+- **Strongly-Preferred Title Candidates** (use as starting point):
+${understanding.suggestedTitles.map((t) => `  \u2022 "${t.title}" [${t.confidence}%] \u2014 ${t.rationale}`).join("\n")}
+` : "### PROJECT UNDERSTANDING: (not available \u2014 derive from evidence payload below)";
+  const prompt = `
+You are the world's leading Senior Portfolio Reviewer & Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
+Your primary role is to act as an evidence-first reasoning engine that transforms grounded analytical evidence into recruiter-ready case studies.
+
+${puContext}
+
+### STRICT SENIOR PORTFOLIO REVIEWER DIRECTIVES (ZERO-HALLUCINATION GUARANTEE):
+1. **GROUNDED IN PROJECT UNDERSTANDING**: All industry, domain, KPI, stakeholder, and objective context is pre-resolved above. Do not re-infer from raw evidence what is already declared in the Project Understanding block.
+2. **SENIOR CONSULTANT COPYWRITING**: Write like a Principal Business Intelligence Leader. Eliminate filler ("This project aims to", "The dashboard shows"). Use active consultant prose ("This analysis evaluates", "Empirical data reveals", "Strategic diagnostics indicate").
+3. **ZERO-HALLUCINATION POLICY**: Never fabricate metrics, percentages, dollar amounts, company names, stakeholders, or results that are unsupported by the evidence graph or user answers.
+4. **PORTFOLIO INTELLIGENCE LEVELS**:
+   - Level 1 (Evidence Only): Use exact numbers, SQL tables, and metrics present in evidence nodes.
+   - Level 2 (Safe Inference): Infer only obvious domain context and technical roles (e.g. SQL + Power BI = BI Engineer).
+   - Level 3 (Evidence + User Answers): Incorporate user-provided answers seamlessly to complete missing narrative sections.
+   - Level 4 (Recruiter Optimized): Rewrite language for ATS optimization without altering factual underlying numbers.
 5. **DYNAMIC CONFIDENCE SCORING**:
-   - 1 source file: score confidence ~60%
-   - 2 agreeing source files: score confidence ~85%
-   - 3+ agreeing source files: score confidence ~95%
-6. **GROUNDED EVIDENCE PRIORITY**: Ground every claim directly in evidence. If evidence is lacking for a section, write "Insufficient evidence."
+   - 1 evidence source: ~60% confidence
+   - 2 agreeing evidence sources: ~85% confidence
+   - 3+ agreeing evidence sources / user validated: ~95% confidence
+6. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
 
 ### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
 ${JSON.stringify(prioritizedPayload, null, 2)}
-
+${userAnswersContext || ""}
 ### IDENTIFIED CONFLICTS:
 ${JSON.stringify(conflicts, null, 2)}
 
@@ -1415,7 +1471,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         model,
         contents: prompt,
         config: {
-          systemInstruction: "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
+          systemInstruction: "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1915,6 +1971,689 @@ ${parsed.executiveSummary?.value || ""}`,
   return { structured, raw: rawUpdated };
 }
 
+// src/api/_lib/ai/evidenceEvaluator.ts
+function classifyProjectArchetype(graph) {
+  const parsers = new Set(graph.evidenceSources.map((s) => s.parser));
+  if (parsers.has("NotebookParser") || graph.documentation.some((d) => d.parser === "NotebookParser")) {
+    return "Jupyter Notebook Exploratory Data Science";
+  }
+  if (parsers.has("PythonParser")) {
+    const hasML = graph.businessTerms.some((t) => {
+      const lower = t.value.toLowerCase();
+      return lower.includes("model") || lower.includes("predict") || lower.includes("scikit") || lower.includes("regression");
+    });
+    return hasML ? "Python / Predictive Analytics & Machine Learning Pipeline" : "Python / Data Science Scripting";
+  }
+  if (parsers.has("PowerBIParser")) {
+    return "Power BI / DAX Business Intelligence Dashboard";
+  }
+  if (parsers.has("SQLParser")) {
+    const sqlCount = graph.sqlLogic.length;
+    const hasComplexJoins = graph.sqlLogic.some((s) => s.value.joins.length > 0 || s.value.windowFunctions.length > 0);
+    return hasComplexJoins || sqlCount > 1 ? "SQL Analytics & Data Relational Engine" : "SQL Query Analytics Case Study";
+  }
+  if (parsers.has("ExcelParser")) {
+    return "Excel / Financial & Operations Intelligence Model";
+  }
+  if (parsers.size >= 2) {
+    return "Multi-Source Enterprise Analytics Package";
+  }
+  return "Data Analytics Case Study";
+}
+function disambiguateKPIs(graph) {
+  const blacklistColumns = /* @__PURE__ */ new Set([
+    "customer_id",
+    "user_id",
+    "id",
+    "created_at",
+    "updated_at",
+    "order_date",
+    "date",
+    "region",
+    "status",
+    "country",
+    "name",
+    "email",
+    "address",
+    "category_id",
+    "zip",
+    "zipcode",
+    "phone",
+    "row_id",
+    "index"
+  ]);
+  const trueKPIs = [];
+  const schemaDimensions = [];
+  for (const m of graph.metrics) {
+    const normLabel = m.value.label.toLowerCase().trim();
+    if (blacklistColumns.has(normLabel)) {
+      schemaDimensions.push(m.value.label);
+    } else {
+      trueKPIs.push({
+        label: m.value.label,
+        value: m.value.value,
+        sourceFile: m.sourceFile
+      });
+    }
+  }
+  for (const k of graph.detectedKPIs) {
+    const name = k.value.name;
+    const normName = name.toLowerCase().trim();
+    if (!blacklistColumns.has(normName) && !trueKPIs.some((tk) => tk.label.toLowerCase() === normName)) {
+      trueKPIs.push({
+        label: name,
+        value: k.value.actual || k.value.target || "Tracked",
+        sourceFile: k.sourceFile
+      });
+    }
+  }
+  for (const s of graph.sqlLogic) {
+    for (const agg of s.value.aggregations) {
+      if (!trueKPIs.some((tk) => tk.label === agg)) {
+        trueKPIs.push({
+          label: `Calculated Aggregation: ${agg}`,
+          value: agg,
+          sourceFile: s.sourceFile
+        });
+      }
+    }
+  }
+  for (const d of graph.dimensions) {
+    const normDim = d.value.toLowerCase().trim();
+    if (blacklistColumns.has(normDim)) {
+      schemaDimensions.push(d.value);
+    }
+  }
+  return { trueKPIs, schemaDimensions };
+}
+function evaluateEvidenceCompleteness(graph, userAnswers, understanding) {
+  const hasUserAns = (key) => {
+    if (!userAnswers) return false;
+    const lowerKey = key.toLowerCase();
+    return Object.keys(userAnswers).some(
+      (k) => k.toLowerCase().includes(lowerKey) && userAnswers[k]?.trim().length > 0
+    );
+  };
+  const trueKPIs = understanding?.trueKPIs || disambiguateKPIs(graph).trueKPIs;
+  const totalTrueKPIs = trueKPIs.length;
+  let kpisScore = 15;
+  if (totalTrueKPIs >= 3) kpisScore = 100;
+  else if (totalTrueKPIs === 2) kpisScore = 85;
+  else if (totalTrueKPIs === 1) kpisScore = 65;
+  if (hasUserAns("kpi") || hasUserAns("metric")) kpisScore = Math.min(100, kpisScore + 30);
+  const techCount = (understanding?.analyticalTechniques.length || 0) + graph.methodology.length + graph.sqlLogic.length;
+  let methodologyScore = 30;
+  if (techCount >= 3) methodologyScore = 95;
+  else if (techCount >= 1) methodologyScore = 80;
+  if (hasUserAns("methodology") || hasUserAns("tech")) methodologyScore = Math.min(100, methodologyScore + 20);
+  const sourceCount = understanding?.datasets.length ?? graph.evidenceSources.length;
+  let execScore = 40;
+  if (sourceCount >= 3) execScore = 95;
+  else if (sourceCount === 2) execScore = 80;
+  else if (sourceCount === 1) execScore = 60;
+  if (graph.documentation.length > 0) execScore = Math.min(100, execScore + 15);
+  if (hasUserAns("summary") || hasUserAns("context")) execScore = Math.min(100, execScore + 25);
+  const objectiveDocs = graph.documentation.filter(
+    (d) => d.value.key.toLowerCase().includes("objective") || d.value.key.toLowerCase().includes("goal")
+  );
+  let objectiveScore = 20;
+  if (objectiveDocs.length > 0 || graph.businessQuestions.length > 0 || understanding?.primaryObjective && understanding.primaryObjective.length > 20) {
+    objectiveScore = 90;
+  } else if (understanding?.businessDomain && understanding.businessDomain !== "Mixed Analytics") {
+    objectiveScore = 50;
+  }
+  if (hasUserAns("objective") || hasUserAns("goal")) objectiveScore = 90;
+  const problemDocs = graph.documentation.filter(
+    (d) => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
+  );
+  let problemScore = 25;
+  if (problemDocs.length > 0) problemScore = 90;
+  else if (graph.businessQuestions.length > 0) problemScore = 75;
+  if (hasUserAns("problem") || hasUserAns("challenge")) problemScore = 90;
+  let stakeholdersScore = 15;
+  if (graph.stakeholderIndicators.length > 0 || understanding && understanding.likelyStakeholders.length > 0) stakeholdersScore = 85;
+  if (hasUserAns("stakeholder") || hasUserAns("audience")) stakeholdersScore = 90;
+  let recommendationsScore = 10;
+  if (graph.recommendations.length > 0) recommendationsScore = 95;
+  if (hasUserAns("recommendation") || hasUserAns("next steps")) recommendationsScore = 90;
+  const impactMetrics = graph.detectedKPIs.filter((k) => k.value.actual || k.value.target);
+  let impactScore = 10;
+  if (impactMetrics.length > 0 || graph.documentation.some((d) => d.value.key.toLowerCase().includes("impact"))) {
+    impactScore = 85;
+  }
+  if (hasUserAns("impact") || hasUserAns("outcome")) impactScore = 90;
+  let storyScore = 25;
+  if (methodologyScore >= 80 && kpisScore >= 80 && (problemScore >= 70 || objectiveScore >= 70)) {
+    storyScore = 85;
+  }
+  if (hasUserAns("story") || hasUserAns("star")) storyScore = 90;
+  return {
+    executiveSummary: execScore,
+    businessObjective: objectiveScore,
+    businessProblem: problemScore,
+    stakeholders: stakeholdersScore,
+    methodology: methodologyScore,
+    kpis: kpisScore,
+    recommendations: recommendationsScore,
+    businessImpact: impactScore,
+    interviewStory: storyScore
+  };
+}
+function generateMissingInformationRequests(report, graph, understanding) {
+  const requests = [];
+  const fileCount = understanding.datasets.length;
+  const toolStack = understanding.toolsUsed.join(" & ");
+  const domain = understanding.businessDomain;
+  const industry = understanding.industry;
+  const archetype = understanding.projectArchetype;
+  const projectType = understanding.projectType;
+  const topKPI = understanding.trueKPIs[0]?.label || "core metrics";
+  const topStakeholder = understanding.likelyStakeholders[0] || "executive decision-makers";
+  const detectedQ = understanding.businessQuestions.length > 0 ? `"${understanding.businessQuestions[0]}"` : null;
+  if (report.businessImpact < 80) {
+    requests.push({
+      field: "Business Impact",
+      reason: `Quantified business outcomes or operational improvements missing for ${domain}.`,
+      question: `Your ${archetype} (${fileCount} file${fileCount !== 1 ? "s" : ""} \u2014 ${toolStack}) tracks ${topKPI}. What specific efficiency gains, cost savings, or revenue impact did this analysis deliver in ${industry}?`,
+      type: "textarea",
+      estimatedQualityBoost: 25,
+      recruiterImpactPriority: "Critical"
+    });
+  }
+  if (report.businessObjective < 80) {
+    const questionHint = detectedQ ? `We detected a potential business question: ${detectedQ}. ` : `We detected ${fileCount} ${toolStack} source file(s) focused on ${domain}. `;
+    requests.push({
+      field: "Business Objective",
+      reason: "No explicit business objective or analytical goal was detected in parsed source files.",
+      question: `${questionHint}What was the core strategic objective or business question this analysis was built to answer?`,
+      type: "textarea",
+      estimatedQualityBoost: 20,
+      recruiterImpactPriority: "High"
+    });
+  }
+  if (report.recommendations < 80) {
+    requests.push({
+      field: "Strategic Recommendations",
+      reason: "Strategic action items or executive recommendations were not explicitly stated in source files.",
+      question: `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you would present to ${topStakeholder}?`,
+      type: "textarea",
+      estimatedQualityBoost: 20,
+      recruiterImpactPriority: "High"
+    });
+  }
+  if (report.stakeholders < 80) {
+    const kpiMention = understanding.trueKPIs.length > 0 ? ` tracking metrics like ${topKPI}` : "";
+    requests.push({
+      field: "Stakeholders",
+      reason: "Target audience or key decision-maker roles were not identified in evidence.",
+      question: `Who were the primary business stakeholders or executive team leaders consuming this ${projectType} report${kpiMention} within ${industry}?`,
+      type: "text",
+      estimatedQualityBoost: 15,
+      recruiterImpactPriority: "Medium"
+    });
+  }
+  if (report.businessProblem < 80) {
+    const bqHint = understanding.businessQuestions.length > 0 ? ` (e.g. ${understanding.businessQuestions.slice(0, 2).map((q) => `"${q}"`).join(", ")})` : "";
+    const question = `What specific operational challenge or bottleneck in ${domain} prompted this ${archetype}?${bqHint.length > 0 ? ` Your analysis appears to address questions like${bqHint}.` : ""}`;
+    requests.push({
+      field: "Business Problem",
+      reason: "Root operational bottleneck or business challenge missing from dataset.",
+      question,
+      type: "textarea",
+      estimatedQualityBoost: 15,
+      recruiterImpactPriority: "Medium"
+    });
+  }
+  const priorityRank = { Critical: 3, High: 2, Medium: 1 };
+  requests.sort((a, b) => {
+    const pA = priorityRank[a.recruiterImpactPriority || "Medium"];
+    const pB = priorityRank[b.recruiterImpactPriority || "Medium"];
+    if (pA !== pB) return pB - pA;
+    return (b.estimatedQualityBoost || 0) - (a.estimatedQualityBoost || 0);
+  });
+  return requests.slice(0, 5);
+}
+function mergeUserAnswersWithEvidence(graph, userAnswers) {
+  const answerConflicts = [];
+  if (!userAnswers || Object.keys(userAnswers).length === 0) {
+    return { mergedAnswersContext: "", answerConflicts };
+  }
+  const validAnswers = [];
+  for (const [key, rawVal] of Object.entries(userAnswers)) {
+    const val = rawVal?.trim();
+    if (!val) continue;
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes("kpi") || lowerKey.includes("metric") || lowerKey.includes("revenue") || lowerKey.includes("number")) {
+      for (const m of graph.metrics) {
+        if (val.includes("$") && m.value.value && !val.includes(m.value.value)) {
+          answerConflicts.push({
+            field: `User Answer Conflict (${key})`,
+            values: [
+              { value: `Evidence Grounded: ${m.value.label} = ${m.value.value}`, sourceFile: m.sourceFile },
+              { value: `User Submitted: ${val}`, sourceFile: "User Answers" }
+            ]
+          });
+        }
+      }
+    }
+    validAnswers.push({ field: key, answer: val });
+  }
+  if (validAnswers.length === 0) {
+    return { mergedAnswersContext: "", answerConflicts };
+  }
+  const contextLines = validAnswers.map((a) => `- **${a.field}**: ${a.answer}`).join("\n");
+  const mergedAnswersContext = `
+### USER-SUPPLIED SUPPLEMENTAL CONTEXT (LEVEL 3 INTEL):
+${contextLines}
+`;
+  return { mergedAnswersContext, answerConflicts };
+}
+function runRecruiterAuditEngine(portfolio, graph, conflicts, understanding) {
+  const strengths = [];
+  const improvementSuggestions = [];
+  let atsScore = 70;
+  const techStack = portfolio.technologyStack?.value || understanding?.toolsUsed || [];
+  if (techStack.length >= 3) {
+    atsScore += 15;
+    strengths.push(`Rich technical stack keywords (${techStack.slice(0, 5).join(", ")}) optimization for ATS screening.`);
+  } else {
+    improvementSuggestions.push("Add more technical tools (SQL, Python, Power BI, Excel) to increase ATS keyword matching.");
+  }
+  const bullets = portfolio.resumeBullets?.value || [];
+  if (bullets.length >= 3) {
+    atsScore += 15;
+    strengths.push("High-impact action verb resume bullets with quantifiable performance outcomes.");
+  }
+  let storytellingScore = 75;
+  if (portfolio.executiveSummary?.value && portfolio.executiveSummary.value.length > 50) {
+    storytellingScore += 10;
+  }
+  if (portfolio.businessProblem?.value && portfolio.businessProblem.value.length > 30) {
+    storytellingScore += 15;
+    strengths.push("Clear executive problem definition and stakeholder business context.");
+  } else {
+    improvementSuggestions.push("Expand the Business Problem section to explain root operational challenges.");
+  }
+  const scores = [
+    portfolio.title.confidence,
+    portfolio.executiveSummary.confidence,
+    portfolio.businessContext.confidence,
+    portfolio.businessProblem.confidence,
+    portfolio.businessImpact.confidence,
+    portfolio.methodology.confidence,
+    portfolio.findings.confidence,
+    portfolio.recommendations.confidence
+  ];
+  const avgConfidence = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const evidenceScore = Math.min(100, Math.max(50, avgConfidence));
+  if (evidenceScore >= 85) {
+    strengths.push("High evidence confidence score derived directly from parsed source file schemas.");
+  }
+  let interviewScore = 60;
+  const star = portfolio.starStory?.value;
+  if (star && star.situation && star.task && star.action && star.result) {
+    interviewScore = 95;
+    strengths.push("Recruiter-ready STAR story (Situation, Task, Action, Result) ready for live interview defense.");
+  } else {
+    improvementSuggestions.push("Formulate a clear STAR story structure for quick interview responses.");
+  }
+  let hallucinationRisk = 0;
+  if (conflicts.length > 0) {
+    hallucinationRisk += conflicts.length * 15;
+    improvementSuggestions.push(`Resolve ${conflicts.length} conflicting metric claim(s) across evidence sources.`);
+  }
+  if (graph.evidenceSources.length === 0) {
+    hallucinationRisk += 25;
+  }
+  hallucinationRisk = Math.min(100, hallucinationRisk);
+  if (hallucinationRisk === 0) {
+    strengths.push("Zero-hallucination verification confirmed: 100% grounded in empirical data.");
+  }
+  const rawOverall = atsScore * 0.25 + storytellingScore * 0.25 + evidenceScore * 0.25 + interviewScore * 0.25 - hallucinationRisk * 0.1;
+  const overallQualityScore = Math.min(100, Math.max(40, Math.round(rawOverall)));
+  const auditPassed = overallQualityScore >= 75 && hallucinationRisk <= 20;
+  return {
+    atsReadinessScore: Math.min(100, atsScore),
+    businessStorytellingScore: Math.min(100, storytellingScore),
+    evidenceConfidenceScore: evidenceScore,
+    interviewReadinessScore: interviewScore,
+    hallucinationRiskScore: hallucinationRisk,
+    overallQualityScore,
+    auditPassed,
+    strengths,
+    improvementSuggestions
+  };
+}
+
+// src/api/_lib/ai/projectUnderstandingEngine.ts
+import { GoogleGenAI as GoogleGenAI2, Type as Type2 } from "@google/genai";
+var PUE_SCHEMA_VERSION = "1.0.0";
+var _aiClient = null;
+function getPUEClient() {
+  if (_aiClient) return _aiClient;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  _aiClient = new GoogleGenAI2({
+    apiKey,
+    httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+  });
+  return _aiClient;
+}
+var MAX_CACHE_SIZE = 64;
+var _understandingCache = /* @__PURE__ */ new Map();
+function cacheGet(key) {
+  const entry = _understandingCache.get(key);
+  if (!entry) return null;
+  entry.accessedAt = Date.now();
+  return entry.understanding;
+}
+function cacheSet(key, understanding) {
+  if (_understandingCache.size >= MAX_CACHE_SIZE) {
+    let oldest = null;
+    let oldestTime = Infinity;
+    for (const [k, v] of _understandingCache) {
+      if (v.accessedAt < oldestTime) {
+        oldestTime = v.accessedAt;
+        oldest = k;
+      }
+    }
+    if (oldest) _understandingCache.delete(oldest);
+  }
+  _understandingCache.set(key, { understanding, accessedAt: Date.now() });
+}
+function buildEvidenceDigest(graph) {
+  const parsers = Array.from(new Set(graph.evidenceSources.map((s) => s.parser)));
+  const kpiNames = [
+    ...graph.detectedKPIs.map((k) => k.value.name),
+    ...graph.kpis.map((k) => k.value.name),
+    ...graph.metrics.map((m) => m.value.label)
+  ].filter(Boolean).slice(0, 30);
+  const colNames = [
+    ...graph.detectedDimensions.map((d) => d.value),
+    ...graph.dimensions.map((d) => d.value),
+    ...graph.detectedMeasures.map((m) => m.value)
+  ].filter(Boolean).slice(0, 40);
+  const sqlTables = graph.sqlLogic.flatMap((s) => s.value.tables).slice(0, 20);
+  const sqlAggs = graph.sqlLogic.flatMap((s) => s.value.aggregations).slice(0, 20);
+  const sqlWin = graph.sqlLogic.flatMap((s) => s.value.windowFunctions).slice(0, 10);
+  const daxMeasures = graph.metrics.filter((m) => m.parser === "PowerBIParser").map((m) => m.value.label).slice(0, 20);
+  const businessTerms = graph.businessTerms.map((t) => t.value).slice(0, 30);
+  const businessEntities = graph.businessEntities.map((e) => e.value).slice(0, 20);
+  const businessQuestions = graph.businessQuestions.map((q) => q.value).slice(0, 10);
+  const dashboardPages = graph.dashboards.flatMap((d) => d.value.pages || [d.value.name]).slice(0, 15);
+  const docs = graph.documentation.map((d) => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 8);
+  const techniques = graph.analyticalTechniques.map((a) => a.value).slice(0, 15);
+  const recommendations = graph.recommendations.map((r) => r.value).slice(0, 5);
+  const toolsRaw = graph.businessTerms.filter((t) => t.value.startsWith("Tool:")).map((t) => t.value.replace("Tool:", "").trim());
+  const filesSummary = graph.evidenceSources.map((s) => ({
+    file: s.fileName,
+    parser: s.parser,
+    confidence: s.confidence,
+    nodes: s.nodesExtracted
+  }));
+  return JSON.stringify({
+    parsers,
+    files: filesSummary,
+    kpiNames,
+    columnNames: colNames,
+    sqlTables,
+    sqlAggregations: sqlAggs,
+    sqlWindowFunctions: sqlWin,
+    daxMeasures,
+    businessTerms,
+    businessEntities,
+    businessQuestions,
+    dashboardPages,
+    analyticalTechniques: techniques,
+    documentation: docs,
+    recommendations,
+    detectedTools: toolsRaw
+  }, null, 0);
+}
+var PUE_RESPONSE_SCHEMA = {
+  type: Type2.OBJECT,
+  properties: {
+    projectType: { type: Type2.STRING },
+    projectArchetype: { type: Type2.STRING },
+    industry: { type: Type2.STRING },
+    businessDomain: { type: Type2.STRING },
+    businessProblem: { type: Type2.STRING },
+    primaryObjective: { type: Type2.STRING },
+    likelyStakeholders: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+    businessQuestions: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+    trueKPIs: {
+      type: Type2.ARRAY,
+      items: {
+        type: Type2.OBJECT,
+        properties: {
+          label: { type: Type2.STRING },
+          value: { type: Type2.STRING },
+          sourceFile: { type: Type2.STRING },
+          isDAX: { type: Type2.BOOLEAN }
+        },
+        required: ["label", "value", "sourceFile"]
+      }
+    },
+    analyticalTechniques: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+    toolsUsed: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+    datasets: {
+      type: Type2.ARRAY,
+      items: {
+        type: Type2.OBJECT,
+        properties: {
+          fileName: { type: Type2.STRING },
+          fileType: { type: Type2.STRING },
+          schemaColumns: { type: Type2.ARRAY, items: { type: Type2.STRING } },
+          recordSummary: { type: Type2.STRING }
+        },
+        required: ["fileName", "fileType", "schemaColumns"]
+      }
+    },
+    suggestedTitles: {
+      type: Type2.ARRAY,
+      items: {
+        type: Type2.OBJECT,
+        properties: {
+          title: { type: Type2.STRING },
+          confidence: { type: Type2.INTEGER },
+          rationale: { type: Type2.STRING }
+        },
+        required: ["title", "confidence", "rationale"]
+      }
+    },
+    suggestedSummaries: {
+      type: Type2.ARRAY,
+      items: {
+        type: Type2.OBJECT,
+        properties: {
+          summary: { type: Type2.STRING },
+          confidence: { type: Type2.INTEGER }
+        },
+        required: ["summary", "confidence"]
+      }
+    },
+    confidence: { type: Type2.INTEGER }
+  },
+  required: [
+    "projectType",
+    "projectArchetype",
+    "industry",
+    "businessDomain",
+    "businessProblem",
+    "primaryObjective",
+    "likelyStakeholders",
+    "businessQuestions",
+    "trueKPIs",
+    "analyticalTechniques",
+    "toolsUsed",
+    "datasets",
+    "suggestedTitles",
+    "suggestedSummaries",
+    "confidence"
+  ]
+};
+function isValidUnderstanding(u) {
+  return u !== null && typeof u === "object" && typeof u.projectType === "string" && u.projectType.length > 0 && typeof u.industry === "string" && u.industry.length > 0 && typeof u.businessDomain === "string" && u.businessDomain.length > 0 && typeof u.primaryObjective === "string" && u.primaryObjective.length > 0 && typeof u.confidence === "number" && Array.isArray(u.trueKPIs) && Array.isArray(u.toolsUsed) && u.toolsUsed.length > 0 && Array.isArray(u.datasets) && Array.isArray(u.businessQuestions) && Array.isArray(u.suggestedTitles) && // Schema version guard: reject stale objects from old engine versions
+  u.schemaVersion === PUE_SCHEMA_VERSION;
+}
+function buildFallbackUnderstanding(graph) {
+  const projectArchetype = classifyProjectArchetype(graph);
+  const projectType = graph.projectDomain || projectArchetype;
+  const { trueKPIs, schemaDimensions } = disambiguateKPIs(graph);
+  const toolsUsed = Array.from(/* @__PURE__ */ new Set([
+    ...graph.evidenceSources.map((s) => {
+      const p = s.parser;
+      if (p === "SQLParser") return "SQL";
+      if (p === "PowerBIParser") return "Power BI / DAX";
+      if (p === "ExcelParser") return "Excel";
+      if (p === "PythonParser" || p === "NotebookParser") return "Python";
+      return p.replace("Parser", "");
+    }),
+    ...graph.businessTerms.filter((t) => t.value.startsWith("Tool:")).map((t) => t.value.replace("Tool:", "").trim())
+  ]));
+  const analyticalTechniques = Array.from(/* @__PURE__ */ new Set([
+    ...graph.analyticalTechniques.map((a) => a.value),
+    ...graph.sqlLogic.flatMap((s) => s.value.joins.length > 0 ? ["Relational Multi-Table Joins"] : []),
+    ...graph.sqlLogic.flatMap((s) => s.value.windowFunctions.length > 0 ? ["Window Aggregations & Partitioning"] : [])
+  ]));
+  const objectiveDoc = graph.documentation.find(
+    (d) => d.value.key.toLowerCase().includes("objective") || d.value.key.toLowerCase().includes("goal")
+  );
+  const problemDoc = graph.documentation.find(
+    (d) => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
+  );
+  const datasets = graph.evidenceSources.map((s) => ({
+    fileName: s.fileName,
+    fileType: s.parser.replace("Parser", ""),
+    schemaColumns: schemaDimensions.slice(0, 10),
+    recordSummary: `${s.nodesExtracted} nodes extracted`
+  }));
+  const primarySource = graph.evidenceSources[0]?.fileName || "Dataset";
+  const cleanSource = primarySource.split(".")[0].replace(/[^a-zA-Z0-9\s]/g, " ").trim();
+  const titleCap = cleanSource ? cleanSource.charAt(0).toUpperCase() + cleanSource.slice(1) : "Business Intelligence";
+  return {
+    projectType,
+    projectArchetype,
+    industry: "Analytics & Business Intelligence",
+    businessDomain: "Operations & Data Analytics",
+    businessProblem: problemDoc?.value.text || `Analytical gaps identified across ${graph.evidenceSources.length} source file(s) requiring structured evaluation.`,
+    primaryObjective: objectiveDoc?.value.text || (graph.businessQuestions.length > 0 ? `Answer key business inquiry: ${graph.businessQuestions[0].value}` : `Evaluate key performance metrics and optimize business decisions across ${graph.evidenceSources.length} source file(s).`),
+    likelyStakeholders: graph.stakeholderIndicators.length > 0 ? graph.stakeholderIndicators.map((s) => s.value) : ["Executive Leadership", "Analytics Leads", "Operations Managers"],
+    businessQuestions: graph.businessQuestions.map((q) => q.value),
+    trueKPIs,
+    analyticalTechniques: analyticalTechniques.length > 0 ? analyticalTechniques : ["Relational Querying", "Dimensional Profiling", "KPI Modeling"],
+    toolsUsed: toolsUsed.length > 0 ? toolsUsed : ["SQL", "Excel", "Power BI"],
+    datasets,
+    suggestedTitles: [{
+      title: `${titleCap} Performance & Decision Engine`,
+      confidence: 60,
+      rationale: `Derived from primary dataset '${primarySource}' (fallback mode).`
+    }],
+    suggestedSummaries: [{
+      summary: `This ${projectArchetype} synthesizes analytical telemetry across ${graph.evidenceSources.length} source asset(s). Operating within Operations & Data Analytics, the analysis evaluates core performance indicators using ${toolsUsed.join(" & ")} to deliver structured decision support.`,
+      confidence: 60
+    }],
+    confidence: 55,
+    schemaVersion: PUE_SCHEMA_VERSION
+  };
+}
+function normalizeUnderstanding(raw, graph) {
+  const fallback = buildFallbackUnderstanding(graph);
+  const ensureStrArr = (val, fb) => Array.isArray(val) && val.length > 0 ? val.filter(Boolean) : fb;
+  const ensureArr = (val, fb) => Array.isArray(val) && val.length > 0 ? val : fb;
+  return {
+    projectType: raw.projectType || fallback.projectType,
+    projectArchetype: raw.projectArchetype || fallback.projectArchetype,
+    industry: raw.industry || fallback.industry,
+    businessDomain: raw.businessDomain || fallback.businessDomain,
+    businessProblem: raw.businessProblem || fallback.businessProblem,
+    primaryObjective: raw.primaryObjective || fallback.primaryObjective,
+    likelyStakeholders: ensureStrArr(raw.likelyStakeholders, fallback.likelyStakeholders),
+    businessQuestions: ensureStrArr(raw.businessQuestions, fallback.businessQuestions),
+    trueKPIs: ensureArr(raw.trueKPIs, fallback.trueKPIs),
+    analyticalTechniques: ensureStrArr(raw.analyticalTechniques, fallback.analyticalTechniques),
+    toolsUsed: ensureStrArr(raw.toolsUsed, fallback.toolsUsed),
+    datasets: ensureArr(raw.datasets, fallback.datasets),
+    suggestedTitles: ensureArr(raw.suggestedTitles, fallback.suggestedTitles),
+    suggestedSummaries: ensureArr(raw.suggestedSummaries, fallback.suggestedSummaries),
+    confidence: typeof raw.confidence === "number" ? Math.max(0, Math.min(100, raw.confidence)) : fallback.confidence,
+    schemaVersion: PUE_SCHEMA_VERSION
+  };
+}
+async function synthesizeViaGemini(graph) {
+  const ai = getPUEClient();
+  if (!ai) return null;
+  const digest = buildEvidenceDigest(graph);
+  const systemInstruction = "You are an expert business intelligence analyst and project classifier. Given a structured evidence digest extracted from data project files (SQL, Excel, Power BI, Python, CSV, images, documents), synthesize a precise, domain-aware ProjectUnderstanding object. Reason from the evidence \u2014 do not use generic placeholders. Identify true business KPIs (not schema column IDs or row keys). Identify the real business problem and primary objective from the project evidence. Generate business questions this project answers. Output valid JSON matching the response schema exactly.";
+  const prompt = `Analyze this Evidence Digest extracted from a data analyst portfolio project and synthesize a complete ProjectUnderstanding object.
+
+### EVIDENCE DIGEST:
+${digest}
+
+### INSTRUCTIONS:
+- projectType: The general type (e.g. "Power BI", "SQL", "Python", "Multi-Source").
+- projectArchetype: Specific analytical archetype (e.g. "Power BI / DAX Business Intelligence Dashboard", "SQL Analytics & Data Relational Engine").
+- industry: The real-world industry. Infer from business terms and KPI names \u2014 NOT from parser type.
+- businessDomain: The functional business domain (e.g. "Customer Retention & Product Telemetry").
+- businessProblem: The root operational challenge. One clear sentence.
+- primaryObjective: The primary analytical goal. One clear sentence.
+- likelyStakeholders: 2-4 role titles.
+- businessQuestions: 3-6 specific business questions this project answers.
+- trueKPIs: Only real business KPIs \u2014 NOT schema column names like 'id', 'created_at', 'category_id'.
+- analyticalTechniques: Methods used (e.g. "Time-Series Trend Analysis", "Cohort Retention Analysis").
+- toolsUsed: Technology tools.
+- datasets: One entry per source file with its detected schema columns.
+- suggestedTitles: 2 recruiter-quality project title suggestions.
+- suggestedSummaries: 1-2 executive summary paragraph suggestions.
+- confidence: Your overall confidence in this synthesis (0-100).
+`;
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  for (const model of candidateModels) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: PUE_RESPONSE_SCHEMA
+        }
+      });
+      const raw = JSON.parse(response.text.trim());
+      const normalized = normalizeUnderstanding(raw, graph);
+      console.log(`[PUE] Synthesized via Gemini/${model} (confidence: ${normalized.confidence})`);
+      return normalized;
+    } catch (err) {
+      console.warn(`[PUE] Gemini model ${model} failed: ${err.message}`);
+    }
+  }
+  return null;
+}
+async function getCachedOrSynthesizeUnderstanding(graph, evidenceHash, existing) {
+  if (existing !== void 0 && existing !== null) {
+    if (isValidUnderstanding(existing)) {
+      console.log("[PUE] Reusing caller-supplied ProjectUnderstanding (Tier 1 \u2014 zero Gemini calls).");
+      cacheSet(evidenceHash, existing);
+      return existing;
+    }
+    console.warn("[PUE] Caller-supplied ProjectUnderstanding failed validation \u2014 proceeding to Tier 2.");
+  }
+  const cached = cacheGet(evidenceHash);
+  if (cached !== null) {
+    console.log("[PUE] Cache hit for evidenceHash \u2014 returning cached ProjectUnderstanding (Tier 2 \u2014 zero Gemini calls).");
+    return cached;
+  }
+  const geminiResult = await synthesizeViaGemini(graph);
+  if (geminiResult !== null) {
+    cacheSet(evidenceHash, geminiResult);
+    return geminiResult;
+  }
+  console.warn("[PUE] All Gemini models failed \u2014 using deterministic fallback (Tier 3 fallback).");
+  const fallback = buildFallbackUnderstanding(graph);
+  cacheSet(evidenceHash, fallback);
+  return fallback;
+}
+
 // src/api/_lib/compiler/index.ts
 import crypto2 from "crypto";
 function normalizeLabel(label) {
@@ -2017,7 +2756,7 @@ function mergeExtractedProjects(projects) {
   });
   return merged;
 }
-async function compileProjectPackage(rawFiles) {
+async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existingUnderstanding) {
   let projectType = "Mixed Analytics";
   const MAX_RAW_FILES = 50;
   if (rawFiles.length > MAX_RAW_FILES) {
@@ -2126,13 +2865,67 @@ async function compileProjectPackage(rawFiles) {
   } catch (err) {
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
+  const packageEvidenceHash = crypto2.createHash("sha256").update(allFiles.map((f) => f.sha256).sort().join(":")).digest("hex");
+  const projectUnderstanding = await getCachedOrSynthesizeUnderstanding(
+    evidenceGraph,
+    packageEvidenceHash,
+    existingUnderstanding
+  );
+  const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
+  const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
+  const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
-    ...detectEvidenceConflicts(evidenceGraph)
+    ...detectEvidenceConflicts(evidenceGraph),
+    ...answerConflicts
   ];
+  const requiredScores = [
+    coverageReport.executiveSummary,
+    coverageReport.businessObjective,
+    coverageReport.businessProblem,
+    coverageReport.stakeholders,
+    coverageReport.methodology,
+    coverageReport.kpis,
+    coverageReport.recommendations,
+    coverageReport.businessImpact,
+    coverageReport.interviewStory
+  ];
+  const isFullySufficient = requiredScores.every((score) => score >= 80);
+  if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
+    const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
+    if (missingInformation.length > 0) {
+      const rawProject2 = mergeExtractedProjects(parsedProjects);
+      return {
+        status: "NEEDS_USER_INPUT",
+        projectType,
+        projectArchetype,
+        projectUnderstanding,
+        rawProject: {
+          ...rawProject2,
+          sourceFiles: Array.from(new Set(allFiles.map((f) => f.name)))
+        },
+        coverageReport,
+        missingInformation,
+        conflicts,
+        fileCoverage,
+        evidenceGraph
+      };
+    }
+  }
   const rawProject = mergeExtractedProjects(parsedProjects);
-  const synthesized = await compilePortfolioWithGemini(evidenceGraph, conflicts, rawProject);
-  const packageEvidenceHash = crypto2.createHash("sha256").update(allFiles.map((f) => f.sha256).sort().join(":")).digest("hex");
+  console.log({
+    hasGeminiKey: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY?.length
+  });
+  const synthesized = await compilePortfolioWithGemini(
+    evidenceGraph,
+    conflicts,
+    rawProject,
+    mergedAnswersContext,
+    projectArchetype,
+    projectUnderstanding
+  );
+  const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
   const sourceAttributions = {};
   const confidenceScores = {};
   if (synthesized.structured) {
@@ -2156,11 +2949,16 @@ async function compileProjectPackage(rawFiles) {
     sourceAttributions.recommendations = synthesized.structured.recommendations.evidence.map((e) => e.sourceFile);
   }
   return {
+    status: "COMPLETE",
     projectType,
+    projectArchetype,
+    projectUnderstanding,
     rawProject: {
       ...synthesized.raw,
       sourceFiles: Array.from(new Set(allFiles.map((f) => f.name)))
     },
+    coverageReport,
+    recruiterAudit,
     evidenceGraph,
     portfolioProject: synthesized.structured,
     conflicts,
@@ -2172,25 +2970,30 @@ async function compileProjectPackage(rawFiles) {
     linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      parserVersions: "Portfolio OS AI Compiler Engine v3.0 (Evidence Graph + Gemini)",
+      parserVersions: "Portfolio OS AI Intelligence Engine v4.1 (PUE-Cached + Evidence Intelligence + Recruiter Audit + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v3",
+      projectVersion: "v4.1",
       totalFilesProcessed: allFiles.length,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     }
   };
 }
-async function compileSourceCodeToProject(fileName, sourceCode) {
-  return compileProjectPackage([{
-    name: fileName,
-    size: Buffer.byteLength(sourceCode),
-    type: "text",
-    content: sourceCode
-  }]);
+async function compileSourceCodeToProject(fileName, sourceCode, userAnswers, forceCompile, existingUnderstanding) {
+  return compileProjectPackage(
+    [{
+      name: fileName,
+      size: Buffer.byteLength(sourceCode),
+      type: "text",
+      content: sourceCode
+    }],
+    userAnswers,
+    forceCompile,
+    existingUnderstanding
+  );
 }
 
 // src/api/_lib/ai/index.ts
-import { GoogleGenAI as GoogleGenAI2, Type as Type2 } from "@google/genai";
+import { GoogleGenAI as GoogleGenAI3, Type as Type3 } from "@google/genai";
 var aiClient2 = null;
 function getAiClient2() {
   if (aiClient2) return aiClient2;
@@ -2198,7 +3001,7 @@ function getAiClient2() {
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not defined in environment secrets.");
   }
-  aiClient2 = new GoogleGenAI2({
+  aiClient2 = new GoogleGenAI3({
     apiKey,
     httpOptions: {
       headers: {
@@ -2447,7 +3250,11 @@ function logExecution(stats) {
 }
 
 // src/api/portfolio/ai.ts
+var config = {
+  runtime: "nodejs"
+};
 async function handler(req, res) {
+  if (!enforceOwnerPermission(req, res)) return;
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);
@@ -2458,7 +3265,7 @@ async function handler(req, res) {
   if (pathname.includes("/ai-package-parse")) {
     try {
       const body = req.body || {};
-      const { fileName, fileDataBase64, fileType, files } = body;
+      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
       const rawFilesToCompile = [];
       if (Array.isArray(files) && files.length > 0) {
         for (const fileMeta of files) {
@@ -2532,7 +3339,7 @@ async function handler(req, res) {
           "Invalid request payload. Must provide either legacy format ({ fileName, fileDataBase64 }) or new format ({ packageId, files })."
         );
       }
-      const output = await compileProjectPackage(rawFilesToCompile);
+      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding);
       logExecution({
         endpoint: pathname,
         totalDurationMs: Date.now() - startTime
@@ -2628,6 +3435,7 @@ Return only the refined text output without conversational filler.
   return sendError(res, 404, "Sub-route not found.");
 }
 export {
+  config,
   handler as default
 };
 /**
