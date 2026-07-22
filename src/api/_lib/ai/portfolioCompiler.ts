@@ -333,7 +333,7 @@ Return refined executive JSON matching the specified schema properties.
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: reviewPrompt,
       config: {
         systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
@@ -687,27 +687,34 @@ ${JSON.stringify(conflicts, null, 2)}
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
 
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  let lastError: any = null;
+  let response: any = null;
+  let usedModel = candidateModels[0];
   const startTime = Date.now();
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        systemInstruction:
-          "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: {
-              type: Type.OBJECT,
-              properties: {
-                value: { type: Type.STRING },
-                confidence: { type: Type.INTEGER }
+
+  for (const model of candidateModels) {
+    try {
+      usedModel = model;
+      response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction:
+            "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: {
+                type: Type.OBJECT,
+                properties: {
+                  value: { type: Type.STRING },
+                  confidence: { type: Type.INTEGER }
+                },
+                required: ["value", "confidence"]
               },
-              required: ["value", "confidence"]
-            },
-            subtitle: {
+              subtitle: {
               type: Type.OBJECT,
               properties: {
                 value: { type: Type.STRING },
@@ -970,221 +977,230 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         }
       }
     });
-
-    const latencyMs = Date.now() - startTime;
-    const promptTokens = response.usageMetadata?.promptTokenCount || 0;
-    const completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
-    const totalTokens = response.usageMetadata?.totalTokenCount || 0;
-    const finishReason = response.candidates?.[0]?.finishReason || "STOP";
-
-    console.log("\n==========================================================");
-    console.log("             [GEMINI EXECUTION TELEMETRY]                 ");
-    console.log("==========================================================");
-    console.log(`Model Used: gemini-2.5-flash`);
-    console.log(`Latency: ${latencyMs} ms`);
-    console.log(`Prompt Tokens: ${promptTokens}`);
-    console.log(`Completion Tokens: ${completionTokens}`);
-    console.log(`Total Tokens: ${totalTokens}`);
-    console.log(`Finish Reason: ${finishReason}`);
-    console.log(`Schema Validation: PASSED (JSON matches responseSchema)`);
-    console.log(`Raw Gemini Response JSON:\n${response.text}`);
-    console.log("==========================================================\n");
-
-    const parsed = JSON.parse(response.text.trim());
-    const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
-    const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
-    const defaultEvidence = graph.evidenceSources.length > 0 
-      ? graph.evidenceSources.map(s => ({ sourceFile: s.fileName, parser: s.parser }))
-      : [{ sourceFile: primarySource }];
-
-    let structured: StructuredPortfolioProject = {
-      title: { 
-        value: parsed.title?.value || inferTitleFromEvidence(graph), 
-        confidence: parsed.title?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      subtitle: { 
-        value: parsed.subtitle?.value || `Quantitative analysis derived from ${sourceCount} evidence source(s)`, 
-        confidence: parsed.subtitle?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      executiveSummary: { 
-        value: parsed.executiveSummary?.value || "Synthesized analysis derived from canonical evidence graph.", 
-        confidence: parsed.executiveSummary?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      businessContext: { 
-        value: parsed.businessContext?.value || `Strategic evaluation operating within the ${graph.projectDomain || 'Analytics'} domain.`, 
-        confidence: parsed.businessContext?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      businessProblem: { 
-        value: parsed.businessProblem?.value || "Analyze key operational indicators to isolate growth levers.", 
-        confidence: parsed.businessProblem?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      businessObjective: { 
-        value: parsed.businessObjective?.value || "Deliver evidence-grounded performance metrics and recommendations.", 
-        confidence: parsed.businessObjective?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      businessImpact: { 
-        value: parsed.businessImpact?.value || "Streamlines executive decision workflows and enhances operational metric visibility.", 
-        confidence: parsed.businessImpact?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      stakeholders: { 
-        value: parsed.stakeholders?.value || ["Executive Leadership", "Analytics Leads"], 
-        confidence: parsed.stakeholders?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      datasetDescription: { 
-        value: parsed.datasetDescription?.value || `Multi-source analytical dataset comprising ${sourceCount} evidence source(s).`, 
-        confidence: parsed.datasetDescription?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      methodology: { 
-        value: parsed.methodology?.value || "1. Ingested raw source data into canonical evidence graph.\n2. Verified metric lineage and calculated confidence.", 
-        confidence: parsed.methodology?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      dataCleaning: { 
-        value: parsed.dataCleaning?.value || "Extracted schema variables, validated file signatures, and normalized evidence.", 
-        confidence: parsed.dataCleaning?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      analysisProcess: { 
-        value: parsed.analysisProcess?.value || "1. Built canonical evidence graph.\n2. Verified metric lineage.\n3. Synthesized recruiter-ready case study.", 
-        confidence: parsed.analysisProcess?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      analyticalTechniques: { 
-        value: parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map(t => t.value) : ["Relational Query Modeling", "KPI Profiling"]), 
-        confidence: parsed.analyticalTechniques?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      industry: { 
-        value: parsed.industry?.value || graph.projectDomain || "Analytics & Business Intelligence", 
-        confidence: parsed.industry?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      role: { 
-        value: parsed.role?.value || inferRoleFromEvidence(graph), 
-        confidence: parsed.role?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      duration: { 
-        value: parsed.duration?.value || "1 Week", 
-        confidence: parsed.duration?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      findings: { 
-        value: parsed.findings?.value || "Analyzed metrics across all provided evidence sources.", 
-        confidence: parsed.findings?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      recommendations: { 
-        value: parsed.recommendations?.value || "Integrate analytical KPIs into executive decision dashboards.", 
-        confidence: parsed.recommendations?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      challenges: { 
-        value: parsed.challenges?.value || "Ensuring strict evidence lineage across disparate data formats.", 
-        confidence: parsed.challenges?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      lessonsLearned: { 
-        value: parsed.lessonsLearned?.value || "Maintained grounded evidence tracing to guarantee data integrity.", 
-        confidence: parsed.lessonsLearned?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      technologyStack: { 
-        value: parsed.technologyStack?.value || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["SQL", "Excel", "Python", "Power BI"]), 
-        confidence: parsed.technologyStack?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      skillsDemonstrated: { 
-        value: parsed.skillsDemonstrated?.value || ["Executive Business Storytelling", "SQL Analytics", "KPI Modeling", "Data Visualization"], 
-        confidence: parsed.skillsDemonstrated?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      resumeBullets: {
-        value: parsed.resumeBullets?.value || [
-          `Engineered analytical data pipelines for ${primarySource}, improving data accessibility and KPI visibility.`,
-          "Extracted and validated key performance metrics across business databases."
-        ],
-        confidence: parsed.resumeBullets?.confidence || dynamicConfidence,
-        evidence: defaultEvidence
-      },
-      linkedInSummary: { 
-        value: parsed.linkedInSummary?.value || `Case Study: ${parsed.title?.value || inferTitleFromEvidence(graph)}`, 
-        confidence: parsed.linkedInSummary?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      gitHubReadmeSummary: { 
-        value: parsed.gitHubReadmeSummary?.value || `# ${parsed.title?.value || inferTitleFromEvidence(graph)}\n\n${parsed.executiveSummary?.value || ''}`, 
-        confidence: parsed.gitHubReadmeSummary?.confidence || dynamicConfidence, 
-        evidence: defaultEvidence 
-      },
-      starStory: {
-        value: parsed.starStory?.value || {
-          situation: `Analyzed data assets from ${primarySource}.`,
-          task: "Synthesize insights and KPIs.",
-          action: "Ran structured evidence extraction and compiler pipeline.",
-          result: "Delivered verified case study metrics."
-        },
-        confidence: parsed.starStory?.confidence || dynamicConfidence,
-        evidence: defaultEvidence
-      },
-      metrics: (parsed.metrics || []).map((m: any, idx: number) => ({
-        id: `ai-metric-${idx}-${Date.now()}`,
-        label: m.label,
-        value: m.value,
-        description: m.description,
-        iconName: m.iconName || "Activity",
-        confidence: m.confidence || dynamicConfidence,
-        sourceFile: m.sourceFile || primarySource
-      })),
-      tags: parsed.tags || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"]),
-      categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
-    };
-
-    // Task 8: Run automated internal AI Quality Review audit & refinement loop
-    structured = await reviewAndRefinePortfolio(structured, graph);
-
-    // Update raw base project with Gemini's synthesized narrative for backwards compatibility
-    const rawUpdated: ExtractedProject = {
-      ...rawBaseProject,
-      title: structured.title.value,
-      subtitle: structured.subtitle.value,
-      summary: structured.executiveSummary.value,
-      objective: structured.businessObjective.value,
-      businessProblem: structured.businessProblem.value,
-      datasetDesc: structured.datasetDescription.value,
-      methodology: structured.methodology.value,
-      dataCleaning: structured.dataCleaning.value,
-      findings: structured.findings.value,
-      recommendations: structured.recommendations.value,
-      challengesText: structured.challenges.value,
-      lessonsLearned: structured.lessonsLearned.value,
-      industry: structured.industry.value,
-      role: structured.role.value,
-      duration: structured.duration.value,
-      tags: structured.tags,
-      categories: structured.categories,
-      metrics: structured.metrics.length > 0 ? structured.metrics.map(m => ({
-        id: m.id,
-        label: m.label,
-        value: m.value,
-        description: m.description,
-        iconName: m.iconName,
-        sourceFile: m.sourceFile
-      })) : rawBaseProject.metrics
-    };
-
-    return { structured, raw: rawUpdated };
-  } catch (err: any) {
-    console.error("❌ Gemini generation failed. Reason:", err.message);
-    throw new Error(`❌ Gemini generation failed. Reason: ${err.message}`);
+      if (response && response.text) {
+        break;
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[portfolioCompiler] Model ${model} failed (${err.message}). Trying fallback model...`);
+    }
   }
+
+  if (!response || !response.text) {
+    console.error("❌ Gemini generation failed across all models. Reason:", lastError?.message || "No response received");
+    throw new Error(`❌ Gemini generation failed. Reason: ${lastError?.message || "No response received"}`);
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const promptTokens = response.usageMetadata?.promptTokenCount || 0;
+  const completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
+  const totalTokens = response.usageMetadata?.totalTokenCount || 0;
+  const finishReason = response.candidates?.[0]?.finishReason || "STOP";
+
+  console.log("\n==========================================================");
+  console.log("             [GEMINI EXECUTION TELEMETRY]                 ");
+  console.log("==========================================================");
+  console.log(`Model Used: ${usedModel}`);
+  console.log(`Latency: ${latencyMs} ms`);
+  console.log(`Prompt Tokens: ${promptTokens}`);
+  console.log(`Completion Tokens: ${completionTokens}`);
+  console.log(`Total Tokens: ${totalTokens}`);
+  console.log(`Finish Reason: ${finishReason}`);
+  console.log(`Schema Validation: PASSED (JSON matches responseSchema)`);
+  console.log(`Raw Gemini Response JSON:\n${response.text}`);
+  console.log("==========================================================\n");
+
+  const parsed = JSON.parse(response.text.trim());
+  const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
+  const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
+  const defaultEvidence = graph.evidenceSources.length > 0 
+    ? graph.evidenceSources.map(s => ({ sourceFile: s.fileName, parser: s.parser }))
+    : [{ sourceFile: primarySource }];
+
+  let structured: StructuredPortfolioProject = {
+    title: { 
+      value: parsed.title?.value || inferTitleFromEvidence(graph), 
+      confidence: parsed.title?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    subtitle: { 
+      value: parsed.subtitle?.value || `Quantitative analysis derived from ${sourceCount} evidence source(s)`, 
+      confidence: parsed.subtitle?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    executiveSummary: { 
+      value: parsed.executiveSummary?.value || "Synthesized analysis derived from canonical evidence graph.", 
+      confidence: parsed.executiveSummary?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    businessContext: { 
+      value: parsed.businessContext?.value || `Strategic evaluation operating within the ${graph.projectDomain || 'Analytics'} domain.`, 
+      confidence: parsed.businessContext?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    businessProblem: { 
+      value: parsed.businessProblem?.value || "Analyze key operational indicators to isolate growth levers.", 
+      confidence: parsed.businessProblem?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    businessObjective: { 
+      value: parsed.businessObjective?.value || "Deliver evidence-grounded performance metrics and recommendations.", 
+      confidence: parsed.businessObjective?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    businessImpact: { 
+      value: parsed.businessImpact?.value || "Streamlines executive decision workflows and enhances operational metric visibility.", 
+      confidence: parsed.businessImpact?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    stakeholders: { 
+      value: parsed.stakeholders?.value || ["Executive Leadership", "Analytics Leads"], 
+      confidence: parsed.stakeholders?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    datasetDescription: { 
+      value: parsed.datasetDescription?.value || `Multi-source analytical dataset comprising ${sourceCount} evidence source(s).`, 
+      confidence: parsed.datasetDescription?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    methodology: { 
+      value: parsed.methodology?.value || "1. Ingested raw source data into canonical evidence graph.\n2. Verified metric lineage and calculated confidence.", 
+      confidence: parsed.methodology?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    dataCleaning: { 
+      value: parsed.dataCleaning?.value || "Extracted schema variables, validated file signatures, and normalized evidence.", 
+      confidence: parsed.dataCleaning?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    analysisProcess: { 
+      value: parsed.analysisProcess?.value || "1. Built canonical evidence graph.\n2. Verified metric lineage.\n3. Synthesized recruiter-ready case study.", 
+      confidence: parsed.analysisProcess?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    analyticalTechniques: { 
+      value: parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map(t => t.value) : ["Relational Query Modeling", "KPI Profiling"]), 
+      confidence: parsed.analyticalTechniques?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    industry: { 
+      value: parsed.industry?.value || graph.projectDomain || "Analytics & Business Intelligence", 
+      confidence: parsed.industry?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    role: { 
+      value: parsed.role?.value || inferRoleFromEvidence(graph), 
+      confidence: parsed.role?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    duration: { 
+      value: parsed.duration?.value || "1 Week", 
+      confidence: parsed.duration?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    findings: { 
+      value: parsed.findings?.value || "Analyzed metrics across all provided evidence sources.", 
+      confidence: parsed.findings?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    recommendations: { 
+      value: parsed.recommendations?.value || "Integrate analytical KPIs into executive decision dashboards.", 
+      confidence: parsed.recommendations?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    challenges: { 
+      value: parsed.challenges?.value || "Ensuring strict evidence lineage across disparate data formats.", 
+      confidence: parsed.challenges?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    lessonsLearned: { 
+      value: parsed.lessonsLearned?.value || "Maintained grounded evidence tracing to guarantee data integrity.", 
+      confidence: parsed.lessonsLearned?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    technologyStack: { 
+      value: parsed.technologyStack?.value || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["SQL", "Excel", "Python", "Power BI"]), 
+      confidence: parsed.technologyStack?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    skillsDemonstrated: { 
+      value: parsed.skillsDemonstrated?.value || ["Executive Business Storytelling", "SQL Analytics", "KPI Modeling", "Data Visualization"], 
+      confidence: parsed.skillsDemonstrated?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    resumeBullets: {
+      value: parsed.resumeBullets?.value || [
+        `Engineered analytical data pipelines for ${primarySource}, improving data accessibility and KPI visibility.`,
+        "Extracted and validated key performance metrics across business databases."
+      ],
+      confidence: parsed.resumeBullets?.confidence || dynamicConfidence,
+      evidence: defaultEvidence
+    },
+    linkedInSummary: { 
+      value: parsed.linkedInSummary?.value || `Case Study: ${parsed.title?.value || inferTitleFromEvidence(graph)}`, 
+      confidence: parsed.linkedInSummary?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    gitHubReadmeSummary: { 
+      value: parsed.gitHubReadmeSummary?.value || `# ${parsed.title?.value || inferTitleFromEvidence(graph)}\n\n${parsed.executiveSummary?.value || ''}`, 
+      confidence: parsed.gitHubReadmeSummary?.confidence || dynamicConfidence, 
+      evidence: defaultEvidence 
+    },
+    starStory: {
+      value: parsed.starStory?.value || {
+        situation: `Analyzed data assets from ${primarySource}.`,
+        task: "Synthesize insights and KPIs.",
+        action: "Ran structured evidence extraction and compiler pipeline.",
+        result: "Delivered verified case study metrics."
+      },
+      confidence: parsed.starStory?.confidence || dynamicConfidence,
+      evidence: defaultEvidence
+    },
+    metrics: (parsed.metrics || []).map((m: any, idx: number) => ({
+      id: `ai-metric-${idx}-${Date.now()}`,
+      label: m.label,
+      value: m.value,
+      description: m.description,
+      iconName: m.iconName || "Activity",
+      confidence: m.confidence || dynamicConfidence,
+      sourceFile: m.sourceFile || primarySource
+    })),
+    tags: parsed.tags || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"]),
+    categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
+  };
+
+  // Task 8: Run automated internal AI Quality Review audit & refinement loop
+  structured = await reviewAndRefinePortfolio(structured, graph);
+
+  // Update raw base project with Gemini's synthesized narrative for backwards compatibility
+  const rawUpdated: ExtractedProject = {
+    ...rawBaseProject,
+    title: structured.title.value,
+    subtitle: structured.subtitle.value,
+    summary: structured.executiveSummary.value,
+    objective: structured.businessObjective.value,
+    businessProblem: structured.businessProblem.value,
+    datasetDesc: structured.datasetDescription.value,
+    methodology: structured.methodology.value,
+    dataCleaning: structured.dataCleaning.value,
+    findings: structured.findings.value,
+    recommendations: structured.recommendations.value,
+    challengesText: structured.challenges.value,
+    lessonsLearned: structured.lessonsLearned.value,
+    industry: structured.industry.value,
+    role: structured.role.value,
+    duration: structured.duration.value,
+    tags: structured.tags,
+    categories: structured.categories,
+    metrics: structured.metrics.length > 0 ? structured.metrics.map(m => ({
+      id: m.id,
+      label: m.label,
+      value: m.value,
+      description: m.description,
+      iconName: m.iconName,
+      sourceFile: m.sourceFile
+    })) : rawBaseProject.metrics
+  };
+
+  return { structured, raw: rawUpdated };
 }
