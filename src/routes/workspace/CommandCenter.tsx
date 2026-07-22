@@ -2661,6 +2661,53 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                             className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500 resize-none"
                                           />
                                         </div>
+                                        <div className="space-y-1">
+                                          <label className="text-slate-400 uppercase font-bold block">Strategic Objective</label>
+                                          <textarea
+                                            value={aiParsedResult.objective || ""}
+                                            onChange={(e) => handleFieldCorrection("objective", e.target.value)}
+                                            rows={2}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-slate-400 uppercase font-bold block">Methodology</label>
+                                          <textarea
+                                            value={aiParsedResult.methodology || ""}
+                                            onChange={(e) => handleFieldCorrection("methodology", e.target.value)}
+                                            rows={2}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-slate-400 uppercase font-bold block">Business Problem</label>
+                                          <textarea
+                                            value={aiParsedResult.businessProblem || ""}
+                                            onChange={(e) => handleFieldCorrection("businessProblem", e.target.value)}
+                                            rows={2}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                                          />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div className="space-y-1">
+                                            <label className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Industry</label>
+                                            <input
+                                              type="text"
+                                              value={aiParsedResult.industry || ""}
+                                              onChange={(e) => handleFieldCorrection("industry", e.target.value)}
+                                              className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500"
+                                            />
+                                          </div>
+                                          <div className="space-y-1">
+                                            <label className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Your Role</label>
+                                            <input
+                                              type="text"
+                                              value={aiParsedResult.role || ""}
+                                              onChange={(e) => handleFieldCorrection("role", e.target.value)}
+                                              className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-slate-200 font-sans text-xs focus:outline-none focus:border-indigo-500"
+                                            />
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
                                   )}
@@ -2676,517 +2723,27 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                                                 {trace.cellNumber && (
                                                   <span className="text-emerald-400 text-[9px] font-bold">Cell: {trace.cellNumber}</span>
                                                 )}
-                                      )}
-                                    </div>
-
-                                    {/* 3. Strategic Objective */}
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between items-center text-[9px]">
-                                        <div className="flex items-center gap-1">
-                                          <label className="font-mono uppercase text-slate-400 font-bold">Strategic Objective</label>
-                                          {classifications.objective && (
-                                            <span className={`text-[8px] font-bold px-1 rounded ${
-                                              classifications.objective === "VERIFIED" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                              classifications.objective === "IMPROVED" ? "bg-indigo-950 text-indigo-400 border border-indigo-900" :
-                                              classifications.objective === "USER EDITED" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                              "bg-slate-900 text-slate-400 border border-slate-800"
-                                            }`}>
-                                              {classifications.objective}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                          <button
-                                            type="button"
-                                            onClick={() => setActiveDiffField(activeDiffField === "objective" ? null : "objective")}
-                                            className="text-indigo-400 hover:underline text-[8px] font-bold cursor-pointer"
-                                          >
-                                            [Compare Diff]
-                                          </button>
-                                          {sourceAttributions?.objectivesProblem && (
-                                            <span className="text-slate-500 truncate max-w-[120px]" title={sourceAttributions.objectivesProblem}>
-                                              📄 {sourceAttributions.objectivesProblem}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Diff Renderer */}
-                                      {activeDiffField === "objective" && (
-                                        <div className="my-1.5 border border-slate-800 rounded p-1.5 bg-slate-950/40">
-                                          {renderDiff(originalTexts.objective || "", aiParsedResult.objective || "")}
-                                        </div>
-                                      )}
-
-                                      <textarea
-                                        value={aiParsedResult.objective || ""}
-                                        onChange={(e) => handleFieldCorrection("objective", e.target.value)}
-                                        className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.objective ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
-                                        }`}
-                                        placeholder="Strategic Objective..."
-                                      />
-                                    </div>
-
-                                    {/* 4. Methodology */}
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between items-center text-[9px]">
-                                        <div className="flex items-center gap-1">
-                                          <label className="font-mono uppercase text-slate-400 font-bold">Methodology</label>
-                                          {classifications.methodology && (
-                                            <span className={`text-[8px] font-bold px-1 rounded ${
-                                              classifications.methodology === "VERIFIED" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                              classifications.methodology === "IMPROVED" ? "bg-indigo-950 text-indigo-400 border border-indigo-900" :
-                                              classifications.methodology === "USER EDITED" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                              "bg-slate-900 text-slate-400 border border-slate-800"
-                                            }`}>
-                                              {classifications.methodology}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                          <button
-                                            type="button"
-                                            onClick={() => setActiveDiffField(activeDiffField === "methodology" ? null : "methodology")}
-                                            className="text-indigo-400 hover:underline text-[8px] font-bold cursor-pointer"
-                                          >
-                                            [Compare Diff]
-                                          </button>
-                                          {sourceAttributions?.methodologyNarrative && (
-                                            <span className="text-slate-500 truncate max-w-[120px]" title={sourceAttributions.methodologyNarrative}>
-                                              📄 {sourceAttributions.methodologyNarrative}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Diff Renderer */}
-                                      {activeDiffField === "methodology" && (
-                                        <div className="my-1.5 border border-slate-800 rounded p-1.5 bg-slate-950/40">
-                                          {renderDiff(originalTexts.methodology || "", aiParsedResult.methodology || "")}
-                                        </div>
-                                      )}
-
-                                      <textarea
-                                        value={aiParsedResult.methodology || ""}
-                                        onChange={(e) => handleFieldCorrection("methodology", e.target.value)}
-                                        className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.methodology ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
-                                        }`}
-                                        placeholder="Methodology & Action Steps..."
-                                      />
-                                    </div>
-
-                                    {/* 5. Business Problem */}
-                                    <div className="space-y-1">
-                                      <div className="flex justify-between items-center text-[9px]">
-                                        <div className="flex items-center gap-1">
-                                          <label className="font-mono uppercase text-slate-400 font-bold">Business Problem</label>
-                                          {classifications.businessProblem && (
-                                            <span className={`text-[8px] font-bold px-1 rounded ${
-                                              classifications.businessProblem === "VERIFIED" ? "bg-emerald-950 text-emerald-400 border border-emerald-900" :
-                                              classifications.businessProblem === "IMPROVED" ? "bg-indigo-950 text-indigo-400 border border-indigo-900" :
-                                              classifications.businessProblem === "USER EDITED" ? "bg-amber-950 text-amber-400 border border-amber-900" :
-                                              "bg-slate-900 text-slate-400 border border-slate-800"
-                                            }`}>
-                                              {classifications.businessProblem}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 font-mono">
-                                          <button
-                                            type="button"
-                                            onClick={() => setActiveDiffField(activeDiffField === "businessProblem" ? null : "businessProblem")}
-                                            className="text-indigo-400 hover:underline text-[8px] font-bold cursor-pointer"
-                                          >
-                                            [Compare Diff]
-                                          </button>
-                                          {sourceAttributions?.objectivesProblem && (
-                                            <span className="text-slate-500 truncate max-w-[120px]" title={sourceAttributions.objectivesProblem}>
-                                              📄 {sourceAttributions.objectivesProblem}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Diff Renderer */}
-                                      {activeDiffField === "businessProblem" && (
-                                        <div className="my-1.5 border border-slate-800 rounded p-1.5 bg-slate-950/40">
-                                          {renderDiff(originalTexts.businessProblem || "", aiParsedResult.businessProblem || "")}
-                                        </div>
-                                      )}
-
-                                      <textarea
-                                        value={aiParsedResult.businessProblem || ""}
-                                        onChange={(e) => handleFieldCorrection("businessProblem", e.target.value)}
-                                        className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans min-h-[50px] resize-none ${
-                                          !aiParsedResult.businessProblem ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
-                                        }`}
-                                        placeholder="Business Problem..."
-                                      />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="space-y-1">
-                                        <label className="text-[9px] font-mono uppercase text-slate-400 font-bold">Industry</label>
-                                        <input
-                                          type="text"
-                                          value={aiParsedResult.industry || ""}
-                                          onChange={(e) => handleFieldCorrection("industry", e.target.value)}
-                                          className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans ${
-                                            !aiParsedResult.industry ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
-                                          }`}
-                                          placeholder="Industry..."
-                                        />
-                                      </div>
-                                      <div className="space-y-1">
-                                        <label className="text-[9px] font-mono uppercase text-slate-400 font-bold">Your Role</label>
-                                        <input
-                                          type="text"
-                                          value={aiParsedResult.role || ""}
-                                          onChange={(e) => handleFieldCorrection("role", e.target.value)}
-                                          className={`w-full bg-slate-950 border rounded p-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans ${
-                                            !aiParsedResult.role ? "border-amber-900/60 bg-amber-950/10" : "border-slate-800"
-                                          }`}
-                                          placeholder="Your Role..."
-                                        />
-                                      </div>
-                                    </div>
-
-                                    {/* ✨ IN-PLACE EVIDENCE-DRIVEN KPI / METRICS EDITOR */}
-                                    <div className="space-y-2 border-t border-slate-800/60 pt-3">
-                                      <div className="flex items-center justify-between">
-                                        <label className="text-[9px] font-mono uppercase text-slate-400 font-bold flex items-center gap-1">
-                                          <Lock className="w-3 h-3 text-emerald-400" />
-                                          Extracted Metrics & KPIs (Evidence Verified)
-                                        </label>
-                                        <span className="text-[8px] bg-emerald-950/40 border border-emerald-900/60 text-emerald-400 font-mono px-1 rounded uppercase flex items-center gap-0.5">
-                                          <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" /> Immutable Verification Active
-                                        </span>
-                                      </div>
-                                      {aiParsedResult.metrics && aiParsedResult.metrics.length > 0 ? (
-                                        <div className="space-y-2.5">
-                                          {aiParsedResult.metrics.map((m: any, idx: number) => (
-                                            <div key={idx} className="bg-slate-950/60 p-2 rounded border border-slate-800/60 space-y-2">
-                                              <div className="grid grid-cols-3 gap-2">
-                                                <div className="col-span-1 space-y-1">
-                                                  <label className="text-[8px] text-slate-500 font-mono uppercase">Value (Locked)</label>
-                                                  <div className="bg-slate-900 border border-slate-800/80 rounded px-1.5 py-1 text-xs text-emerald-400 font-mono font-bold flex items-center gap-1 select-none cursor-not-allowed" title="KPIs are immutable and cannot be hallucinated.">
-                                                    <Lock className="w-2.5 h-2.5 shrink-0 text-amber-500" />
-                                                    {m.value}
-                                                  </div>
-                                                </div>
-                                                <div className="col-span-2 space-y-1">
-                                                  <label className="text-[8px] text-slate-500 font-mono uppercase">Label / Metric Title</label>
-                                                  <input
-                                                    type="text"
-                                                    value={m.label || ""}
-                                                    onChange={(e) => {
-                                                      const updatedMetrics = [...aiParsedResult.metrics];
-                                                      updatedMetrics[idx] = { ...updatedMetrics[idx], label: e.target.value };
-                                                      setAiParsedResult({ ...aiParsedResult, metrics: updatedMetrics });
-                                                    }}
-                                                    className="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-sans"
-                                                    placeholder="Metric Label"
-                                                  />
-                                                </div>
                                               </div>
-                                              <div className="space-y-1">
-                                                <label className="text-[8px] text-slate-500 font-mono uppercase">Context & Explanation</label>
-                                                <textarea
-                                                  value={m.description || ""}
-                                                  onChange={(e) => {
-                                                    const updatedMetrics = [...aiParsedResult.metrics];
-                                                    updatedMetrics[idx] = { ...updatedMetrics[idx], description: e.target.value };
-                                                    setAiParsedResult({ ...aiParsedResult, metrics: updatedMetrics });
-                                                  }}
-                                                  className="w-full bg-slate-900 border border-slate-800 rounded px-1.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 font-sans min-h-[30px] resize-none"
-                                                  placeholder="Provide strategic description..."
-                                                />
+                                              <div className="text-slate-500 text-[8px]">
+                                                📄 Workbook: <span className="text-slate-400">{trace.workbook || trace.document || "Source file"}</span>
                                               </div>
-                                              {sourceAttributions?.kpisMetrics && (
-                                                <div className="text-[8px] font-mono text-slate-500 flex items-center gap-1">
-                                                  <FileText className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                                                  Sourced from: <span className="text-slate-400 truncate">{sourceAttributions.kpisMetrics}</span>
-                                                </div>
-                                              )}
                                             </div>
                                           ))}
                                         </div>
                                       ) : (
-                                        <div className="bg-rose-950/20 border border-rose-900/40 p-2 rounded text-rose-300 text-[10px] flex items-center gap-1.5 font-mono">
-                                          <span>⚠</span> No evidence-backed metrics could be parsed.
-                                        </div>
+                                        <p className="text-slate-400 font-mono italic text-[9px]">No dataset cell-level mappings found.</p>
                                       )}
                                     </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                                  )}
 
-                            {reviewTab === "traceability" && (
-                              <div className="space-y-3 text-left text-[11px]">
-                                {/* Dataset Traceability Map */}
-                                <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                  <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block flex items-center gap-1">
-                                    <Database className="w-3.5 h-3.5" />
-                                    Dataset Traceability Map (Row / Cell level)
-                                  </span>
-                                  {datasetTraceability && datasetTraceability.length > 0 ? (
-                                    <div className="space-y-2 font-mono text-[10px]">
-                                      {datasetTraceability.map((trace, i) => (
-                                        <div key={i} className="bg-slate-950/40 p-2 rounded border border-slate-900/60 space-y-1">
-                                          <div className="flex justify-between text-slate-200">
-                                            <span className="font-bold text-indigo-300 truncate max-w-[120px]">{trace.metricLabel}</span>
-                                            {trace.cellNumber && (
-                                              <span className="text-emerald-400 text-[9px] font-bold">Cell: {trace.cellNumber}</span>
-                                            )}
-                                          </div>
-                                          <div className="text-slate-500 text-[8px] space-y-0.5">
-                                            {trace.workbook && (
-                                              <div>📄 Workbook: <span className="text-slate-400">{trace.workbook}</span></div>
-                                            )}
-                                            {trace.sheet && (
-                                              <div>📊 Sheet: <span className="text-slate-400">{trace.sheet}</span></div>
-                                            )}
-                                            {trace.cellRange && (
-                                              <div>🔍 Cells: <span className="text-slate-400">{trace.cellRange}</span></div>
-                                            )}
-                                            {trace.document && (
-                                              <div>📄 Doc: <span className="text-slate-400">{trace.document}</span></div>
-                                            )}
-                                            {trace.page && (
-                                              <div>📖 Page: <span className="text-slate-400">{trace.page}</span></div>
-                                            )}
-                                            {trace.queryBlock && (
-                                              <div className="bg-slate-950 p-1 rounded mt-1 border border-slate-900 text-slate-400 text-[7px] max-h-[40px] overflow-y-auto whitespace-pre-wrap">
-                                                {trace.queryBlock}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
+                                  {reviewTab === "history" && (
+                                    <div className="space-y-2 font-mono text-[10px] text-slate-400">
+                                      <p>Version history recorded automatically on save.</p>
                                     </div>
-                                  ) : (
-                                    <p className="text-slate-400 font-mono italic text-[9px]">No dataset cell-level mappings found.</p>
                                   )}
                                 </div>
-
-                                {/* Recommendation Validation links */}
-                                <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                  <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block flex items-center gap-1">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-                                    Recommendation Validation Engine
-                                  </span>
-                                  {recommendationValidation && recommendationValidation.length > 0 ? (
-                                    <div className="space-y-2 font-mono text-[10px]">
-                                      {recommendationValidation.map((rec, i) => {
-                                        const isUnsupported = !rec.supportingKpi || rec.supportingKpi === "Not Found" || rec.supportingKpi.includes("Review");
-                                        return (
-                                          <div key={i} className={`p-2 rounded border space-y-1 ${
-                                            isUnsupported 
-                                              ? "bg-rose-950/20 border-rose-900/40 text-rose-300"
-                                              : "bg-slate-950/40 border-slate-900/60 text-slate-300"
-                                          }`}>
-                                            <div className="font-sans leading-relaxed text-slate-200 text-[10px]">
-                                              "{rec.recommendation}"
-                                            </div>
-                                            <div className="text-[8px] text-slate-500 pt-1 border-t border-slate-900/60 space-y-0.5">
-                                              <div>📄 Sourced: <span className="text-slate-400">{rec.evidenceSource || "Not Found"}</span></div>
-                                              <div>
-                                                📊 Connected KPI: {isUnsupported ? (
-                                                  <span className="text-rose-400 font-bold bg-rose-950/40 px-1 rounded uppercase">⚠ Unsupported Recommendation</span>
-                                                ) : (
-                                                  <span className="text-emerald-400 font-bold">{rec.supportingKpi}</span>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <p className="text-slate-400 font-mono italic text-[9px]">No strategic recommendations validated.</p>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {reviewTab === "history" && (
-                              <div className="space-y-3 text-left text-[11px]">
-                                <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2">
-                                  <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block flex items-center gap-1">
-                                    <History className="w-3.5 h-3.5" />
-                                    Version Control History (v1, v2, v3)
-                                  </span>
-                                  
-                                  {/* Version List */}
-                                  {(() => {
-                                    const projectId = aiParsedResult.id || "imported-project";
-                                    const projectVersions = importVersions[projectId] || [];
-                                    if (projectVersions.length === 0) {
-                                      return (
-                                        <div className="p-3 bg-slate-950/40 border border-slate-900/80 rounded text-center text-slate-500 font-mono text-[10px]">
-                                          No approved history recorded for this project yet. Approving this import will create Version v1.
-                                        </div>
-                                      );
-                                    }
-                                    return (
-                                      <div className="space-y-2">
-                                        {projectVersions.map((vObj: any, i: number) => (
-                                          <div key={i} className="bg-slate-950/60 p-2.5 rounded border border-slate-800/80 space-y-2">
-                                            <div className="flex items-center justify-between font-mono text-[10px]">
-                                              <span className="font-bold text-indigo-400 bg-indigo-950/50 px-1.5 py-0.5 rounded border border-indigo-900">
-                                                Version {vObj.version}
-                                              </span>
-                                              <span className="text-slate-500 text-[9px]">{vObj.timestamp ? new Date(vObj.timestamp).toLocaleTimeString() : ""}</span>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-2 gap-1.5 text-[8px] font-mono text-slate-400">
-                                              <div>Created: <span className="text-slate-300">{vObj.created || "N/A"}</span></div>
-                                              <div>Modified: <span className="text-slate-300">{vObj.modified || "N/A"}</span></div>
-                                              <div>
-                                                Sourced: {vObj.importedByAi ? (
-                                                  <span className="text-indigo-400">✓ Imported By AI</span>
-                                                ) : (
-                                                  <span className="text-slate-400">Manual Entry</span>
-                                                )}
-                                              </div>
-                                              <div>
-                                                Edits: {vObj.manualChanges ? (
-                                                  <span className="text-amber-400">⚠ Manual Changes</span>
-                                                ) : (
-                                                  <span className="text-emerald-400">Pure Extracted</span>
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div className="flex justify-end pt-1">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  // Restore version data to current working state
-                                                  setAiParsedResult(vObj.projectData);
-                                                  if (vObj.metadata) {
-                                                    setProjectType(vObj.metadata.projectType);
-                                                    setSourceAttributions(vObj.metadata.sourceAttributions);
-                                                    setConfidenceScores(vObj.metadata.confidenceScores);
-                                                    setCrossDocAnalysis(vObj.metadata.crossDocAnalysis);
-                                                    setSafetyScore(vObj.metadata.safetyScore);
-                                                    setClassifications(vObj.metadata.classifications);
-                                                    setActivityLog(vObj.metadata.activityLog);
-                                                    setRecommendationValidation(vObj.metadata.recommendationValidation);
-                                                    setDatasetTraceability(vObj.metadata.datasetTraceability);
-                                                    setFileCoverageReport(vObj.metadata.fileCoverageReport);
-                                                    setCompletenessReport(vObj.metadata.completenessReport);
-                                                  }
-                                                  setBackupStatus({
-                                                    type: "warning",
-                                                    msg: `🔄 Rollback Successful: Loaded version ${vObj.version} of "${vObj.projectData.title}".`
-                                                  });
-                                                }}
-                                                className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[9px] text-slate-300 font-mono px-2 py-1 rounded cursor-pointer transition-colors"
-                                              >
-                                                Rollback to {vObj.version}
-                                              </button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Section 4: Visual Case Study Card Preview */}
-                            <div className="bg-slate-900/40 border border-slate-800/40 rounded-lg p-3 space-y-2 text-left">
-                              <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">Complete Portfolio Case Study Preview</span>
-                              <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800/60 font-sans text-xs space-y-3">
-                                <div>
-                                  <h4 className="text-white font-bold text-sm leading-tight">{aiParsedResult.title}</h4>
-                                  <p className="text-indigo-400 text-[10px] mt-0.5 leading-snug">{aiParsedResult.subtitle}</p>
-                                  <div className="flex flex-wrap gap-1 mt-2">
-                                    <span className="bg-slate-900 border border-slate-800 text-[9px] px-1.5 py-0.5 rounded font-mono text-slate-300">{aiParsedResult.industry}</span>
-                                    <span className="bg-slate-900 border border-slate-800 text-[9px] px-1.5 py-0.5 rounded font-mono text-slate-300">{aiParsedResult.role}</span>
-                                    <span className="bg-slate-900 border border-slate-800 text-[9px] px-1.5 py-0.5 rounded font-mono text-slate-300">{aiParsedResult.duration || "Ongoing"}</span>
-                                    <span className="bg-slate-900 border border-slate-800 text-[9px] px-1.5 py-0.5 rounded font-mono text-slate-300 uppercase">{aiParsedResult.difficulty}</span>
-                                  </div>
-                                </div>
-
-                                {/* Metrics Highlights Dashboard */}
-                                {aiParsedResult.metrics && aiParsedResult.metrics.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <span className="text-[9px] font-mono uppercase text-indigo-400 font-bold block">Metrics Visual Dashboard</span>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      {aiParsedResult.metrics.map((m: any, i: number) => (
-                                        <div key={i} className="bg-slate-900 border border-slate-800 p-2 rounded text-left">
-                                          <div className="text-emerald-400 font-bold font-mono text-[11px]">{m.value}</div>
-                                          <div className="text-slate-200 font-semibold text-[10px] mt-0.5 truncate">{m.label}</div>
-                                          <p className="text-slate-400 text-[9px] leading-normal mt-0.5 font-sans">{m.description}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Tags Block */}
-                                {aiParsedResult.tags && aiParsedResult.tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {aiParsedResult.tags.map((tag: string, i: number) => (
-                                      <span key={i} className="text-[9px] font-mono bg-indigo-950/40 border border-indigo-900/60 text-indigo-300 px-1.5 py-0.5 rounded">
-                                        {tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Section 5: Save & Approval Controls */}
-                            <div className="flex gap-2 pt-2 border-t border-slate-800/60">
-                              <Button
-                                onClick={handleApproveAiProject}
-                                disabled={unresolvedConflictsCount > 0}
-                                className={`flex-1 font-semibold text-xs py-2 h-auto cursor-pointer flex items-center justify-center gap-1.5 transition-all ${
-                                  unresolvedConflictsCount > 0
-                                    ? "bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed hover:bg-slate-800 hover:text-slate-500"
-                                    : "bg-emerald-600 hover:bg-emerald-500 text-white"
-                                }`}
-                              >
-                                {unresolvedConflictsCount > 0 ? (
-                                  <>
-                                    <Lock className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
-                                    <span>Resolve {unresolvedConflictsCount} Conflicts to Save</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Approve & Save Case Study</span>
-                                  </>
-                                )}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setAiParsedResult(null);
-                                  setConfidenceScores(null);
-                                  setCrossDocAnalysis(null);
-                                  
-                                  setSafetyScore(null);
-                                  setClassifications({});
-                                  setActivityLog([]);
-                                  setOriginalTexts({});
-                                  setRecommendationValidation([]);
-                                  setDatasetTraceability([]);
-                                  setFileCoverageReport([]);
-                                  setCompletenessReport([]);
-                                }}
-                                className="text-xs border-slate-800 text-slate-400 hover:bg-slate-800 cursor-pointer"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
+                              }
+                            />
                           </div>
                         )}
                       </div>
