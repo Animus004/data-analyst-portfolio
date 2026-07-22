@@ -167,6 +167,8 @@ export async function uploadProjectPackage(
     };
   });
 
+const MAX_INLINE_FALLBACK_SIZE = 4.5 * 1024 * 1024; // 4.5 MB threshold for inline Base64 payload
+
 async function readArrayBufferAsBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -176,6 +178,36 @@ async function readArrayBufferAsBase64(file: File): Promise<string> {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
   }
   return btoa(binary);
+}
+
+async function uploadWithRetry(
+  client: any,
+  storagePath: string,
+  fileObject: File,
+  contentType: string,
+  maxRetries: number = 3
+): Promise<{ data: any; error: any }> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const { data, error } = await client.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, fileObject, {
+        contentType,
+        upsert: true
+      });
+    if (!error && data) {
+      if (attempt > 1) {
+        console.log(`[packageUploadService] Storage upload for '${fileObject.name}' succeeded on retry attempt ${attempt}/${maxRetries}.`);
+      }
+      return { data, error: null };
+    }
+    lastError = error;
+    console.warn(`[packageUploadService] Storage upload attempt ${attempt}/${maxRetries} failed for '${fileObject.name}':`, error?.message);
+    if (attempt < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 500)); // 1s, 2s, 4s exponential backoff
+    }
+  }
+  return { data: null, error: lastError };
 }
 
 export async function uploadProjectPackage(
@@ -201,7 +233,8 @@ export async function uploadProjectPackage(
       percentage: 0,
       status: "pending"
     };
-    console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1 File] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB)`);
+    const isLarge = f.size > MAX_INLINE_FALLBACK_SIZE;
+    console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1 File] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | Mode: ${isLarge ? "Storage Stream (>4.5MB)" : "Dual Storage/Fallback (<=4.5MB)"}`);
   });
 
   if (onProgress) onProgress({ ...progressMap });
@@ -254,40 +287,53 @@ export async function uploadProjectPackage(
 
       const sanitizedFileName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const storagePath = `uploads/default/${packageId}/${sanitizedFileName}`;
+      const isSmallFile = f.size <= MAX_INLINE_FALLBACK_SIZE;
 
-      // Convert browser file content to Base64 to guarantee fallbackContent is NEVER missing
+      // Smart Thresholding: Include Base64 fallbackContent ONLY for small files (<= 4.5 MB)
+      // Large files (> 4.5 MB) rely exclusively on Supabase Storage with retries to keep HTTP request JSON < 5 KB
       let base64Content: string | undefined = undefined;
-      try {
-        base64Content = await readArrayBufferAsBase64(f.fileObject);
-      } catch (b64Err: any) {
-        console.warn(`[packageUploadService] Base64 encoding warning for '${f.name}':`, b64Err.message);
+      if (isSmallFile) {
+        try {
+          base64Content = await readArrayBufferAsBase64(f.fileObject);
+        } catch (b64Err: any) {
+          console.warn(`[packageUploadService] Base64 encoding warning for '${f.name}':`, b64Err.message);
+        }
+      } else {
+        console.log(`[Upload Pipeline Audit] Large asset detected for '${f.name}' (${(f.size / (1024 * 1024)).toFixed(2)} MB > 4.5 MB threshold). Bypassing inline Base64 fallback to prevent serverless request size limits.`);
       }
 
-      const { data, error } = await client.storage
-        .from(STORAGE_BUCKET)
-        .upload(storagePath, f.fileObject, {
-          contentType: f.type || "application/octet-stream",
-          upsert: true
-        });
+      // Execute storage upload with 3 exponential retries
+      const { data, error } = await uploadWithRetry(
+        client,
+        storagePath,
+        f.fileObject,
+        f.type || "application/octet-stream",
+        3
+      );
 
       if (error) {
         const { category, message } = categorizeStorageError(error);
-        console.warn(`[packageUploadService] Storage upload fallback triggered for '${f.name}' [Category: ${category}]: ${message}`);
+        console.warn(`[packageUploadService] Storage upload failed for '${f.name}' after 3 retries [Category: ${category}]: ${message}`);
         
-        progressMap[f.name].status = "completed";
-        if (onProgress) onProgress({ ...progressMap });
+        if (isSmallFile && base64Content) {
+          progressMap[f.name].status = "completed";
+          if (onProgress) onProgress({ ...progressMap });
 
-        uploadedFiles.push({
-          name: f.name,
-          storagePath: storagePath,
-          size: f.size,
-          type: f.type,
-          detectedType: f.detectedType,
-          fallbackContent: base64Content
-        });
+          uploadedFiles.push({
+            name: f.name,
+            storagePath: storagePath,
+            size: f.size,
+            type: f.type,
+            detectedType: f.detectedType,
+            fallbackContent: base64Content
+          });
 
-        console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Fallback)] Name: "${f.name}" | storagePath: "${storagePath}" | fallbackContent exists? ${Boolean(base64Content)} | status: COMPLETED_FALLBACK`);
-        continue;
+          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Small File Fallback)] Name: "${f.name}" | storagePath: "${storagePath}" | fallbackContent exists? YES | status: COMPLETED_FALLBACK`);
+          continue;
+        } else {
+          // Large file storage upload failed — surface clean error instead of sending huge Base64
+          throw new Error(`Failed to upload large file '${f.name}' (${(f.size / (1024 * 1024)).toFixed(2)} MB) to storage after 3 retries: ${message}`);
+        }
       }
 
       const { data: publicUrlData } = client.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
@@ -309,7 +355,7 @@ export async function uploadProjectPackage(
         fallbackContent: base64Content
       });
 
-      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Success)] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes | storagePath: "${resolvedStoragePath}" | fallbackContent exists? ${Boolean(base64Content)} | status: COMPLETED_SUCCESS`);
+      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Success)] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | storagePath: "${resolvedStoragePath}" | inline fallbackContent included? ${Boolean(base64Content)} | status: COMPLETED_SUCCESS`);
     } catch (err: any) {
       console.error(`Exception uploading file ${f.name}:`, err);
       progressMap[f.name].status = "error";
