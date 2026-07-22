@@ -7,12 +7,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getAiClient } from "./_lib/ai/index";
 import { fetchFromSupabase, ensureDataFile } from "./_lib/storage/index";
 import { sendError, sendSuccess, logExecution } from "./_lib/utils/index";
+import { enforceOwnerPermission } from "./_lib/utils/security";
 
 export const config = {
   runtime: "nodejs"
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!enforceOwnerPermission(req, res)) return;
+
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);

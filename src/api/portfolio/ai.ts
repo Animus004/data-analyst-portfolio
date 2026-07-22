@@ -7,7 +7,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { parseUploadedPackage, compileSourceCodeToProject, compileProjectPackage } from "../_lib/compiler/index";
 import { getAiClient } from "../_lib/ai/index";
 import { getSupabaseClient } from "../_lib/storage/index";
-import { validateFileBuffer, isAllowedFileType, categorizeStorageError } from "../_lib/utils/security";
+import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
@@ -16,6 +16,8 @@ export const config = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!enforceOwnerPermission(req, res)) return;
+
   const startTime = Date.now();
   const rawUrl = req.url || "";
   const parsedUrl = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);

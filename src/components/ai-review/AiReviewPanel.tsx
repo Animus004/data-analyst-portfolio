@@ -359,7 +359,6 @@ function AiUnderstandingPanel({ understanding }: { understanding: ProjectUnderst
                 <div className="flex items-center gap-2 shrink-0">
                   {k.value && <span className="text-emerald-400 font-mono font-bold">{k.value}</span>}
                   {k.isDAX && <span className="text-yellow-500 text-[8px] font-mono border border-yellow-800 bg-yellow-950/30 px-1 rounded">DAX</span>}
-                  <span className="text-slate-600 text-[8px] font-mono truncate max-w-[80px]">{k.sourceFile}</span>
                 </div>
               </div>
             ))}
@@ -525,12 +524,6 @@ function AiGeneratedPortfolioSection({
         ) : (
           <div className="space-y-1">
             <p className="text-slate-200 text-[11px] leading-relaxed font-sans">{value}</p>
-            {src && (
-              <div className="flex items-center gap-1 text-[8px] font-mono text-slate-500">
-                <FileText className="w-2.5 h-2.5 shrink-0" />
-                <span className="truncate">{src}</span>
-              </div>
-            )}
           </div>
         )}
 

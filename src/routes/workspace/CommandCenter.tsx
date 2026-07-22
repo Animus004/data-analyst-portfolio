@@ -35,6 +35,9 @@ import {
   Settings,
   ArrowUp,
   ArrowDown,
+  ChevronDown,
+  ChevronUp,
+  HardDrive,
   Star,
   Archive,
   Eye,
@@ -639,6 +642,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   });
   const [activeDiffField, setActiveDiffField] = useState<string | null>(null);
   const [reviewTab, setReviewTab] = useState<"overview" | "fields" | "traceability" | "history">("overview");
+  const [expandedSection, setExpandedSection] = useState<"portfolio" | "ai" | "data" | "system" | null>(null);
 
   // Helper to detect file types automatically
   const detectFileType = (fileName: string, mimeType: string) => {
@@ -1467,12 +1471,8 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
 
     const success = onImportBackup(backupJson);
     if (success) {
-      setBackupStatus({ type: "success", msg: "Portfolio database imported successfully!" });
-      setBackupJson("");
-    } else {
-      setBackupStatus({ type: "error", msg: "Invalid payload format. Check schemas and try again." });
+      // ...
     }
-    setTimeout(() => setBackupStatus({ type: null, msg: "" }), 4000);
   };
 
   return (
@@ -1480,9 +1480,9 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
       {/* Overview stats header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-display font-bold text-2xl text-white tracking-tight">Portfolio Command Matrix</h1>
+          <h1 className="font-display font-bold text-2xl text-white tracking-tight">Portfolio Command Center</h1>
           <p className="font-sans text-xs text-slate-400">
-            Dynamically override public narratives, verify database backups, and manage metadata schemas instantly.
+            Single-Owner Personal OS — Finish an analytics project, upload package files, and publish recruiter-ready case studies.
           </p>
         </div>
         
@@ -1497,265 +1497,194 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </Button>
       </div>
 
-      {/* ⚡ ACTIVE CMS PUBLISHING PIPELINE */}
-      <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-        <CardHeader className="border-slate-800 bg-slate-950/40 p-4 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <RefreshCw className={`w-4 h-4 text-indigo-400 ${deployState !== "idle" && deployState !== "success" ? "animate-spin" : ""}`} />
-            <h2 className="text-xs uppercase font-mono tracking-wider text-white font-bold">Active CMS Publishing Pipeline</h2>
+      {/* ─── 🎯 PRIMARY OWNER WORKFLOW CARD (1. Upload → 2. AI Understanding → 3. AI Generated Portfolio → 4. Clarify → 5. Save) ─── */}
+      <Card className="bg-slate-900 border-indigo-900/60 text-slate-100 shadow-2xl overflow-hidden">
+        <CardHeader className="border-b border-slate-800 bg-slate-950/80 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+              <CardTitle className="text-white text-sm font-mono uppercase tracking-wider font-bold">
+                Primary Workflow: AI Project Intake & Portfolio Synthesizer
+              </CardTitle>
+            </div>
+            <span className="text-[10px] bg-emerald-950/60 border border-emerald-900 text-emerald-400 font-mono px-2 py-0.5 rounded font-bold">
+              Owner Mode Active
+            </span>
           </div>
-          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2">
-            <span>Environment: <strong className="text-emerald-400 font-medium">Production</strong></span>
-            <span>•</span>
-            <span>CDN State: <strong className={deployState === "success" ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>{deployState === "success" ? "Purged & Active" : "Stale Cache"}</strong></span>
-          </div>
+          <CardDescription className="text-slate-400 text-xs">
+            Upload your raw project folder or files. Portfolio OS automatically detects business context, extracts metrics, generates recruiter-ready case studies, and provides 1-click publishing.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="p-5 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-2 text-xs relative">
-            
-            {/* Step 1: Draft Mode */}
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[9px] text-slate-500 font-bold">STEP 01</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+        <CardContent className="p-6">
+          {!aiParsedResult ? (
+            <div className="space-y-4">
+              {/* Step 1: Upload Project Package */}
+              <div className="space-y-2">
+                <span className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Upload className="w-4 h-4" /> 1. Upload Project Package
+                </span>
+                <label className="border-2 border-dashed border-slate-800 hover:border-indigo-500/60 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50 hover:bg-slate-900/40 transition-all group min-h-[140px] text-center">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept=".xlsx,.xls,.pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.zip,.sql,.py,.pbix,.dax,.ipynb"
+                  />
+                  <Upload className="w-8 h-8 text-indigo-400 group-hover:scale-110 mb-2 transition-all" />
+                  <span className="text-sm font-semibold text-slate-200">Drag & drop project folder or files here</span>
+                  <span className="text-[11px] text-slate-400 mt-1">Accepts Excel, SQL, Python, Power BI, PDF, Word, ZIP, Images</span>
+                </label>
               </div>
-              <div>
-                <h3 className="font-semibold text-slate-200 font-mono text-[11px] uppercase tracking-tight">Draft Mode</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
-                  Local cache offline & ready. Status edits are autosaved instantly.
-                </p>
-              </div>
-              <div className="text-[9px] text-indigo-400 font-mono">
-                {projects.filter(p => p.status === ProjectStatus.DRAFT).length} Drafts Pending
-              </div>
-            </div>
 
-            {/* Step 2: Preview Sandbox */}
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[9px] text-slate-500 font-bold">STEP 02</span>
-                <Badge className="bg-blue-950 text-blue-400 border-blue-900 text-[8px] font-mono py-0">ACTIVE</Badge>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200 font-mono text-[11px] uppercase tracking-tight">Preview Site</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
-                  Simulate portfolio layout and components before publishing live.
-                </p>
-              </div>
-              <div>
-                <a 
-                  href="#preview" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    // Scroll to preview or navigate to sandbox
-                    const el = document.getElementById("case-studies-preview") || document.getElementById("projects");
-                    if (el) el.scrollIntoView({ behavior: "smooth" });
-                  }} 
-                  className="text-[9px] text-blue-400 hover:underline font-mono inline-flex items-center gap-0.5"
-                >
-                  Jump to Preview Page ↗
-                </a>
-              </div>
-            </div>
+              {/* Uploaded Files List */}
+              {packageFiles.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold tracking-wider">
+                    Uploaded Package Files ({packageFiles.length})
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {packageFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 text-xs">
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+                          <div className="truncate text-left">
+                            <div className="text-slate-200 font-medium truncate">{file.name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">{(file.size / 1024).toFixed(1)} KB • {file.detectedType}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removePackageFile(file.name)}
+                          className="text-slate-500 hover:text-rose-400 p-1 rounded cursor-pointer shrink-0"
+                          title="Remove file"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            {/* Step 3: Schema Validation */}
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[9px] text-slate-500 font-bold">STEP 03</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200 font-mono text-[11px] uppercase tracking-tight">Audit & Validate</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
-                  Strict schema constraints are checked at database level.
-                </p>
-              </div>
-              <div className="text-[9px] text-emerald-400 font-mono">
-                ✔ Passes 100% Schema
-              </div>
-            </div>
+              {/* Controls */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800/60">
+                <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+                  <Shield className={`w-4 h-4 ${evidenceOnlyMode ? 'text-emerald-400' : 'text-slate-500'}`} />
+                  <span>Evidence-Only Grounding: <strong className={evidenceOnlyMode ? 'text-emerald-400' : 'text-slate-400'}>{evidenceOnlyMode ? 'Active' : 'Disabled'}</strong></span>
+                </div>
 
-            {/* Step 4: Supabase sync */}
-            <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[9px] text-slate-500 font-bold">STEP 04</span>
-                <Badge className="bg-emerald-950 text-emerald-400 border-emerald-900 text-[8px] font-mono py-0">SYNCED</Badge>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200 font-mono text-[11px] uppercase tracking-tight">Supabase DB</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
-                  Cloud persistent store matches local changes in real-time.
-                </p>
-              </div>
-              <div className="text-[9px] text-slate-400 font-mono">
-                {projects.filter(p => p.status === ProjectStatus.PUBLISHED).length} Live / {projects.length} Total
-              </div>
-            </div>
-
-            {/* Step 5: Vercel CDN deployment */}
-            <div className={`rounded-lg p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden border transition-all duration-300 ${
-              !hasVercelDeployHook
-                ? "bg-slate-950/20 border-slate-900 opacity-75"
-                : deployState === "success" 
-                ? "bg-emerald-950/20 border-emerald-500/50" 
-                : deployState !== "idle"
-                ? "bg-indigo-950/20 border-indigo-500/50 animate-pulse"
-                : "bg-slate-950/50 border-slate-800"
-            }`}>
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[9px] text-slate-500 font-bold">STEP 05</span>
-                {!hasVercelDeployHook ? (
-                  <span className="text-[8px] uppercase tracking-wider font-mono text-amber-500 bg-amber-950/30 border border-amber-900 px-1 py-0.5 rounded font-bold">DEV ONLY</span>
-                ) : deployState === "success" ? (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                ) : deployState !== "idle" ? (
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-spin" />
-                ) : (
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
-                )}
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200 font-mono text-[11px] uppercase tracking-tight">Vercel Edge</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 leading-normal">
-                  {!hasVercelDeployHook 
-                    ? "Production Deploy Hook is not defined. Using direct local server-side caching."
-                    : "Static site generation build hook with CD purge."}
-                </p>
-              </div>
-              <div>
                 <Button
-                  size="xs"
-                  onClick={handleTriggerDeploy}
-                  disabled={!hasVercelDeployHook || (deployState !== "idle" && deployState !== "success")}
-                  className={`w-full text-[9px] py-1.5 h-auto font-mono ${
-                    !hasVercelDeployHook
-                      ? "bg-slate-950 border-slate-800 text-slate-500 cursor-not-allowed hover:bg-slate-950 hover:text-slate-500"
-                      : deployState === "success"
-                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-                      : deployState !== "idle"
-                      ? "bg-indigo-950 text-indigo-400 border-indigo-900 pointer-events-none"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                  }`}
+                  onClick={handleAiPackageParse}
+                  disabled={aiParsing || packageFiles.length === 0}
+                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-6 py-2.5 h-auto justify-center gap-2 flex items-center cursor-pointer shadow-lg shadow-indigo-600/20"
                 >
-                  {!hasVercelDeployHook 
-                    ? "Deploy Hook Not Configured" 
-                    : deployState === "success" 
-                    ? "✔ Redeployed Live" 
-                    : deployState !== "idle" 
-                    ? "Deploying..." 
-                    : "⚡ Trigger Redeploy"}
+                  {aiParsing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                      <span>{uploadProgressText || "Synthesizing Case Study..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Synthesize Portfolio Case Study with Gemini
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
-
-          </div>
-
-          {/* Deployment log drawer if active */}
-          {deployState !== "idle" && (
-            <div className="bg-slate-950 border border-slate-800/80 rounded-lg p-3 font-mono text-[10px] leading-relaxed space-y-1.5 animate-fade-in max-h-[110px] overflow-y-auto custom-scrollbar">
-              <div className="flex items-center justify-between border-b border-slate-800/60 pb-1.5 mb-1.5">
-                <span className="text-[9px] font-bold text-slate-400 font-mono">VERCEL PRODUCTION DEPLOYMENT LOGS</span>
-                <span className="text-[9px] text-indigo-400 font-bold font-mono">Step {deployStep}/4</span>
-              </div>
-              {deployLogs.map((log, idx) => (
-                <div key={idx} className={log.includes("✔") || log.includes("🎉") ? "text-emerald-400 font-mono" : "text-slate-300 font-mono"}>
-                  {log}
-                </div>
-              ))}
-            </div>
+          ) : (
+            /* AI Review Experience Component */
+            <AiReviewPanel
+              portfolioProject={aiParsedResult}
+              projectUnderstanding={projectUnderstanding}
+              missingInformation={missingInformation}
+              recruiterAudit={recruiterAudit}
+              fileCoverage={fileCoverageReport}
+              confidenceScores={confidenceScores}
+              sourceAttributions={sourceAttributions}
+              conflicts={conflicts}
+              resolvedConflictFields={resolvedConflictFields}
+              unresolvedConflictsCount={unresolvedConflictsCount}
+              onApprove={handleApproveAiProject}
+              onCancel={() => {
+                setAiParsedResult(null);
+              }}
+              onFieldEdit={handleFieldCorrection}
+              onAnswersSubmit={handleAnswersAndRecompile}
+            />
           )}
         </CardContent>
       </Card>
 
-      {/* 🧪 SYSTEM DIAGNOSTICS & STABILIZATION TEST CENTER */}
-      <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-        <CardHeader className="border-slate-800 bg-slate-950/40 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-5 h-5 text-indigo-400" />
-            <div>
-              <CardTitle className="text-white text-xs uppercase tracking-wider font-mono font-bold flex items-center gap-1.5">
-                Stabilization Phase • System Test Center
-              </CardTitle>
-              <CardDescription className="text-slate-400 text-[11px] mt-0.5">
-                Automated regression suite verifying database bindings, payload formats, and compliance rules.
-              </CardDescription>
+      {/* ─── 🗂 SUBSYSTEM ACCORDIONS ─── */}
+      <div className="space-y-4 pt-4 border-t border-slate-800/80">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+            Subsystem & Engineering Modules
+          </h3>
+          <span className="text-[10px] text-slate-500 font-mono">Personal OS Single-Owner Architecture</span>
+        </div>
+
+        {/* Accordion 1: ▼ Portfolio Management */}
+        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+          <button
+            type="button"
+            onClick={() => setExpandedSection(expandedSection === "portfolio" ? null : "portfolio")}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-900/80 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <Database className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-bold text-slate-200">Portfolio Management</span>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={runCMSDiagnostics}
-              disabled={testingProgress.running}
-              className={`gap-1.5 font-mono text-xs ${
-                testingProgress.running 
-                  ? "bg-indigo-950 border-indigo-900 text-indigo-400 cursor-wait animate-pulse"
-                  : "bg-indigo-600 border-indigo-500 hover:bg-indigo-500 text-white"
-              }`}
-            >
-              {testingProgress.running ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  Running Diagnostic...
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  Run Full Test Suite
-                </>
-              )}
-            </Button>
-          </div>
-        </CardHeader>
-        
-        <CardContent className="p-5 space-y-5">
-          {/* Diagnostic Summary Bento Widgets */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between">
-              <span className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">Total Tests</span>
-              <div className="text-xl font-bold text-slate-200 mt-2 font-mono">
-                {testResults.length}
-              </div>
-              <span className="text-[9px] text-slate-500 mt-1 font-mono">All System Components</span>
+            {expandedSection === "portfolio" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+        </div>
+
+        {/* Accordion 2: ▼ AI Workspace & Config */}
+        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+          <button
+            type="button"
+            onClick={() => setExpandedSection(expandedSection === "ai" ? null : "ai")}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-900/80 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-bold text-slate-200">AI Workspace & Config</span>
             </div>
-            
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between">
-              <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">Passed</span>
-              <div className="text-xl font-bold text-emerald-400 mt-2 font-mono">
-                {testResults.filter(r => r.status === "PASS").length}
-              </div>
-              <span className="text-[9px] text-slate-500 mt-1 font-mono">
-                {testResults.length > 0 ? ((testResults.filter(r => r.status === "PASS").length / testResults.length) * 100).toFixed(0) : 0}% Stability Rating
+            {expandedSection === "ai" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+        </div>
+
+        {/* Accordion 3: ▼ Data Management */}
+        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+          <button
+            type="button"
+            onClick={() => setExpandedSection(expandedSection === "data" ? null : "data")}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-900/80 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <HardDrive className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-bold text-slate-200">Data Management</span>
+            </div>
+            {expandedSection === "data" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+        </div>
+
+        {/* Accordion 4: ▼ System / Developer Mode (Collapsed by default!) */}
+        <div className="border border-slate-800/80 rounded-xl overflow-hidden bg-slate-950/60">
+          <button
+            type="button"
+            onClick={() => setExpandedSection(expandedSection === "system" ? null : "system")}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-900/80 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5">
+              <Terminal className="w-4 h-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-400">Developer Mode & System Diagnostics</span>
+              <span className="text-[9px] bg-slate-900 border border-slate-800 text-slate-500 font-mono px-1.5 py-0.5 rounded">
+                Collapsed by default
               </span>
             </div>
-            
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between">
-              <span className="text-[10px] font-mono text-amber-400 font-bold uppercase tracking-wider">Warnings</span>
-              <div className="text-xl font-bold text-amber-400 mt-2 font-mono">
-                {testResults.filter(r => r.status === "WARNING").length}
-              </div>
-              <span className="text-[9px] text-slate-500 mt-1 font-mono">Optimizations Advised</span>
-            </div>
-            
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex flex-col justify-between">
-              <span className="text-[10px] font-mono text-rose-500 font-bold uppercase tracking-wider">Failed</span>
-              <div className="text-xl font-bold text-rose-500 mt-2 font-mono">
-                {testResults.filter(r => r.status === "FAILED").length}
-              </div>
-              <span className="text-[9px] text-slate-500 mt-1 font-mono">Blocking Issues Pending</span>
-            </div>
-          </div>
-
-          {/* Controls: Filter and Logs Toggle */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-800/60">
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setTestFilter("all")}
-                className={`px-2.5 py-1 text-[10px] font-mono rounded border transition-all ${
-                  testFilter === "all"
-                    ? "bg-slate-850 border-slate-700 text-white font-bold"
-                    : "bg-slate-950/50 border-slate-900 text-slate-400 hover:text-slate-200"
                 }`}
               >
                 All Components ({testResults.length})
