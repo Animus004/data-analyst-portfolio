@@ -384,10 +384,19 @@ function normalizeUnderstanding(raw: any, graph: EvidenceGraph): ProjectUndersta
 // ─── Gemini Reasoning Call ────────────────────────────────────────────────────
 
 async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderstanding | null> {
-  const ai = getPUEClient();
-  if (!ai) return null;
+  const pueViaGeminiStart = Date.now();
+  console.log(`[PUE-TIMER] synthesizeViaGemini: ENTER | T+0ms`);
 
+  const ai = getPUEClient();
+  console.log(`[PUE-TIMER] synthesizeViaGemini: getPUEClient() complete | ai=${ai ? "client_ready" : "null_no_api_key"} | T+${Date.now() - pueViaGeminiStart}ms`);
+  if (!ai) {
+    console.log(`[PUE-TIMER] synthesizeViaGemini: EXIT early — no AI client | T+${Date.now() - pueViaGeminiStart}ms`);
+    return null;
+  }
+
+  console.log(`[PUE-TIMER] synthesizeViaGemini: calling buildEvidenceDigest() | T+${Date.now() - pueViaGeminiStart}ms`);
   const digest = buildEvidenceDigest(graph);
+  console.log(`[PUE-TIMER] synthesizeViaGemini: buildEvidenceDigest() complete | digest length: ${digest.length} chars | T+${Date.now() - pueViaGeminiStart}ms`);
 
   const systemInstruction =
     "You are an expert business intelligence analyst and project classifier. " +
@@ -422,7 +431,10 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
   const candidateModels = ["gemini-3.5-flash", "gemini-2.5-flash"];
 
   for (const model of candidateModels) {
+    const modelStart = Date.now();
+    console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
     try {
+      console.log(`[PUE-TIMER] synthesizeViaGemini: calling executeWithTimeout(12000ms) for model "${model}" | T+${Date.now() - pueViaGeminiStart}ms`);
       const response = await executeWithTimeout(
         `Gemini PUE Model[${model}]`,
         () => ai.models.generateContent({
@@ -436,16 +448,26 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
         }),
         12000
       );
+      console.log(`[PUE-TIMER] synthesizeViaGemini: executeWithTimeout returned for model "${model}" | model elapsed: ${Date.now() - modelStart}ms | T+${Date.now() - pueViaGeminiStart}ms`);
 
+      console.log(`[PUE-TIMER] synthesizeViaGemini: calling JSON.parse on response | T+${Date.now() - pueViaGeminiStart}ms`);
       const raw = JSON.parse(response.text.trim());
+      console.log(`[PUE-TIMER] synthesizeViaGemini: JSON.parse complete | T+${Date.now() - pueViaGeminiStart}ms`);
+
+      console.log(`[PUE-TIMER] synthesizeViaGemini: calling normalizeUnderstanding | T+${Date.now() - pueViaGeminiStart}ms`);
       const normalized = normalizeUnderstanding(raw, graph);
+      console.log(`[PUE-TIMER] synthesizeViaGemini: normalizeUnderstanding complete | T+${Date.now() - pueViaGeminiStart}ms`);
+
       console.log(`[PUE] Synthesized via Gemini/${model} (confidence: ${normalized.confidence})`);
+      console.log(`[PUE-TIMER] synthesizeViaGemini: EXIT success via "${model}" | total elapsed: ${Date.now() - pueViaGeminiStart}ms`);
       return normalized;
     } catch (err: any) {
       console.warn(`[PUE] Gemini model ${model} failed or timed out: ${err.message}`);
+      console.warn(`[PUE-TIMER] synthesizeViaGemini: model "${model}" FAILED | elapsed for this model: ${Date.now() - modelStart}ms | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
     }
   }
 
+  console.log(`[PUE-TIMER] synthesizeViaGemini: all models exhausted | total elapsed: ${Date.now() - pueViaGeminiStart}ms | returning null`);
   return null; // All models failed
 }
 
@@ -477,37 +499,58 @@ export async function getCachedOrSynthesizeUnderstanding(
   evidenceHash: string,
   existing?: ProjectUnderstanding
 ): Promise<ProjectUnderstanding> {
+  const pueEntryMs = Date.now();
+  console.log(`[PUE-TIMER] getCachedOrSynthesizeUnderstanding: ENTER | evidenceHash: ${evidenceHash.slice(0, 12)}... | existing: ${existing !== undefined ? "provided" : "none"}`);
 
-  // Tier 1: Reuse a valid ProjectUnderstanding passed by the caller
-  if (existing !== undefined && existing !== null) {
-    if (isValidUnderstanding(existing)) {
-      console.log("[PUE] Reusing caller-supplied ProjectUnderstanding (Tier 1 — zero Gemini calls).");
-      // Warm the cache in case it wasn't already there
-      cacheSet(evidenceHash, existing);
-      return existing;
+  try {
+    // Tier 1: Reuse a valid ProjectUnderstanding passed by the caller
+    console.log(`[PUE-TIMER] Tier 1 check: existing supplied? ${existing !== undefined && existing !== null} | T+${Date.now() - pueEntryMs}ms`);
+    if (existing !== undefined && existing !== null) {
+      if (isValidUnderstanding(existing)) {
+        console.log("[PUE] Reusing caller-supplied ProjectUnderstanding (Tier 1 — zero Gemini calls).");
+        console.log(`[PUE-TIMER] Tier 1 HIT: returning existing | T+${Date.now() - pueEntryMs}ms`);
+        // Warm the cache in case it wasn't already there
+        cacheSet(evidenceHash, existing);
+        return existing;
+      }
+      console.warn("[PUE] Caller-supplied ProjectUnderstanding failed validation — proceeding to Tier 2.");
+      console.warn(`[PUE-TIMER] Tier 1 MISS: validation failed | T+${Date.now() - pueEntryMs}ms`);
     }
-    console.warn("[PUE] Caller-supplied ProjectUnderstanding failed validation — proceeding to Tier 2.");
-  }
 
-  // Tier 2: Evidence hash cache hit
-  const cached = cacheGet(evidenceHash);
-  if (cached !== null) {
-    console.log("[PUE] Cache hit for evidenceHash — returning cached ProjectUnderstanding (Tier 2 — zero Gemini calls).");
-    return cached;
-  }
+    // Tier 2: Evidence hash cache hit
+    console.log(`[PUE-TIMER] Tier 2 check: calling cacheGet | T+${Date.now() - pueEntryMs}ms`);
+    const cached = cacheGet(evidenceHash);
+    if (cached !== null) {
+      console.log("[PUE] Cache hit for evidenceHash — returning cached ProjectUnderstanding (Tier 2 — zero Gemini calls).");
+      console.log(`[PUE-TIMER] Tier 2 HIT: returning cached | T+${Date.now() - pueEntryMs}ms`);
+      return cached;
+    }
+    console.log(`[PUE-TIMER] Tier 2 MISS: no cache hit | T+${Date.now() - pueEntryMs}ms`);
 
-  // Tier 3: Synthesize via Gemini, then cache
-  const geminiResult = await synthesizeViaGemini(graph);
-  if (geminiResult !== null) {
-    cacheSet(evidenceHash, geminiResult);
-    return geminiResult;
-  }
+    // Tier 3: Synthesize via Gemini, then cache
+    console.log(`[PUE-TIMER] Tier 3: calling synthesizeViaGemini | T+${Date.now() - pueEntryMs}ms`);
+    const geminiResult = await synthesizeViaGemini(graph);
+    console.log(`[PUE-TIMER] Tier 3: synthesizeViaGemini returned | result: ${geminiResult !== null ? "success" : "null"} | T+${Date.now() - pueEntryMs}ms`);
 
-  // Deterministic fallback — all Gemini models failed
-  console.warn("[PUE] All Gemini models failed — using deterministic fallback (Tier 3 fallback).");
-  const fallback = buildFallbackUnderstanding(graph);
-  cacheSet(evidenceHash, fallback);
-  return fallback;
+    if (geminiResult !== null) {
+      cacheSet(evidenceHash, geminiResult);
+      console.log(`[PUE-TIMER] getCachedOrSynthesizeUnderstanding: EXIT via Gemini success | total: ${Date.now() - pueEntryMs}ms`);
+      return geminiResult;
+    }
+
+    // Deterministic fallback — all Gemini models failed
+    console.warn("[PUE] All Gemini models failed — using deterministic fallback (Tier 3 fallback).");
+    console.warn(`[PUE-TIMER] Tier 3 fallback: calling buildFallbackUnderstanding | T+${Date.now() - pueEntryMs}ms`);
+    const fallback = buildFallbackUnderstanding(graph);
+    cacheSet(evidenceHash, fallback);
+    console.log(`[PUE-TIMER] getCachedOrSynthesizeUnderstanding: EXIT via fallback | total: ${Date.now() - pueEntryMs}ms`);
+    return fallback;
+
+  } catch (err: any) {
+    console.error(`[PUE ERROR] getCachedOrSynthesizeUnderstanding threw at T+${Date.now() - pueEntryMs}ms:`, err?.message);
+    console.error(err?.stack);
+    throw err;
+  }
 }
 
 /**
