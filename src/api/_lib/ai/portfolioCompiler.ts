@@ -392,10 +392,155 @@ Return refined executive JSON matching the specified schema properties.
   }
 }
 
+export interface PrioritizedEvidencePayload {
+  businessObjectivesAndQuestions: string[];
+  findingsAndInsights: string[];
+  strategicRecommendations: string[];
+  kpisAndDaxMeasures: Array<{ name: string; valueOrFormula: string; source: string }>;
+  sqlAnalyticsLogic: Array<{ tables: string[]; joins: string[]; aggregations: string[]; windowFunctions: string[]; source: string }>;
+  businessEntitiesAndSchema: string[];
+  analyticalTechniques: string[];
+  columnDimensions: string[];
+  timeDimensions: string[];
+  dashboardPageNames: string[];
+  technologyStack: string[];
+}
+
+/**
+ * Task 11: Evidence Prioritization Layer
+ * Ranks, deduplicates, and filters evidence graph nodes into clean Tier 1 & Tier 2 business evidence.
+ * Excludes Tier 3 parser metadata and application assumptions from prompt context.
+ */
+export function sanitizeAndPrioritizeEvidenceGraph(graph: EvidenceGraph): PrioritizedEvidencePayload {
+  const seenStr = new Set<string>();
+  const dedupeStrings = (items: string[]): string[] => {
+    const result: string[] = [];
+    for (const item of items) {
+      if (!item) continue;
+      const norm = item.trim().toLowerCase();
+      if (norm && !seenStr.has(norm)) {
+        seenStr.add(norm);
+        result.push(item.trim());
+      }
+    }
+    return result;
+  };
+
+  // 1. Separate tools from business terms
+  const rawTerms = graph.businessTerms.map(t => t.value);
+  const techStackTools: string[] = [];
+  const cleanBusinessTerms: string[] = [];
+
+  for (const t of rawTerms) {
+    if (t.startsWith("Tool:")) {
+      techStackTools.push(t.replace("Tool:", "").trim());
+    } else {
+      cleanBusinessTerms.push(t);
+    }
+  }
+
+  // 2. Extract Tier 1 (Highest Priority Business Evidence)
+  const objectives = graph.documentation
+    .filter(d => d.value.key === "Objective" || d.value.key.toLowerCase().includes("objective"))
+    .map(d => d.value.text);
+  const questions = graph.businessQuestions.map(q => q.value);
+  const businessObjectivesAndQuestions = dedupeStrings([...objectives, ...questions]);
+
+  const findingsDoc = graph.documentation
+    .filter(d => d.value.key === "Findings" || d.value.key.toLowerCase().includes("findings"))
+    .map(d => d.value.text);
+  const dashboardInsights = graph.dashboardInsights.map(d => d.value);
+  const findingsAndInsights = dedupeStrings([...findingsDoc, ...dashboardInsights]);
+
+  const recsDoc = graph.recommendations.map(r => r.value);
+  const strategicRecommendations = dedupeStrings(recsDoc);
+
+  // Deduplicate KPIs and DAX measures
+  const seenKpi = new Set<string>();
+  const kpisAndDaxMeasures: Array<{ name: string; valueOrFormula: string; source: string }> = [];
+
+  for (const k of graph.detectedKPIs) {
+    const name = k.value.name;
+    const val = k.value.target || k.value.actual || "";
+    const normKey = `${name.toLowerCase().trim()}:${val.toLowerCase().trim()}`;
+    if (name && !seenKpi.has(normKey)) {
+      seenKpi.add(normKey);
+      kpisAndDaxMeasures.push({ name, valueOrFormula: val, source: k.sourceFile });
+    }
+  }
+
+  for (const k of graph.kpis) {
+    const name = k.value.name;
+    const val = k.value.target || k.value.value || "";
+    const normKey = `${name.toLowerCase().trim()}:${val.toLowerCase().trim()}`;
+    if (name && !seenKpi.has(normKey)) {
+      seenKpi.add(normKey);
+      kpisAndDaxMeasures.push({ name, valueOrFormula: val, source: k.sourceFile });
+    }
+  }
+
+  const rawMetrics = graph.metrics;
+  for (const m of rawMetrics) {
+    const name = m.value.label;
+    const val = m.value.value;
+    const normKey = `${name.toLowerCase().trim()}:${val.toLowerCase().trim()}`;
+    if (name && !seenKpi.has(normKey)) {
+      seenKpi.add(normKey);
+      kpisAndDaxMeasures.push({ name, valueOrFormula: val, source: m.sourceFile });
+    }
+  }
+
+  // SQL Analytics Logic
+  const sqlAnalyticsLogic = graph.sqlLogic.map(s => ({
+    tables: s.value.tables,
+    joins: s.value.joins,
+    aggregations: s.value.aggregations,
+    windowFunctions: s.value.windowFunctions,
+    source: s.sourceFile
+  }));
+
+  // Business Entities & Schema
+  const entities = graph.businessEntities.map(e => e.value);
+  const businessEntitiesAndSchema = dedupeStrings([...cleanBusinessTerms, ...entities]);
+
+  // Analytical Techniques
+  const techniques = graph.analyticalTechniques.map(a => a.value);
+  const methodDoc = graph.methodology.map(m => m.value);
+  const analyticalTechniques = dedupeStrings([...techniques, ...methodDoc]);
+
+  // 3. Extract Tier 2 (Secondary Structural Evidence)
+  const rawDims = [...graph.detectedDimensions, ...graph.dimensions].map(d => d.value);
+  const columnDimensions = dedupeStrings(rawDims);
+
+  const rawTimeDims = graph.timeDimensions.map(t => t.value);
+  const timeDimensions = dedupeStrings(rawTimeDims);
+
+  const dashPages = graph.dashboards.flatMap(d => d.value.pages || [d.value.name]);
+  const dashboardPageNames = dedupeStrings(dashPages);
+
+  // Technology Stack
+  const technologyStack = dedupeStrings([...techStackTools, "SQL", "Excel", "Python", "Power BI"]);
+
+  return {
+    businessObjectivesAndQuestions,
+    findingsAndInsights,
+    strategicRecommendations,
+    kpisAndDaxMeasures,
+    sqlAnalyticsLogic,
+    businessEntitiesAndSchema,
+    analyticalTechniques,
+    columnDimensions,
+    timeDimensions,
+    dashboardPageNames,
+    technologyStack
+  };
+}
+
 /**
  * Formats full AI Context payload for debug inspection.
  */
 export function formatDebugAiContext(graph: EvidenceGraph, conflicts: ConflictRecord[]) {
+  const prioritizedPayload = sanitizeAndPrioritizeEvidenceGraph(graph);
   const excelAnalysis = graph.evidenceSources.filter(s => s.parser === "ExcelParser");
   const sqlAnalysis = graph.evidenceSources.filter(s => s.parser === "SQLParser");
   const powerbiAnalysis = graph.evidenceSources.filter(s => s.parser === "PowerBIParser");
@@ -406,11 +551,11 @@ export function formatDebugAiContext(graph: EvidenceGraph, conflicts: ConflictRe
 
   return {
     timestamp: new Date().toISOString(),
+    prioritizedAiPayloadSentToGemini: prioritizedPayload,
     evidenceGraphSummary: {
       totalSourcesProcessed: graph.evidenceSources.length,
       evidenceSources: graph.evidenceSources,
-      projectDomain: graph.projectDomain,
-      industry: graph.industry
+      rawProjectDomainAssumption: graph.projectDomain
     },
     parserAnalysisBreakdown: {
       excelAnalysis: {
@@ -517,15 +662,16 @@ export async function compilePortfolioWithGemini(
 
   const sourceCount = graph.evidenceSources.length || 1;
   const expectedConfidence = calculateEvidenceConfidence(sourceCount);
+  const prioritizedPayload = sanitizeAndPrioritizeEvidenceGraph(graph);
 
   const prompt = `
 You are the world's leading AI Portfolio Compiler and Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
-Your job is to act as an evidence-driven reasoning engine that synthesizes a normalized Evidence Graph into a recruiter-ready data analytics case study.
+Your job is to act as an evidence-driven reasoning engine that synthesizes prioritized business evidence into a recruiter-ready data analytics case study.
 
 ### SYSTEM INSTRUCTIONS & EXECUTIVE COPYWRITING DIRECTIVES:
 1. **SENIOR CONSULTANT COPYWRITING**: Write like a Senior Business Analyst / Consultant. Never use generic AI phrases like "This project aims to...", "The dashboard shows...", "In summary". Use executive prose: "This analysis evaluates...", "Empirical evidence reveals...", "Strategic evaluation demonstrates...".
-2. **BUSINESS UNDERSTANDING & DECISION SUPPORT**: Infer the target industry, business department (e.g. Strategic Finance, Revenue Operations, Growth Marketing, Supply Chain), key stakeholders, and specific business decisions supported by this analysis.
-3. **KPI DISCOVERY ENGINE**: Identify all KPIs supported by uploaded evidence (Revenue, Profit, Margin, Retention, Churn, Conversion, AOV, LTV, Review Rating, Inventory, Forecasting). Ground every metric in the Evidence Graph. Never fabricate fake numbers.
+2. **BUSINESS UNDERSTANDING & DECISION SUPPORT**: Infer the target Industry, Project Domain, Business Department (e.g. Strategic Finance, Revenue Operations, Growth Marketing, Supply Chain), key Stakeholders, and specific business decisions supported by this analysis. DO NOT rely on pre-assigned labels. Infer purely from evidence.
+3. **KPI DISCOVERY ENGINE**: Identify all KPIs supported by uploaded evidence (Revenue, Profit, Margin, Retention, Churn, Conversion, AOV, LTV, Review Rating, Inventory, Forecasting). Ground every metric in the Evidence. Never fabricate fake numbers.
 4. **EXPLAIN WHY IT MATTERS**: Every finding must explain *Why it matters* and *What business action decision-makers should take*.
 5. **DYNAMIC CONFIDENCE SCORING**:
    - 1 source file: score confidence ~60%
@@ -533,8 +679,8 @@ Your job is to act as an evidence-driven reasoning engine that synthesizes a nor
    - 3+ agreeing source files: score confidence ~95%
 6. **GROUNDED EVIDENCE PRIORITY**: Ground every claim directly in evidence. If evidence is lacking for a section, write "Insufficient evidence."
 
-### CANONICAL EVIDENCE GRAPH:
-${JSON.stringify(graph, null, 2)}
+### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
+${JSON.stringify(prioritizedPayload, null, 2)}
 
 ### IDENTIFIED CONFLICTS:
 ${JSON.stringify(conflicts, null, 2)}
