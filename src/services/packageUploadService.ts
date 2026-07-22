@@ -167,24 +167,55 @@ export async function uploadProjectPackage(
     };
   });
 
+async function readArrayBufferAsBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000; // 32KB chunks to prevent stack overflow
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+  }
+  return btoa(binary);
+}
+
+export async function uploadProjectPackage(
+  packageId: string,
+  files: PackageUploadFile[],
+  onProgress?: (progressMap: UploadProgressMap) => void
+): Promise<{ success: boolean; uploadedFiles?: UploadedPackageFileMeta[]; error?: string }> {
+  const client = getSupabaseClient();
+  const progressMap: UploadProgressMap = {};
+
+  // Stage 1: Browser File Selection & Initialization Audit
+  console.log(`\n==========================================================`);
+  console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1] Browser File Selection`);
+  console.log(`Package ID: ${packageId}`);
+  console.log(`Total Files Selected: ${files.length}`);
+  console.log(`==========================================================\n`);
+
+  files.forEach(f => {
+    progressMap[f.name] = {
+      fileName: f.name,
+      bytesUploaded: 0,
+      totalBytes: f.size,
+      percentage: 0,
+      status: "pending"
+    };
+    console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1 File] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB)`);
+  });
+
   if (onProgress) onProgress({ ...progressMap });
 
   // Fallback mode if Supabase keys are unconfigured in local development environment
   if (!client) {
-    console.warn("packageUploadService: Supabase Storage unconfigured. Using in-memory fallback.");
+    console.warn("[Upload Pipeline Audit] Supabase Storage unconfigured. Using in-memory fallback.");
     const fallbackFiles: UploadedPackageFileMeta[] = [];
     for (const f of files) {
       progressMap[f.name].status = "uploading";
       if (onProgress) onProgress({ ...progressMap });
 
       const localPath = `local-uploads/${packageId}/${f.name}`;
-      const buffer = await f.fileObject.arrayBuffer();
-      const uint8 = new Uint8Array(buffer);
-      let binaryStr = "";
-      for (let i = 0; i < uint8.length; i++) {
-        binaryStr += String.fromCharCode(uint8[i]);
-      }
-      const base64 = btoa(binaryStr);
+      const base64 = await readArrayBufferAsBase64(f.fileObject);
 
       fallbackFiles.push({
         name: f.name,
@@ -194,6 +225,8 @@ export async function uploadProjectPackage(
         detectedType: f.detectedType,
         fallbackContent: base64
       });
+
+      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (In-Memory Fallback)] Name: "${f.name}" | storagePath: "${localPath}" | fallbackContent exists? YES | status: COMPLETED`);
 
       progressMap[f.name].bytesUploaded = f.size;
       progressMap[f.name].percentage = 100;
@@ -222,6 +255,14 @@ export async function uploadProjectPackage(
       const sanitizedFileName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const storagePath = `uploads/default/${packageId}/${sanitizedFileName}`;
 
+      // Convert browser file content to Base64 to guarantee fallbackContent is NEVER missing
+      let base64Content: string | undefined = undefined;
+      try {
+        base64Content = await readArrayBufferAsBase64(f.fileObject);
+      } catch (b64Err: any) {
+        console.warn(`[packageUploadService] Base64 encoding warning for '${f.name}':`, b64Err.message);
+      }
+
       const { data, error } = await client.storage
         .from(STORAGE_BUCKET)
         .upload(storagePath, f.fileObject, {
@@ -236,22 +277,16 @@ export async function uploadProjectPackage(
         progressMap[f.name].status = "completed";
         if (onProgress) onProgress({ ...progressMap });
 
-        const buffer = await f.fileObject.arrayBuffer();
-        const uint8 = new Uint8Array(buffer);
-        let binaryStr = "";
-        for (let i = 0; i < uint8.length; i++) {
-          binaryStr += String.fromCharCode(uint8[i]);
-        }
-        const base64 = btoa(binaryStr);
-
         uploadedFiles.push({
           name: f.name,
           storagePath: storagePath,
           size: f.size,
           type: f.type,
           detectedType: f.detectedType,
-          fallbackContent: base64
+          fallbackContent: base64Content
         });
+
+        console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Fallback)] Name: "${f.name}" | storagePath: "${storagePath}" | fallbackContent exists? ${Boolean(base64Content)} | status: COMPLETED_FALLBACK`);
         continue;
       }
 
@@ -262,14 +297,19 @@ export async function uploadProjectPackage(
       progressMap[f.name].status = "completed";
       if (onProgress) onProgress({ ...progressMap });
 
+      const resolvedStoragePath = data?.path || storagePath;
+
       uploadedFiles.push({
         name: f.name,
-        storagePath: data?.path || storagePath,
+        storagePath: resolvedStoragePath,
         size: f.size,
         type: f.type,
         detectedType: f.detectedType,
-        publicUrl: publicUrlData?.publicUrl
+        publicUrl: publicUrlData?.publicUrl,
+        fallbackContent: base64Content
       });
+
+      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Success)] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes | storagePath: "${resolvedStoragePath}" | fallbackContent exists? ${Boolean(base64Content)} | status: COMPLETED_SUCCESS`);
     } catch (err: any) {
       console.error(`Exception uploading file ${f.name}:`, err);
       progressMap[f.name].status = "error";
@@ -277,6 +317,14 @@ export async function uploadProjectPackage(
       if (onProgress) onProgress({ ...progressMap });
     }
   }
+
+  console.log(`\n==========================================================`);
+  console.log(`[UPLOAD PIPELINE AUDIT - STAGE 3 & 4] Upload State & Payload Serialization`);
+  console.log(`Total Descriptors Serialized: ${uploadedFiles.length}`);
+  uploadedFiles.forEach(meta => {
+    console.log(`- Descriptor: filename="${meta.name}" | storagePath="${meta.storagePath}" | fallbackContent.length=${meta.fallbackContent ? meta.fallbackContent.length : 0}`);
+  });
+  console.log(`==========================================================\n`);
 
   return {
     success: uploadedFiles.length > 0,

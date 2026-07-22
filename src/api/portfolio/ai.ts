@@ -52,11 +52,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return sendError(res, 400, "File item missing name in files payload.");
           }
 
+          console.log(`\n----------------------------------------------------------`);
+          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 5 & 6 Server Received Payload]`);
+          console.log(`- filename: "${name}"`);
+          console.log(`- mimeType: "${fileMeta.type || "unknown"}"`);
+          console.log(`- size: ${fileMeta.size || "unknown"} bytes`);
+          console.log(`- storagePath: "${fileMeta.storagePath || "NONE"}"`);
+          console.log(`- fallbackContent exists? ${Boolean(fileMeta.fallbackContent)} (length: ${fileMeta.fallbackContent ? fileMeta.fallbackContent.length : 0})`);
+          console.log(`----------------------------------------------------------\n`);
+
           if (!isAllowedFileType(name)) {
             return sendError(res, 400, `Unsupported file format '${name}' uploaded.`);
           }
 
+          // Pre-parser Validation: storagePath OR fallbackContent MUST exist
+          if (!fileMeta.storagePath && !fileMeta.fallbackContent) {
+            return sendError(res, 400, `Invalid file descriptor for '${name}': Both storagePath and fallbackContent are missing.`);
+          }
+
           let buffer: Buffer | null = null;
+          let resolutionSource = "None";
 
           // 1. Use storagePath first: Download from Supabase Storage if available with 3s timeout
           if (fileMeta.storagePath) {
@@ -74,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (!downloadRes.error && downloadRes.data) {
                   const arrayBuffer = await downloadRes.data.arrayBuffer();
                   buffer = Buffer.from(arrayBuffer);
+                  resolutionSource = "Supabase Storage Download";
                   dlStep.end(buffer.length);
                 } else if (downloadRes.error) {
                   dlStep.end("Failed");
@@ -87,10 +103,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
-          // 2. Fall back to fallbackContent if download is unavailable
+          // 2. Fall back seamlessly to fallbackContent if storage download is unavailable
           if (!buffer && fileMeta.fallbackContent) {
             try {
               buffer = Buffer.from(fileMeta.fallbackContent, "base64");
+              resolutionSource = "In-Memory Browser Fallback (Base64)";
             } catch (fallbackErr: any) {
               console.warn(`Error decoding fallbackContent for '${name}':`, fallbackErr.message);
             }
@@ -105,6 +122,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!validation.isValid) {
             return sendError(res, 400, validation.error || `Corrupted file buffer for '${name}'.`);
           }
+
+          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 7 Parser Descriptor] Verified File: "${name}" | Size: ${buffer.length} bytes | Resolution Source: ${resolutionSource}`);
 
           rawFilesToCompile.push({
             name,
