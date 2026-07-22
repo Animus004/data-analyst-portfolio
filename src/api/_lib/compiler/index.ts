@@ -240,16 +240,43 @@ export async function compileProjectPackage(
   s1.end(`${allFiles.length} file(s) prepared`);
   console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);
 
-  // Stage 2: Sandboxed Parser Selection & Evidence Extraction
+  console.log(`----------------------------------------\n[TRACE]\nLine: 244\nFunction: compileProjectPackage\nEntering: logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction")`);
+  const t244Start = Date.now();
   const s2 = logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction");
+  console.log(`Completed: logger.start\nDuration: ${Date.now() - t244Start}ms\n----------------------------------------`);
+
+  console.log(`----------------------------------------\n[TRACE]\nLine: 245\nFunction: compileProjectPackage\nEntering: console.log Stage 2 Start`);
   console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
+  console.log(`Completed: console.log Stage 2 Start\n----------------------------------------`);
+
+  console.log(`----------------------------------------\n[TRACE]\nLine: 246-248\nFunction: compileProjectPackage\nEntering: Initializing parsedProjects & evidenceNodes arrays`);
   const stage2Start = Date.now();
   const parsedProjects: ExtractedProject[] = [];
   const evidenceNodes: ParserEvidenceNode[] = [];
+  console.log(`Completed: Array initializations | allFiles.length = ${allFiles.length}\n----------------------------------------`);
 
+  console.log(`\n==========================================================`);
+  console.log(`[STAGE 2 FILE INVENTORY: allFiles Array Inspection]`);
+  console.log(`TotalPreparedFiles: ${allFiles.length}`);
+  allFiles.forEach((f, idx) => {
+    const ext = f.name.split(".").pop()?.toLowerCase() || "";
+    console.log(`  Index: ${idx} | Name: "${f.name}" | Ext: ".${ext}" | Type: ${f.type} | Size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | SHA256: ${f.sha256.slice(0, 12)}...`);
+  });
+  console.log(`==========================================================\n`);
+
+  let fileIndex = 0;
   for (const file of allFiles) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     const parser = PARSER_REGISTRY[ext];
+
+    console.log(`\n================================================`);
+    console.log(`FILE INDEX: ${fileIndex}`);
+    console.log(`FILE NAME: ${file.name}`);
+    console.log(`EXTENSION: .${ext}`);
+    console.log(`SELECTED PARSER: ${parser ? parser.name : "NONE"}`);
+    console.log(`================================================\n`);
+
+    console.log(`----------------------------------------\n[TRACE]\nFile: ${file.name}\nIteration: ${fileIndex}\nLine: 265\nFunction: compileProjectPackage\nEntering: Parser resolution check\nCompleted: ext=.${ext}, parser=${parser ? parser.name : "NONE"}\n----------------------------------------`);
 
     if (parser) {
       let stageNum = 5;
@@ -272,12 +299,36 @@ export async function compileProjectPackage(
           parserName: parser.name
         });
 
-        // Sandboxed execution with production-grade adaptive timeout
+        console.log(`----------------------------------------\n[TRACE]\nFile: ${file.name}\nIteration: ${fileIndex}\nLine: 287\nFunction: compileProjectPackage\nEntering: executeWithTimeout & parser.parse()\n----------------------------------------`);
+
+        const memBefore = process.memoryUsage();
+        console.log(`\n--- BEGIN parser.parse() ---`);
+        console.log(`Target File: ${file.name}`);
+        console.log(`Parser: ${parser.name}`);
+        console.log(`Heap Before: ${(memBefore.heapUsed / (1024 * 1024)).toFixed(2)} MB`);
+        console.log(`RSS Before: ${(memBefore.rss / (1024 * 1024)).toFixed(2)} MB`);
+
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
           adaptiveTimeoutMs
         );
+
+        const memAfter = process.memoryUsage();
+        const parseElapsed = Date.now() - pStart;
+        const projSize = JSON.stringify(result.project).length;
+        const evSize = JSON.stringify(result.evidenceNode).length;
+
+        console.log(`--- END parser.parse() ---`);
+        console.log(`Return Type: object ({ project, evidenceNode })`);
+        console.log(`Returned Bytes: ${projSize + evSize} bytes`);
+        console.log(`Returned Project Size: ${(projSize / 1024).toFixed(2)} KB`);
+        console.log(`Returned Evidence Size: ${(evSize / 1024).toFixed(2)} KB`);
+        console.log(`Heap After: ${(memAfter.heapUsed / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.heapUsed - memBefore.heapUsed) / (1024 * 1024)).toFixed(2)} MB)`);
+        console.log(`RSS After: ${(memAfter.rss / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.rss - memBefore.rss) / (1024 * 1024)).toFixed(2)} MB)`);
+        console.log(`Elapsed Time: ${parseElapsed} ms\n`);
+
+        console.log(`----------------------------------------\n[TRACE]\nFile: ${file.name}\nIteration: ${fileIndex}\nLine: 292-299\nFunction: compileProjectPackage\nEntering: Pushing results to parsedProjects & evidenceNodes arrays`);
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);
         parserFileStep.end(JSON.stringify(result.evidenceNode).length);
@@ -287,6 +338,8 @@ export async function compileProjectPackage(
           profiler.profileStageEnd(st!, `${JSON.stringify(result.evidenceNode).length} bytes`);
         }
 
+        console.log(`Completed: Pushed results for '${file.name}' | Total Parsed: ${parsedProjects.length}\nDuration: ${Date.now() - pStart}ms\n----------------------------------------`);
+
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
@@ -294,8 +347,19 @@ export async function compileProjectPackage(
           size: file.size,
           sha256: file.sha256
         });
+
+        // Release duplicate Base64 payload from memory after evidence node extraction
+        file.content = "";
       } catch (err: any) {
-        console.error(`Sandboxed parser failure for '${file.name}':`, err.message);
+        console.error(`\n[PARSER EXCEPTION THROWN]`);
+        console.error(`Source File: src/api/_lib/compiler/index.ts`);
+        console.error(`Line Number: ~290`);
+        console.error(`Iteration Number: ${fileIndex}`);
+        console.error(`File Name: ${file.name}`);
+        console.error(`Parser Name: ${parser.name}`);
+        console.error(`Error Message: ${err.message}`);
+        console.error(`Stack Trace:\n${err.stack}\n`);
+
         if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
         fileCoverage.push({
           fileName: file.name,
@@ -306,6 +370,7 @@ export async function compileProjectPackage(
         });
       }
     } else {
+      console.log(`[STAGE 2] No parser found for extension '.${ext}' on file '${file.name}'. Skipping.`);
       fileCoverage.push({
         fileName: file.name,
         status: "Ignored",
@@ -314,6 +379,7 @@ export async function compileProjectPackage(
         sha256: file.sha256
       });
     }
+    fileIndex++;
   }
   const stage2Duration = Date.now() - stage2Start;
   s2.end(`${evidenceNodes.length} evidence node(s) extracted`);

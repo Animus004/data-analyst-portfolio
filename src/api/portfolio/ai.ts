@@ -199,6 +199,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
       compileStep.end(JSON.stringify(output).length);
 
+      // Release duplicate Base64 payload strings from memory after compiler pipeline completion
+      rawFilesToCompile.forEach(f => { f.content = ""; });
+
       // Stage 15: Final JSON serialization
       const st15 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
       const jsonOutputString = JSON.stringify(output);

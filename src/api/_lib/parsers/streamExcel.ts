@@ -149,7 +149,119 @@ export async function parseStreamExcel(fileName: string, content: string): Promi
         excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
       });
 
-      // 4. Stream Each Worksheet XML
+interface StreamWorksheetResult {
+  rowCount: number;
+  columns: string[];
+  formulas: string[];
+  measures: string[];
+}
+
+/**
+ * SAX-style sliding-window XML stream parser.
+ * Reads uncompressed worksheet XML via nodeStream() in 64KB chunks to prevent V8 string heap inflation.
+ */
+async function streamParseWorksheetXml(
+  sheetZipFile: JSZip.JSZipObject,
+  sheetName: string,
+  sharedStrings: string[]
+): Promise<StreamWorksheetResult> {
+  return new Promise((resolve, reject) => {
+    let rowCount = 0;
+    const columns: string[] = [];
+    const formulas: string[] = [];
+    const measures: string[] = [];
+    const formulaSet = new Set<string>();
+
+    let pendingChunk = "";
+    let isRow1Parsed = false;
+    let sheetFormulasCount = 0;
+    let dimensionFound = false;
+
+    const stream = sheetZipFile.nodeStream();
+
+    stream.on("data", (chunk: Buffer) => {
+      pendingChunk += chunk.toString("utf-8");
+
+      // 1. Extract Dimension tag (<dimension ref="A1:Z1048857"/>)
+      if (!dimensionFound) {
+        const dimMatch = pendingChunk.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
+        if (dimMatch) {
+          rowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
+          dimensionFound = true;
+        }
+      }
+
+      // 2. Extract Row 1 Header Cells (<row r="1">...</row>)
+      if (!isRow1Parsed) {
+        const row1Match = pendingChunk.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
+        if (row1Match) {
+          const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
+          let cMatch: RegExpExecArray | null;
+          while ((cMatch = cRegex.exec(row1Match[1])) !== null && columns.length < 30) {
+            const val = cMatch[1];
+            if (val !== undefined) {
+              let cellText = val;
+              if (cMatch[0].includes('t="s"')) {
+                const sIdx = parseInt(val, 10);
+                if (!isNaN(sIdx) && sharedStrings[sIdx]) {
+                  cellText = sharedStrings[sIdx];
+                }
+              }
+              const cleaned = cellText.trim();
+              if (cleaned && !cleaned.match(/^Column\d+$/i)) {
+                columns.push(cleaned);
+              }
+            }
+          }
+          isRow1Parsed = true;
+        }
+      }
+
+      // 3. Extract Formulas (<f>SUM(...)</f>) in sliding window
+      const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
+      let fMatch: RegExpExecArray | null;
+      while ((fMatch = formulaRegex.exec(pendingChunk)) !== null && sheetFormulasCount < 50) {
+        sheetFormulasCount++;
+        const formulaText = decodeXmlEntities(fMatch[1]).trim();
+        const upperF = formulaText.toUpperCase();
+
+        if (
+          upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") ||
+          upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") ||
+          upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")
+        ) {
+          if (formulaSet.size < 30) {
+            formulaSet.add(`${sheetName}: =${formulaText}`);
+          }
+          const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+          if (matchFn && matchFn[1]) {
+            measures.push(`Formula: ${matchFn[1]} in ${sheetName}`);
+          }
+        }
+      }
+
+      // Maintain sliding window buffer of max 4,096 chars to prevent memory accumulation
+      if (pendingChunk.length > 8192) {
+        pendingChunk = pendingChunk.slice(-4096);
+      }
+    });
+
+    stream.on("end", () => {
+      resolve({
+        rowCount,
+        columns,
+        formulas: Array.from(formulaSet),
+        measures
+      });
+    });
+
+    stream.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
+      // 4. Stream Each Worksheet XML via SAX Sliding Window
       let totalRowCount = 0;
       let totalFormulaCount = 0;
       const formulaSet = new Set<string>();
@@ -176,72 +288,23 @@ export async function parseStreamExcel(fileName: string, content: string): Promi
           role = "Data Source";
         }
 
-        const sheetColumns: string[] = [];
         let sheetRowCount = 0;
+        let sheetColumns: string[] = [];
 
         if (sheetZipFile) {
-          const sheetXmlStr = await sheetZipFile.async("string");
-
-          // Extract Dimension / Row Count (e.g., <dimension ref="A1:Z50000"/>)
-          const dimMatch = sheetXmlStr.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
-          if (dimMatch) {
-            sheetRowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
-          } else {
-            const rowMatches = sheetXmlStr.match(/<row\s+r="(\d+)"/g);
-            sheetRowCount = rowMatches ? rowMatches.length : 0;
-          }
+          const parsedSheet = await streamParseWorksheetXml(sheetZipFile, sheetMeta.name, sharedStrings);
+          sheetRowCount = parsedSheet.rowCount;
+          sheetColumns = parsedSheet.columns;
+          parsedSheet.formulas.forEach(f => formulaSet.add(f));
+          parsedSheet.measures.forEach(m => measureSet.add(m));
           totalRowCount += sheetRowCount;
+          totalFormulaCount += parsedSheet.formulas.length;
 
-          // Extract Header Row Cells (Row 1)
-          const row1Match = sheetXmlStr.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
-          if (row1Match) {
-            const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
-            let cMatch: RegExpExecArray | null;
-            while ((cMatch = cRegex.exec(row1Match[1])) !== null && sheetColumns.length < 30) {
-              const val = cMatch[1];
-              if (val !== undefined) {
-                let cellText = val;
-                if (cMatch[0].includes('t="s"')) {
-                  const sIdx = parseInt(val, 10);
-                  if (!isNaN(sIdx) && sharedStrings[sIdx]) {
-                    cellText = sharedStrings[sIdx];
-                  }
-                }
-                const cleaned = cellText.trim();
-                if (cleaned && !cleaned.match(/^Column\d+$/i)) {
-                  sheetColumns.push(cleaned);
-                  if (!excelEvidence.dimensions.includes(cleaned)) {
-                    excelEvidence.dimensions.push(cleaned);
-                  }
-                }
-              }
+          sheetColumns.forEach(c => {
+            if (!excelEvidence.dimensions.includes(c)) {
+              excelEvidence.dimensions.push(c);
             }
-          }
-
-          // Extract Formulas (<f>SUM(...)</f>)
-          const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
-          let fMatch: RegExpExecArray | null;
-          let sheetFormulas = 0;
-          while ((fMatch = formulaRegex.exec(sheetXmlStr)) !== null && sheetFormulas < 100) {
-            totalFormulaCount++;
-            sheetFormulas++;
-            const formulaText = decodeXmlEntities(fMatch[1]).trim();
-            const upperF = formulaText.toUpperCase();
-
-            if (
-              upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") ||
-              upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") ||
-              upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")
-            ) {
-              if (formulaSet.size < 30) {
-                formulaSet.add(`${sheetMeta.name}: =${formulaText}`);
-              }
-              const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
-              if (matchFn && matchFn[1]) {
-                measureSet.add(`Formula: ${matchFn[1]} in ${sheetMeta.name}`);
-              }
-            }
-          }
+          });
         }
 
         excelEvidence.worksheets!.push({

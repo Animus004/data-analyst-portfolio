@@ -103,6 +103,84 @@ async function parseStreamExcel(fileName, content) {
       drawingFiles.forEach((_, idx) => {
         excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
       });
+      async function streamParseWorksheetXml(sheetZipFile, sheetName, sharedStrings2) {
+        return new Promise((resolve, reject) => {
+          let rowCount = 0;
+          const columns = [];
+          const formulas = [];
+          const measures = [];
+          const formulaSet2 = /* @__PURE__ */ new Set();
+          let pendingChunk = "";
+          let isRow1Parsed = false;
+          let sheetFormulasCount = 0;
+          let dimensionFound = false;
+          const stream = sheetZipFile.nodeStream();
+          stream.on("data", (chunk) => {
+            pendingChunk += chunk.toString("utf-8");
+            if (!dimensionFound) {
+              const dimMatch = pendingChunk.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
+              if (dimMatch) {
+                rowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
+                dimensionFound = true;
+              }
+            }
+            if (!isRow1Parsed) {
+              const row1Match = pendingChunk.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
+              if (row1Match) {
+                const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
+                let cMatch;
+                while ((cMatch = cRegex.exec(row1Match[1])) !== null && columns.length < 30) {
+                  const val = cMatch[1];
+                  if (val !== void 0) {
+                    let cellText = val;
+                    if (cMatch[0].includes('t="s"')) {
+                      const sIdx = parseInt(val, 10);
+                      if (!isNaN(sIdx) && sharedStrings2[sIdx]) {
+                        cellText = sharedStrings2[sIdx];
+                      }
+                    }
+                    const cleaned = cellText.trim();
+                    if (cleaned && !cleaned.match(/^Column\d+$/i)) {
+                      columns.push(cleaned);
+                    }
+                  }
+                }
+                isRow1Parsed = true;
+              }
+            }
+            const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
+            let fMatch;
+            while ((fMatch = formulaRegex.exec(pendingChunk)) !== null && sheetFormulasCount < 50) {
+              sheetFormulasCount++;
+              const formulaText = decodeXmlEntities(fMatch[1]).trim();
+              const upperF = formulaText.toUpperCase();
+              if (upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") || upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") || upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")) {
+                if (formulaSet2.size < 30) {
+                  formulaSet2.add(`${sheetName}: =${formulaText}`);
+                }
+                const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+                if (matchFn && matchFn[1]) {
+                  measures.push(`Formula: ${matchFn[1]} in ${sheetName}`);
+                }
+              }
+            }
+            if (pendingChunk.length > 8192) {
+              pendingChunk = pendingChunk.slice(-4096);
+            }
+          });
+          stream.on("end", () => {
+            resolve({
+              rowCount,
+              columns,
+              formulas: Array.from(formulaSet2),
+              measures
+            });
+          });
+          stream.on("error", (err) => {
+            reject(err);
+          });
+        });
+      }
       let totalRowCount2 = 0;
       let totalFormulaCount = 0;
       const formulaSet = /* @__PURE__ */ new Set();
@@ -124,60 +202,21 @@ async function parseStreamExcel(fileName, content) {
         } else if (nameLower.includes("data") || nameLower.includes("raw") || nameLower.includes("source")) {
           role = "Data Source";
         }
-        const sheetColumns = [];
         let sheetRowCount = 0;
+        let sheetColumns = [];
         if (sheetZipFile) {
-          const sheetXmlStr = await sheetZipFile.async("string");
-          const dimMatch = sheetXmlStr.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
-          if (dimMatch) {
-            sheetRowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
-          } else {
-            const rowMatches = sheetXmlStr.match(/<row\s+r="(\d+)"/g);
-            sheetRowCount = rowMatches ? rowMatches.length : 0;
-          }
+          const parsedSheet = await streamParseWorksheetXml(sheetZipFile, sheetMeta.name, sharedStrings);
+          sheetRowCount = parsedSheet.rowCount;
+          sheetColumns = parsedSheet.columns;
+          parsedSheet.formulas.forEach((f) => formulaSet.add(f));
+          parsedSheet.measures.forEach((m) => measureSet.add(m));
           totalRowCount2 += sheetRowCount;
-          const row1Match = sheetXmlStr.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
-          if (row1Match) {
-            const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
-            let cMatch;
-            while ((cMatch = cRegex.exec(row1Match[1])) !== null && sheetColumns.length < 30) {
-              const val = cMatch[1];
-              if (val !== void 0) {
-                let cellText = val;
-                if (cMatch[0].includes('t="s"')) {
-                  const sIdx = parseInt(val, 10);
-                  if (!isNaN(sIdx) && sharedStrings[sIdx]) {
-                    cellText = sharedStrings[sIdx];
-                  }
-                }
-                const cleaned = cellText.trim();
-                if (cleaned && !cleaned.match(/^Column\d+$/i)) {
-                  sheetColumns.push(cleaned);
-                  if (!excelEvidence.dimensions.includes(cleaned)) {
-                    excelEvidence.dimensions.push(cleaned);
-                  }
-                }
-              }
+          totalFormulaCount += parsedSheet.formulas.length;
+          sheetColumns.forEach((c) => {
+            if (!excelEvidence.dimensions.includes(c)) {
+              excelEvidence.dimensions.push(c);
             }
-          }
-          const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
-          let fMatch;
-          let sheetFormulas = 0;
-          while ((fMatch = formulaRegex.exec(sheetXmlStr)) !== null && sheetFormulas < 100) {
-            totalFormulaCount++;
-            sheetFormulas++;
-            const formulaText = decodeXmlEntities(fMatch[1]).trim();
-            const upperF = formulaText.toUpperCase();
-            if (upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") || upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") || upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")) {
-              if (formulaSet.size < 30) {
-                formulaSet.add(`${sheetMeta.name}: =${formulaText}`);
-              }
-              const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
-              if (matchFn && matchFn[1]) {
-                measureSet.add(`Formula: ${matchFn[1]} in ${sheetMeta.name}`);
-              }
-            }
-          }
+          });
         }
         excelEvidence.worksheets.push({
           name: sheetMeta.name,
@@ -3287,14 +3326,65 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
   const stage1Duration = Date.now() - stage1Start;
   s1.end(`${allFiles.length} file(s) prepared`);
   console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);
+  console.log(`----------------------------------------
+[TRACE]
+Line: 244
+Function: compileProjectPackage
+Entering: logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction")`);
+  const t244Start = Date.now();
   const s2 = logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction");
+  console.log(`Completed: logger.start
+Duration: ${Date.now() - t244Start}ms
+----------------------------------------`);
+  console.log(`----------------------------------------
+[TRACE]
+Line: 245
+Function: compileProjectPackage
+Entering: console.log Stage 2 Start`);
   console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
+  console.log(`Completed: console.log Stage 2 Start
+----------------------------------------`);
+  console.log(`----------------------------------------
+[TRACE]
+Line: 246-248
+Function: compileProjectPackage
+Entering: Initializing parsedProjects & evidenceNodes arrays`);
   const stage2Start = Date.now();
   const parsedProjects = [];
   const evidenceNodes = [];
+  console.log(`Completed: Array initializations | allFiles.length = ${allFiles.length}
+----------------------------------------`);
+  console.log(`
+==========================================================`);
+  console.log(`[STAGE 2 FILE INVENTORY: allFiles Array Inspection]`);
+  console.log(`TotalPreparedFiles: ${allFiles.length}`);
+  allFiles.forEach((f, idx) => {
+    const ext = f.name.split(".").pop()?.toLowerCase() || "";
+    console.log(`  Index: ${idx} | Name: "${f.name}" | Ext: ".${ext}" | Type: ${f.type} | Size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | SHA256: ${f.sha256.slice(0, 12)}...`);
+  });
+  console.log(`==========================================================
+`);
+  let fileIndex = 0;
   for (const file of allFiles) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     const parser = PARSER_REGISTRY[ext];
+    console.log(`
+================================================`);
+    console.log(`FILE INDEX: ${fileIndex}`);
+    console.log(`FILE NAME: ${file.name}`);
+    console.log(`EXTENSION: .${ext}`);
+    console.log(`SELECTED PARSER: ${parser ? parser.name : "NONE"}`);
+    console.log(`================================================
+`);
+    console.log(`----------------------------------------
+[TRACE]
+File: ${file.name}
+Iteration: ${fileIndex}
+Line: 265
+Function: compileProjectPackage
+Entering: Parser resolution check
+Completed: ext=.${ext}, parser=${parser ? parser.name : "NONE"}
+----------------------------------------`);
     if (parser) {
       let stageNum = 5;
       let stageName = `Excel parser [${file.name}]`;
@@ -3314,11 +3404,46 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
           fileSize: file.size,
           parserName: parser.name
         });
+        console.log(`----------------------------------------
+[TRACE]
+File: ${file.name}
+Iteration: ${fileIndex}
+Line: 287
+Function: compileProjectPackage
+Entering: executeWithTimeout & parser.parse()
+----------------------------------------`);
+        const memBefore = process.memoryUsage();
+        console.log(`
+--- BEGIN parser.parse() ---`);
+        console.log(`Target File: ${file.name}`);
+        console.log(`Parser: ${parser.name}`);
+        console.log(`Heap Before: ${(memBefore.heapUsed / (1024 * 1024)).toFixed(2)} MB`);
+        console.log(`RSS Before: ${(memBefore.rss / (1024 * 1024)).toFixed(2)} MB`);
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
           () => parser.parse(file.name, file.content, file.type),
           adaptiveTimeoutMs
         );
+        const memAfter = process.memoryUsage();
+        const parseElapsed = Date.now() - pStart;
+        const projSize = JSON.stringify(result.project).length;
+        const evSize = JSON.stringify(result.evidenceNode).length;
+        console.log(`--- END parser.parse() ---`);
+        console.log(`Return Type: object ({ project, evidenceNode })`);
+        console.log(`Returned Bytes: ${projSize + evSize} bytes`);
+        console.log(`Returned Project Size: ${(projSize / 1024).toFixed(2)} KB`);
+        console.log(`Returned Evidence Size: ${(evSize / 1024).toFixed(2)} KB`);
+        console.log(`Heap After: ${(memAfter.heapUsed / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.heapUsed - memBefore.heapUsed) / (1024 * 1024)).toFixed(2)} MB)`);
+        console.log(`RSS After: ${(memAfter.rss / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.rss - memBefore.rss) / (1024 * 1024)).toFixed(2)} MB)`);
+        console.log(`Elapsed Time: ${parseElapsed} ms
+`);
+        console.log(`----------------------------------------
+[TRACE]
+File: ${file.name}
+Iteration: ${fileIndex}
+Line: 292-299
+Function: compileProjectPackage
+Entering: Pushing results to parsedProjects & evidenceNodes arrays`);
         parsedProjects.push(result.project);
         evidenceNodes.push(result.evidenceNode);
         parserFileStep.end(JSON.stringify(result.evidenceNode).length);
@@ -3326,6 +3451,9 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
           profiler.recordAllocation(`EvidenceNode [${file.name}]`, JSON.stringify(result.evidenceNode).length);
           profiler.profileStageEnd(st, `${JSON.stringify(result.evidenceNode).length} bytes`);
         }
+        console.log(`Completed: Pushed results for '${file.name}' | Total Parsed: ${parsedProjects.length}
+Duration: ${Date.now() - pStart}ms
+----------------------------------------`);
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
@@ -3333,8 +3461,19 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
           size: file.size,
           sha256: file.sha256
         });
+        file.content = "";
       } catch (err) {
-        console.error(`Sandboxed parser failure for '${file.name}':`, err.message);
+        console.error(`
+[PARSER EXCEPTION THROWN]`);
+        console.error(`Source File: src/api/_lib/compiler/index.ts`);
+        console.error(`Line Number: ~290`);
+        console.error(`Iteration Number: ${fileIndex}`);
+        console.error(`File Name: ${file.name}`);
+        console.error(`Parser Name: ${parser.name}`);
+        console.error(`Error Message: ${err.message}`);
+        console.error(`Stack Trace:
+${err.stack}
+`);
         if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
         fileCoverage.push({
           fileName: file.name,
@@ -3345,6 +3484,7 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
         });
       }
     } else {
+      console.log(`[STAGE 2] No parser found for extension '.${ext}' on file '${file.name}'. Skipping.`);
       fileCoverage.push({
         fileName: file.name,
         status: "Ignored",
@@ -3353,6 +3493,7 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
         sha256: file.sha256
       });
     }
+    fileIndex++;
   }
   const stage2Duration = Date.now() - stage2Start;
   s2.end(`${evidenceNodes.length} evidence node(s) extracted`);
@@ -4107,6 +4248,9 @@ async function handler(req, res) {
         25e3
       );
       compileStep.end(JSON.stringify(output).length);
+      rawFilesToCompile.forEach((f) => {
+        f.content = "";
+      });
       const st15 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
       const jsonOutputString = JSON.stringify(output);
       profiler.recordAllocation("Final Output JSON String", jsonOutputString.length);
