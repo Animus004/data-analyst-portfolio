@@ -646,8 +646,14 @@ export function formatDebugAiContext(graph: EvidenceGraph, conflicts: ConflictRe
 export async function compilePortfolioWithGemini(
   graph: EvidenceGraph,
   conflicts: ConflictRecord[],
-  rawBaseProject: ExtractedProject
+  rawBaseProject: ExtractedProject,
+  userAnswersContext?: string
 ): Promise<{ structured: StructuredPortfolioProject; raw: ExtractedProject }> {
+  console.log({
+    hasGeminiKey: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY?.length
+  });
+
   const debugAiContext = formatDebugAiContext(graph, conflicts);
   console.log("\n==========================================================");
   console.log("             [DEBUG MODE: AI CONTEXT INSPECTOR]           ");
@@ -661,7 +667,6 @@ export async function compilePortfolioWithGemini(
   }
 
   const sourceCount = graph.evidenceSources.length || 1;
-  const expectedConfidence = calculateEvidenceConfidence(sourceCount);
 
   let prioritizedPayload: any;
   try {
@@ -671,23 +676,26 @@ export async function compilePortfolioWithGemini(
   }
 
   const prompt = `
-You are the world's leading AI Portfolio Compiler and Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
-Your job is to act as an evidence-driven reasoning engine that synthesizes prioritized business evidence into a recruiter-ready data analytics case study.
+You are the world's leading Senior Portfolio Reviewer & Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
+Your primary role is to act as an evidence-first reasoning engine that transforms grounded analytical evidence into recruiter-ready case studies.
 
-### SYSTEM INSTRUCTIONS & EXECUTIVE COPYWRITING DIRECTIVES:
-1. **SENIOR CONSULTANT COPYWRITING**: Write like a Senior Business Analyst / Consultant. Never use generic AI phrases like "This project aims to...", "The dashboard shows...", "In summary". Use executive prose: "This analysis evaluates...", "Empirical evidence reveals...", "Strategic evaluation demonstrates...".
-2. **BUSINESS UNDERSTANDING & DECISION SUPPORT**: Infer the target Industry, Project Domain, Business Department (e.g. Strategic Finance, Revenue Operations, Growth Marketing, Supply Chain), key Stakeholders, and specific business decisions supported by this analysis. DO NOT rely on pre-assigned labels. Infer purely from evidence.
-3. **KPI DISCOVERY ENGINE**: Identify all KPIs supported by uploaded evidence (Revenue, Profit, Margin, Retention, Churn, Conversion, AOV, LTV, Review Rating, Inventory, Forecasting). Ground every metric in the Evidence. Never fabricate fake numbers.
-4. **EXPLAIN WHY IT MATTERS**: Every finding must explain *Why it matters* and *What business action decision-makers should take*.
-5. **DYNAMIC CONFIDENCE SCORING**:
-   - 1 source file: score confidence ~60%
-   - 2 agreeing source files: score confidence ~85%
-   - 3+ agreeing source files: score confidence ~95%
-6. **GROUNDED EVIDENCE PRIORITY**: Ground every claim directly in evidence. If evidence is lacking for a section, write "Insufficient evidence."
+### STRICT SENIOR PORTFOLIO REVIEWER DIRECTIVES (ZERO-HALLUCINATION GUARANTEE):
+1. **SENIOR CONSULTANT COPYWRITING**: Write like a Principal Business Intelligence Leader. Eliminate filler ("This project aims to", "The dashboard shows"). Use active consultant prose ("This analysis evaluates", "Empirical data reveals", "Strategic diagnostics indicate").
+2. **ZERO-HALLUCINATION POLICY**: Never fabricate metrics, percentages, dollar amounts, company names, stakeholders, or results that are unsupported by the evidence graph or user answers.
+3. **PORTFOLIO INTELLIGENCE LEVELS**:
+   - Level 1 (Evidence Only): Use exact numbers, SQL tables, and metrics present in evidence nodes.
+   - Level 2 (Safe Inference): Infer only obvious domain context and technical roles (e.g. SQL + Power BI = BI Engineer).
+   - Level 3 (Evidence + User Answers): Incorporate user-provided answers seamlessly to complete missing narrative sections.
+   - Level 4 (Recruiter Optimized): Rewrite language for ATS optimization without altering factual underlying numbers.
+4. **DYNAMIC CONFIDENCE SCORING**:
+   - 1 evidence source: ~60% confidence
+   - 2 agreeing evidence sources: ~85% confidence
+   - 3+ agreeing evidence sources / user validated: ~95% confidence
+5. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
 
 ### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
 ${JSON.stringify(prioritizedPayload, null, 2)}
-
+${userAnswersContext || ""}
 ### IDENTIFIED CONFLICTS:
 ${JSON.stringify(conflicts, null, 2)}
 
@@ -708,7 +716,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         contents: prompt,
         config: {
           systemInstruction:
-            "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
+            "You are an elite Senior Portfolio Reviewer reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies. Never fabricate KPIs, metrics, or stakeholders unsupported by evidence.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,

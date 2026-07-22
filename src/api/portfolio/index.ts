@@ -12,6 +12,10 @@ import {
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import fs from "fs";
 
+export const config = {
+  runtime: "nodejs"
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = Date.now();
   const rawUrl = req.url || "";

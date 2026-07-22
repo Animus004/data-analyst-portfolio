@@ -14,6 +14,11 @@ import {
 import { validateFileSignature, computeSha256, executeWithTimeout } from "../utils/security";
 import { mergeToEvidenceGraph, detectEvidenceConflicts } from "../evidence/graph";
 import { compilePortfolioWithGemini, formatDebugAiContext } from "../ai/portfolioCompiler";
+import {
+  evaluateEvidenceCompleteness,
+  generateMissingInformationRequests,
+  mergeUserAnswersWithEvidence
+} from "../ai/evidenceEvaluator";
 import crypto from "crypto";
 
 // Helper to normalize strings for metric matching
@@ -142,7 +147,9 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
  * Flow: Raw Files -> Specialized Parsers -> Evidence Extraction -> Evidence Graph -> Gemini Reasoning Engine -> Structured Portfolio Project
  */
 export async function compileProjectPackage(
-  rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>
+  rawFiles: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }>,
+  userAnswers?: Record<string, string>,
+  forceCompile?: boolean
 ): Promise<UniversalCompilerOutput> {
   let projectType = "Mixed Analytics";
   
@@ -271,17 +278,64 @@ export async function compileProjectPackage(
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
 
-  // Stage 4: Deterministic Validation & Conflict Detection
+  // Stage 4: Evidence Completeness Evaluator Stage
+  const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers);
+
+  // Merge User Answers with Evidence Graph (Evidence priority enforcement + conflict detection)
+  const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
+
+  // Stage 5: Deterministic Validation & Conflict Detection
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
-    ...detectEvidenceConflicts(evidenceGraph)
+    ...detectEvidenceConflicts(evidenceGraph),
+    ...answerConflicts
   ];
 
-  // Stage 5: Baseline Merged Raw Project
+  // Stage 6: Decision Logic: Evaluate Completeness Thresholds (all required sections >= 80)
+  const requiredScores = [
+    coverageReport.executiveSummary,
+    coverageReport.businessObjective,
+    coverageReport.businessProblem,
+    coverageReport.stakeholders,
+    coverageReport.methodology,
+    coverageReport.kpis,
+    coverageReport.recommendations,
+    coverageReport.businessImpact,
+    coverageReport.interviewStory
+  ];
+  const isFullySufficient = requiredScores.every(score => score >= 80);
+
+  // Check if missing info request must be generated
+  if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
+    const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph);
+    if (missingInformation.length > 0) {
+      const rawProject = mergeExtractedProjects(parsedProjects);
+      return {
+        status: "NEEDS_USER_INPUT",
+        projectType,
+        rawProject: {
+          ...rawProject,
+          sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
+        },
+        coverageReport,
+        missingInformation,
+        conflicts,
+        fileCoverage,
+        evidenceGraph
+      };
+    }
+  }
+
+  // Stage 7: Baseline Merged Raw Project
   const rawProject = mergeExtractedProjects(parsedProjects);
 
-  // Stage 6: AI Synthesis via Gemini Engine (Operates ONLY on Evidence Graph)
-  const synthesized = await compilePortfolioWithGemini(evidenceGraph, conflicts, rawProject);
+  console.log({
+    hasGeminiKey: !!process.env.GEMINI_API_KEY,
+    keyLength: process.env.GEMINI_API_KEY?.length
+  });
+
+  // Stage 8: AI Synthesis via Gemini Engine (Operates ONLY on Evidence Graph + Merged Level 3 User Context)
+  const synthesized = await compilePortfolioWithGemini(evidenceGraph, conflicts, rawProject, mergedAnswersContext);
 
   // Generate Master Package SHA-256 evidence hash
   const packageEvidenceHash = crypto.createHash("sha256")
@@ -315,11 +369,13 @@ export async function compileProjectPackage(
   }
 
   return {
+    status: "COMPLETE",
     projectType,
     rawProject: {
       ...synthesized.raw,
       sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
     },
+    coverageReport,
     evidenceGraph,
     portfolioProject: synthesized.structured,
     conflicts,
@@ -331,29 +387,47 @@ export async function compileProjectPackage(
     linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: new Date().toISOString(),
-      parserVersions: "Portfolio OS AI Compiler Engine v3.0 (Evidence Graph + Gemini)",
+      parserVersions: "Portfolio OS AI Compiler Engine v3.5 (Evidence Graph + Completeness Evaluator + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v3",
+      projectVersion: "v3.5",
       totalFilesProcessed: allFiles.length,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     }
   };
 }
 
-export async function parseUploadedPackage(fileName: string, buffer: Buffer): Promise<UniversalCompilerOutput> {
-  return compileProjectPackage([{
-    name: fileName,
-    size: buffer.length,
-    type: "binary",
-    content: buffer.toString("base64")
-  }]);
+export async function parseUploadedPackage(
+  fileName: string,
+  buffer: Buffer,
+  userAnswers?: Record<string, string>,
+  forceCompile?: boolean
+): Promise<UniversalCompilerOutput> {
+  return compileProjectPackage(
+    [{
+      name: fileName,
+      size: buffer.length,
+      type: "binary",
+      content: buffer.toString("base64")
+    }],
+    userAnswers,
+    forceCompile
+  );
 }
 
-export async function compileSourceCodeToProject(fileName: string, sourceCode: string): Promise<UniversalCompilerOutput> {
-  return compileProjectPackage([{
-    name: fileName,
-    size: Buffer.byteLength(sourceCode),
-    type: "text",
-    content: sourceCode
-  }]);
+export async function compileSourceCodeToProject(
+  fileName: string,
+  sourceCode: string,
+  userAnswers?: Record<string, string>,
+  forceCompile?: boolean
+): Promise<UniversalCompilerOutput> {
+  return compileProjectPackage(
+    [{
+      name: fileName,
+      size: Buffer.byteLength(sourceCode),
+      type: "text",
+      content: sourceCode
+    }],
+    userAnswers,
+    forceCompile
+  );
 }

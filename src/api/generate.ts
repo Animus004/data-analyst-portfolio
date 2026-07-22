@@ -8,6 +8,10 @@ import { getAiClient } from "./_lib/ai/index";
 import { fetchFromSupabase, ensureDataFile } from "./_lib/storage/index";
 import { sendError, sendSuccess, logExecution } from "./_lib/utils/index";
 
+export const config = {
+  runtime: "nodejs"
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = Date.now();
   const rawUrl = req.url || "";

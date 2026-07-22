@@ -11,6 +11,10 @@ import { validateFileBuffer, isAllowedFileType, categorizeStorageError } from ".
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
+export const config = {
+  runtime: "nodejs"
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = Date.now();
   const rawUrl = req.url || "";
@@ -25,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (pathname.includes("/ai-package-parse")) {
     try {
       const body = req.body || {};
-      const { fileName, fileDataBase64, fileType, files } = body;
+      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile } = body;
 
       const rawFilesToCompile: Array<{ name: string; size: number; type: string; content: string; storagePath?: string }> = [];
 
@@ -120,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
 
-      const output = await compileProjectPackage(rawFilesToCompile);
+      const output = await compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile);
 
       logExecution({
         endpoint: pathname,

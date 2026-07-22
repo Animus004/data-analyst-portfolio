@@ -272,7 +272,32 @@ export interface StructuredPortfolioProject {
   categories: string[];
 }
 
+export interface EvidenceCoverageReport {
+  executiveSummary: number;
+  businessObjective: number;
+  businessProblem: number;
+  stakeholders: number;
+  methodology: number;
+  kpis: number;
+  recommendations: number;
+  businessImpact: number;
+  interviewStory: number;
+}
+
+export interface MissingInformationItem {
+  field: string;
+  reason: string;
+  question: string;
+  type: "text" | "textarea" | "select";
+  options?: string[];
+}
+
+export type UserAnswerInput = Record<string, string>;
+
+export type CompilerStatus = "COMPLETE" | "NEEDS_USER_INPUT";
+
 export interface UniversalCompilerOutput {
+  status: CompilerStatus;
   projectType: string;
   rawProject: ExtractedProject;
   conflicts: ConflictRecord[];
@@ -283,6 +308,8 @@ export interface UniversalCompilerOutput {
     size: number;
     sha256?: string;
   }>;
+  coverageReport?: EvidenceCoverageReport;
+  missingInformation?: MissingInformationItem[];
   evidenceGraph?: EvidenceGraph;
   portfolioProject?: StructuredPortfolioProject;
   sourceAttributions?: Record<string, string[]>;
