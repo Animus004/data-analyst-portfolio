@@ -212,6 +212,13 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setSkillsString((profile.quickStackSkills || []).join(", "));
   }, [profile]);
 
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveProfile(editedProfile);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 3000);
+  };
+
   // Local state for JSON backup import console
   const [backupJson, setBackupJson] = useState("");
   const [backupStatus, setBackupStatus] = useState<{ type: "success" | "error" | null; msg: string }>({
