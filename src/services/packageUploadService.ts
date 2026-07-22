@@ -45,6 +45,16 @@ export type StorageErrorCategory =
   | "object_not_found"
   | "unknown";
 
+function logDataShape(varName: string, val: any): void {
+  const isArr = Array.isArray(val);
+  const typeStr = typeof val;
+  const ctorName = val && val.constructor ? val.constructor.name : "null/undefined";
+  const keysStr = val && typeof val === "object" ? Object.keys(val).join(", ") : "N/A";
+  const lenStr = val && (typeof val.length === "number" || isArr) ? val.length : "N/A";
+
+  console.log(`[DATA SHAPE TELEMETRY] [${varName}] typeof: "${typeStr}" | Array.isArray: ${isArr} | constructor: "${ctorName}" | length: ${lenStr} | keys: [${keysStr}]`);
+}
+
 /**
  * Categorizes Supabase storage errors to accurately distinguish root causes.
  */
@@ -206,9 +216,12 @@ export async function buildPackageFileDescriptor(
   storagePathOverride?: string,
   storageUploadSuccess: boolean = false
 ): Promise<UploadedPackageFileMeta> {
+  logDataShape("buildPackageFileDescriptor.file", file);
+  logDataShape("buildPackageFileDescriptor.packageId", packageId);
+
   const fileName = file.name;
-  const mimeType = file.type || file.fileObject.type || "application/octet-stream";
-  const size = file.size || file.fileObject.size;
+  const mimeType = file.type || file.fileObject?.type || "application/octet-stream";
+  const size = file.size || file.fileObject?.size || 0;
 
   const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const storagePath = storagePathOverride || `uploads/default/${packageId}/${sanitizedFileName}`;
@@ -218,10 +231,12 @@ export async function buildPackageFileDescriptor(
 
   // Include Base64 fallbackContent for small files (<=4.5MB) OR if storage upload failed
   if (isSmallFile || !storageUploadSuccess) {
-    try {
-      fallbackContent = await readArrayBufferAsBase64(file.fileObject);
-    } catch (b64Err: any) {
-      console.warn(`[SingleSharedBuilder] Base64 encoding warning for '${fileName}':`, b64Err.message);
+    if (file.fileObject) {
+      try {
+        fallbackContent = await readArrayBufferAsBase64(file.fileObject);
+      } catch (b64Err: any) {
+        console.warn(`[SingleSharedBuilder] Base64 encoding warning for '${fileName}':`, b64Err.message);
+      }
     }
   }
 
@@ -233,6 +248,8 @@ export async function buildPackageFileDescriptor(
     detectedType: file.detectedType || mimeType,
     fallbackContent
   };
+
+  logDataShape("buildPackageFileDescriptor.result", descriptor);
 
   const hasStoragePath = Boolean(descriptor.storagePath && descriptor.storagePath.trim().length > 0);
   const hasFallback = Boolean(descriptor.fallbackContent && descriptor.fallbackContent.trim().length > 0);
@@ -258,6 +275,13 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
   invalidFiles: string[];
   auditLogs: string[];
 } {
+  logDataShape("validatePackageFileDescriptors.descriptors", descriptors);
+
+  if (!Array.isArray(descriptors)) {
+    console.error("Expected array for validatePackageFileDescriptors.descriptors", descriptors);
+    return { isValid: false, invalidFiles: ["Non-Array Descriptors Payload"], auditLogs: ["ERROR: Descriptors is not an array"] };
+  }
+
   const auditLogs: string[] = [];
   const invalidFiles: string[] = [];
 
@@ -266,7 +290,7 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
   console.log(`Total Descriptors: ${descriptors.length}`);
   console.log(`==========================================================\n`);
 
-  for (const d of descriptors) {
+  descriptors.forEach((d) => {
     const hasStoragePath = Boolean(d.storagePath && d.storagePath.trim().length > 0);
     const hasFallback = Boolean(d.fallbackContent && d.fallbackContent.trim().length > 0);
     const isValid = hasStoragePath || hasFallback;
@@ -278,7 +302,7 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
     if (!isValid) {
       invalidFiles.push(d.name);
     }
-  }
+  });
 
   const allValid = invalidFiles.length === 0 && descriptors.length > 0;
   console.log(`\n[PACKAGE-WIDE VALIDATION RESULT] ${allValid ? "PASSED ALL CHECKS ✓" : `FAILED ❌ (${invalidFiles.length} invalid files)`}\n`);
@@ -292,12 +316,39 @@ export function validatePackageFileDescriptors(descriptors: UploadedPackageFileM
 
 /**
  * Main Upload Function using Single Shared Builder for every file type.
+ * Flexible parameter normalization handles uploadProjectPackage(files, packageId) AND uploadProjectPackage(packageId, files).
  */
 export async function uploadProjectPackage(
-  packageId: string,
-  files: PackageUploadFile[],
+  param1: PackageUploadFile[] | string,
+  param2: PackageUploadFile[] | string,
   onProgress?: (progressMap: UploadProgressMap) => void
 ): Promise<{ success: boolean; uploadedFiles?: UploadedPackageFileMeta[]; error?: string }> {
+  logDataShape("uploadProjectPackage.param1", param1);
+  logDataShape("uploadProjectPackage.param2", param2);
+
+  // Normalize parameter ordering dynamically
+  let files: PackageUploadFile[] = [];
+  let packageId: string = "";
+
+  if (Array.isArray(param1)) {
+    files = param1;
+    packageId = typeof param2 === "string" ? param2 : `pkg-${Date.now()}`;
+  } else if (Array.isArray(param2)) {
+    files = param2;
+    packageId = typeof param1 === "string" ? param1 : `pkg-${Date.now()}`;
+  } else {
+    console.error("[uploadProjectPackage] Invalid parameters: expected PackageUploadFile[] and packageId string.", { param1, param2 });
+    return { success: false, error: "Invalid upload parameters: missing package files array." };
+  }
+
+  logDataShape("uploadProjectPackage.normalizedFiles", files);
+  logDataShape("uploadProjectPackage.normalizedPackageId", packageId);
+
+  if (!Array.isArray(files)) {
+    console.error("Expected array for uploadProjectPackage.files", files);
+    return { success: false, error: "Files parameter is not an array." };
+  }
+
   const client = getSupabaseClient();
   const progressMap: UploadProgressMap = {};
 
