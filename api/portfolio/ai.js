@@ -34,6 +34,84 @@ function createEmptyProject(fileName) {
     sourceFiles: [fileName]
   };
 }
+async function streamParseWorksheetXml(sheetZipFile, sheetName, sharedStrings) {
+  return new Promise((resolve, reject) => {
+    let rowCount = 0;
+    const columns = [];
+    const formulas = [];
+    const measures = [];
+    const formulaSet = /* @__PURE__ */ new Set();
+    let pendingChunk = "";
+    let isRow1Parsed = false;
+    let sheetFormulasCount = 0;
+    let dimensionFound = false;
+    const stream = sheetZipFile.nodeStream();
+    stream.on("data", (chunk) => {
+      pendingChunk += chunk.toString("utf-8");
+      if (!dimensionFound) {
+        const dimMatch = pendingChunk.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
+        if (dimMatch) {
+          rowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
+          dimensionFound = true;
+        }
+      }
+      if (!isRow1Parsed) {
+        const row1Match = pendingChunk.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
+        if (row1Match) {
+          const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
+          let cMatch;
+          while ((cMatch = cRegex.exec(row1Match[1])) !== null && columns.length < 30) {
+            const val = cMatch[1];
+            if (val !== void 0) {
+              let cellText = val;
+              if (cMatch[0].includes('t="s"')) {
+                const sIdx = parseInt(val, 10);
+                if (!isNaN(sIdx) && sharedStrings[sIdx]) {
+                  cellText = sharedStrings[sIdx];
+                }
+              }
+              const cleaned = cellText.trim();
+              if (cleaned && !cleaned.match(/^Column\d+$/i)) {
+                columns.push(cleaned);
+              }
+            }
+          }
+          isRow1Parsed = true;
+        }
+      }
+      const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
+      let fMatch;
+      while ((fMatch = formulaRegex.exec(pendingChunk)) !== null && sheetFormulasCount < 50) {
+        sheetFormulasCount++;
+        const formulaText = decodeXmlEntities(fMatch[1]).trim();
+        const upperF = formulaText.toUpperCase();
+        if (upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") || upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") || upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")) {
+          if (formulaSet.size < 30) {
+            formulaSet.add(`${sheetName}: =${formulaText}`);
+          }
+          const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+          if (matchFn && matchFn[1]) {
+            measures.push(`Formula: ${matchFn[1]} in ${sheetName}`);
+          }
+        }
+      }
+      if (pendingChunk.length > 8192) {
+        pendingChunk = pendingChunk.slice(-4096);
+      }
+    });
+    stream.on("end", () => {
+      resolve({
+        rowCount,
+        columns,
+        formulas: Array.from(formulaSet),
+        measures
+      });
+    });
+    stream.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
 async function parseStreamExcel(fileName, content) {
   const parseStart = Date.now();
   const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
@@ -103,84 +181,6 @@ async function parseStreamExcel(fileName, content) {
       drawingFiles.forEach((_, idx) => {
         excelEvidence.charts.push({ title: `Visualization Layout ${idx + 1}`, chartType: "Spreadsheet Chart" });
       });
-      async function streamParseWorksheetXml(sheetZipFile, sheetName, sharedStrings2) {
-        return new Promise((resolve, reject) => {
-          let rowCount = 0;
-          const columns = [];
-          const formulas = [];
-          const measures = [];
-          const formulaSet2 = /* @__PURE__ */ new Set();
-          let pendingChunk = "";
-          let isRow1Parsed = false;
-          let sheetFormulasCount = 0;
-          let dimensionFound = false;
-          const stream = sheetZipFile.nodeStream();
-          stream.on("data", (chunk) => {
-            pendingChunk += chunk.toString("utf-8");
-            if (!dimensionFound) {
-              const dimMatch = pendingChunk.match(/<dimension\s+ref="[A-Z]+(\d+):[A-Z]+(\d+)"/);
-              if (dimMatch) {
-                rowCount = Math.max(0, parseInt(dimMatch[2], 10) - parseInt(dimMatch[1], 10));
-                dimensionFound = true;
-              }
-            }
-            if (!isRow1Parsed) {
-              const row1Match = pendingChunk.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/);
-              if (row1Match) {
-                const cRegex = /<c\s+[^>]*>(?:<f>.*?<\/f>)?(?:<v>(.*?)<\/v>)?<\/c>/g;
-                let cMatch;
-                while ((cMatch = cRegex.exec(row1Match[1])) !== null && columns.length < 30) {
-                  const val = cMatch[1];
-                  if (val !== void 0) {
-                    let cellText = val;
-                    if (cMatch[0].includes('t="s"')) {
-                      const sIdx = parseInt(val, 10);
-                      if (!isNaN(sIdx) && sharedStrings2[sIdx]) {
-                        cellText = sharedStrings2[sIdx];
-                      }
-                    }
-                    const cleaned = cellText.trim();
-                    if (cleaned && !cleaned.match(/^Column\d+$/i)) {
-                      columns.push(cleaned);
-                    }
-                  }
-                }
-                isRow1Parsed = true;
-              }
-            }
-            const formulaRegex = /<f[^>]*>([\s\S]*?)<\/f>/g;
-            let fMatch;
-            while ((fMatch = formulaRegex.exec(pendingChunk)) !== null && sheetFormulasCount < 50) {
-              sheetFormulasCount++;
-              const formulaText = decodeXmlEntities(fMatch[1]).trim();
-              const upperF = formulaText.toUpperCase();
-              if (upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") || upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") || upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("MARGIN")) {
-                if (formulaSet2.size < 30) {
-                  formulaSet2.add(`${sheetName}: =${formulaText}`);
-                }
-                const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
-                if (matchFn && matchFn[1]) {
-                  measures.push(`Formula: ${matchFn[1]} in ${sheetName}`);
-                }
-              }
-            }
-            if (pendingChunk.length > 8192) {
-              pendingChunk = pendingChunk.slice(-4096);
-            }
-          });
-          stream.on("end", () => {
-            resolve({
-              rowCount,
-              columns,
-              formulas: Array.from(formulaSet2),
-              measures
-            });
-          });
-          stream.on("error", (err) => {
-            reject(err);
-          });
-        });
-      }
       let totalRowCount2 = 0;
       let totalFormulaCount = 0;
       const formulaSet = /* @__PURE__ */ new Set();
@@ -3294,7 +3294,22 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       console.log(`[CHECKPOINT S1-009] Extension resolved to '.${ext}'`);
       console.log(`[CHECKPOINT S1-010] Entering computeSha256 for '${file.name}'`);
-      const fileHash = computeSha256(file.content);
+      let fileHash;
+      try {
+        console.log(`[CHECKPOINT S1-010A] computeSha256: typeof file.content = "${typeof file.content}" | Buffer.isBuffer = ${Buffer.isBuffer(file.content)} | length = ${typeof file.content === "string" ? file.content.length : file.content.length}`);
+        const sha256Buf = typeof file.content === "string" ? (console.log(`[CHECKPOINT S1-010B] computeSha256: calling Buffer.from(content, "base64") \u2014 string length: ${file.content.length}`), Buffer.from(file.content, "base64")) : (console.log(`[CHECKPOINT S1-010B] computeSha256: content is already a Buffer \u2014 byteLength: ${file.content.byteLength}`), file.content);
+        console.log(`[CHECKPOINT S1-010C] computeSha256: Buffer.from/passthrough complete \u2014 sha256Buf.length: ${sha256Buf.length}`);
+        const sha256Hash = crypto2.createHash("sha256");
+        console.log(`[CHECKPOINT S1-010D] computeSha256: crypto.createHash("sha256") created`);
+        sha256Hash.update(sha256Buf);
+        console.log(`[CHECKPOINT S1-010E] computeSha256: hash.update(buffer) complete`);
+        fileHash = sha256Hash.digest("hex");
+        console.log(`[CHECKPOINT S1-010F] computeSha256: hash.digest("hex") complete \u2014 hash prefix: ${fileHash.slice(0, 12)}`);
+      } catch (sha256Err) {
+        console.error(`[STAGE1 FAILURE] computeSha256 threw at '${file.name}':`, sha256Err?.message);
+        console.error(sha256Err?.stack);
+        throw sha256Err;
+      }
       console.log(`[CHECKPOINT S1-011] computeSha256 completed for '${file.name}' | SHA256: ${fileHash.slice(0, 12)}...`);
       console.log(`[CHECKPOINT S1-012] Entering validateFileSignature for '${file.name}'`);
       const sigCheck = validateFileSignature(file.name, file.content);

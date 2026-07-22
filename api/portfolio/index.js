@@ -396,9 +396,12 @@ async function handler(req, res) {
       if (!payload || !payload.profile) {
         return sendError(res, 400, "Invalid portfolio payload.");
       }
-      const updated = await syncToSupabase(payload);
+      const saved = await syncToSupabase(payload);
       logExecution({ endpoint: pathname, totalDurationMs: Date.now() - startTime });
-      return sendSuccess(res, { message: "Portfolio updated successfully.", portfolio: updated });
+      if (!saved) {
+        return sendError(res, 500, "Portfolio save failed. Supabase returned an error or is unconfigured.");
+      }
+      return sendSuccess(res, { message: "Portfolio updated successfully.", portfolio: payload });
     } catch (err) {
       return sendError(res, 500, "Failed to save portfolio state.", err.message);
     }
