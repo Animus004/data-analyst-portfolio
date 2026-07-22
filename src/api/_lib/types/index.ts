@@ -3,6 +3,61 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export type PipelineStage =
+  | "File Upload"
+  | "Parsing"
+  | "Evidence Graph"
+  | "Evidence Prioritization"
+  | "Gemini API"
+  | "Schema Validation"
+  | "Portfolio Mapping";
+
+export class PipelineError extends Error {
+  stage: PipelineStage;
+  errorType: string;
+  fileName?: string;
+  lineNumber?: number;
+
+  constructor(
+    stage: PipelineStage,
+    message: string,
+    errorType = "PipelineError",
+    cause?: any
+  ) {
+    super(message);
+    this.name = "PipelineError";
+    this.stage = stage;
+    this.errorType = errorType;
+    if (cause?.stack) {
+      this.stack = cause.stack;
+    }
+    const location = parseStackLocation(this.stack);
+    if (location) {
+      this.fileName = location.fileName;
+      this.lineNumber = location.lineNumber;
+    }
+  }
+}
+
+export function parseStackLocation(stack?: string): { fileName: string; lineNumber: number } | null {
+  if (!stack) return null;
+  const lines = stack.split("\n");
+  for (const line of lines) {
+    const match = line.match(/(?:[a-zA-Z]:\\|\/)[^:()]+\.[a-zA-Z0-9]+:(\d+):(\d+)/) || line.match(/([^\s()]+\.[a-zA-Z0-9]+):(\d+):(\d+)/);
+    if (match) {
+      const fullPath = match[0];
+      const parts = fullPath.split(":");
+      if (parts.length >= 3) {
+        const lineNo = parseInt(parts[parts.length - 2], 10);
+        const filePath = parts.slice(0, parts.length - 2).join(":");
+        const fileName = filePath.split(/[/\\]/).pop() || filePath;
+        return { fileName, lineNumber: lineNo };
+      }
+    }
+  }
+  return null;
+}
+
 export interface ExtractedMetric {
   id: string;
   label: string;

@@ -8,7 +8,8 @@ import {
   ExtractedProject,
   ConflictRecord,
   UniversalCompilerOutput,
-  ParserEvidenceNode
+  ParserEvidenceNode,
+  PipelineError
 } from "../types/index";
 import { validateFileSignature, computeSha256, executeWithTimeout } from "../utils/security";
 import { mergeToEvidenceGraph, detectEvidenceConflicts } from "../evidence/graph";
@@ -262,8 +263,13 @@ export async function compileProjectPackage(
   }
 
   // Stage 3: Build Canonical Evidence Graph
-  const evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
-  evidenceGraph.projectDomain = projectType;
+  let evidenceGraph: any;
+  try {
+    evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
+    evidenceGraph.projectDomain = projectType;
+  } catch (err: any) {
+    throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
+  }
 
   // Stage 4: Deterministic Validation & Conflict Detection
   const conflicts = [

@@ -9,6 +9,7 @@ import { getAiClient } from "../_lib/ai/index";
 import { getSupabaseClient } from "../_lib/storage/index";
 import { validateFileBuffer, isAllowedFileType, categorizeStorageError } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
+import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = Date.now();
@@ -128,7 +129,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return sendSuccess(res, output);
     } catch (err: any) {
-      return sendError(res, 500, "Failed to compile uploaded analytic package.", err.message);
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const timestamp = new Date().toISOString();
+      const stage: PipelineStage = err.stage || "File Upload";
+      const errorType = err.errorType || err.name || "Error";
+      const stack = err.stack || String(err);
+      const location = parseStackLocation(stack);
+
+      console.error("\n==========================================================");
+      console.error(`[PIPELINE EXCEPTION DETECTED] Stage: ${stage}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Error Type: ${errorType}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Request ID: ${requestId}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Timestamp: ${timestamp}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Message: ${err.message}`);
+      if (location) {
+        console.error(`[PIPELINE EXCEPTION DETECTED] File Name: ${location.fileName}`);
+        console.error(`[PIPELINE EXCEPTION DETECTED] Line Number: ${location.lineNumber}`);
+      }
+      console.error(`[PIPELINE EXCEPTION DETECTED] Complete Stack Trace:\n${stack}`);
+      console.error("==========================================================\n");
+
+      return res.status(500).json({
+        success: false,
+        stage,
+        errorType,
+        message: err.message || "An unhandled pipeline error occurred",
+        stack,
+        timestamp,
+        requestId,
+        fileName: location?.fileName || err.fileName || undefined,
+        lineNumber: location?.lineNumber || err.lineNumber || undefined
+      });
     }
   }
 

@@ -629,6 +629,42 @@ async function unpackZipFile(base64Content) {
   return extractedFiles;
 }
 
+// src/api/_lib/types/index.ts
+var PipelineError = class extends Error {
+  constructor(stage, message, errorType = "PipelineError", cause) {
+    super(message);
+    this.name = "PipelineError";
+    this.stage = stage;
+    this.errorType = errorType;
+    if (cause?.stack) {
+      this.stack = cause.stack;
+    }
+    const location = parseStackLocation(this.stack);
+    if (location) {
+      this.fileName = location.fileName;
+      this.lineNumber = location.lineNumber;
+    }
+  }
+};
+function parseStackLocation(stack) {
+  if (!stack) return null;
+  const lines = stack.split("\n");
+  for (const line of lines) {
+    const match = line.match(/(?:[a-zA-Z]:\\|\/)[^:()]+\.[a-zA-Z0-9]+:(\d+):(\d+)/) || line.match(/([^\s()]+\.[a-zA-Z0-9]+):(\d+):(\d+)/);
+    if (match) {
+      const fullPath = match[0];
+      const parts = fullPath.split(":");
+      if (parts.length >= 3) {
+        const lineNo = parseInt(parts[parts.length - 2], 10);
+        const filePath = parts.slice(0, parts.length - 2).join(":");
+        const fileName = filePath.split(/[/\\]/).pop() || filePath;
+        return { fileName, lineNumber: lineNo };
+      }
+    }
+  }
+  return null;
+}
+
 // src/api/_lib/utils/security.ts
 import crypto from "crypto";
 function validateFileSignature(fileName, base64OrBuffer) {
@@ -1334,11 +1370,16 @@ async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
   console.log("==========================================================\n");
   const ai = getAiClient();
   if (!ai) {
-    throw new Error("\u274C Gemini generation failed. Reason: GEMINI_API_KEY is not configured in process.env");
+    throw new PipelineError("Gemini API", "GEMINI_API_KEY is not configured in process.env", "ConfigurationError");
   }
   const sourceCount = graph.evidenceSources.length || 1;
   const expectedConfidence = calculateEvidenceConfidence(sourceCount);
-  const prioritizedPayload = sanitizeAndPrioritizeEvidenceGraph(graph);
+  let prioritizedPayload;
+  try {
+    prioritizedPayload = sanitizeAndPrioritizeEvidenceGraph(graph);
+  } catch (err) {
+    throw new PipelineError("Evidence Prioritization", `Evidence prioritization failed: ${err.message}`, err.name || "EvidencePrioritizationError", err);
+  }
   const prompt = `
 You are the world's leading AI Portfolio Compiler and Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
 Your job is to act as an evidence-driven reasoning engine that synthesizes prioritized business evidence into a recruiter-ready data analytics case study.
@@ -1660,7 +1701,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
   }
   if (!response || !response.text) {
     console.error("\u274C Gemini generation failed across all models. Reason:", lastError?.message || "No response received");
-    throw new Error(`\u274C Gemini generation failed. Reason: ${lastError?.message || "No response received"}`);
+    throw new PipelineError("Gemini API", `Gemini API request failed across all models: ${lastError?.message || "No response received"}`, lastError?.name || "GoogleGenAIError", lastError);
   }
   const latencyMs = Date.now() - startTime;
   const promptTokens = response.usageMetadata?.promptTokenCount || 0;
@@ -1680,7 +1721,12 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
   console.log(`Raw Gemini Response JSON:
 ${response.text}`);
   console.log("==========================================================\n");
-  const parsed = JSON.parse(response.text.trim());
+  let parsed;
+  try {
+    parsed = JSON.parse(response.text.trim());
+  } catch (err) {
+    throw new PipelineError("Schema Validation", `Failed to parse Gemini response JSON: ${err.message}`, "JSONParseError", err);
+  }
   const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
   const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
   const defaultEvidence = graph.evidenceSources.length > 0 ? graph.evidenceSources.map((s) => ({ sourceFile: s.fileName, parser: s.parser })) : [{ sourceFile: primarySource }];
@@ -2073,8 +2119,13 @@ async function compileProjectPackage(rawFiles) {
     else if (ext === "ipynb") projectType = "Python";
     else if (ext === "pbix" || ext === "dax") projectType = "Power BI";
   }
-  const evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
-  evidenceGraph.projectDomain = projectType;
+  let evidenceGraph;
+  try {
+    evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
+    evidenceGraph.projectDomain = projectType;
+  } catch (err) {
+    throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
+  }
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
     ...detectEvidenceConflicts(evidenceGraph)
@@ -2488,7 +2539,36 @@ async function handler(req, res) {
       });
       return sendSuccess(res, output);
     } catch (err) {
-      return sendError(res, 500, "Failed to compile uploaded analytic package.", err.message);
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+      const stage = err.stage || "File Upload";
+      const errorType = err.errorType || err.name || "Error";
+      const stack = err.stack || String(err);
+      const location = parseStackLocation(stack);
+      console.error("\n==========================================================");
+      console.error(`[PIPELINE EXCEPTION DETECTED] Stage: ${stage}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Error Type: ${errorType}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Request ID: ${requestId}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Timestamp: ${timestamp}`);
+      console.error(`[PIPELINE EXCEPTION DETECTED] Message: ${err.message}`);
+      if (location) {
+        console.error(`[PIPELINE EXCEPTION DETECTED] File Name: ${location.fileName}`);
+        console.error(`[PIPELINE EXCEPTION DETECTED] Line Number: ${location.lineNumber}`);
+      }
+      console.error(`[PIPELINE EXCEPTION DETECTED] Complete Stack Trace:
+${stack}`);
+      console.error("==========================================================\n");
+      return res.status(500).json({
+        success: false,
+        stage,
+        errorType,
+        message: err.message || "An unhandled pipeline error occurred",
+        stack,
+        timestamp,
+        requestId,
+        fileName: location?.fileName || err.fileName || void 0,
+        lineNumber: location?.lineNumber || err.lineNumber || void 0
+      });
     }
   }
   if (pathname.includes("/ai-parse")) {
