@@ -66,6 +66,9 @@ export const ExcelParser: Parser = {
   name: "ExcelParser",
   extensions: ["xlsx", "xls"],
   async parse(fileName, content) {
+    const parseStart = Date.now();
+    const memBefore = process.memoryUsage().heapUsed / (1024 * 1024);
+
     const proj = createEmptyProject(fileName, "ExcelParser");
     proj.tags = ["Excel", "Pivot Tables", "Business Analytics", "KPI Reporting"];
     proj.categories = ["Financial Modeling", "Business Analytics"];
@@ -92,10 +95,25 @@ export const ExcelParser: Parser = {
 
     try {
       const excelBuffer = Buffer.from(content, "base64");
-      const workbook = XLSX.read(excelBuffer, { type: "buffer", cellFormula: true });
-      excelEvidence.sheetNames = workbook.SheetNames;
+      const fileSizeMb = (excelBuffer.length / (1024 * 1024)).toFixed(2);
+      const isLargeWorkbook = excelBuffer.length > 5 * 1024 * 1024; // > 5 MB threshold
 
-      // Extract Workbook Properties/Metadata for business context
+      // Stage 1: Load Workbook
+      const s1Start = Date.now();
+      const workbook = XLSX.read(excelBuffer, { 
+        type: "buffer", 
+        cellFormula: true, 
+        sheetStubs: false 
+      });
+      const s1Duration = Date.now() - s1Start;
+      const memAfterLoad = process.memoryUsage().heapUsed / (1024 * 1024);
+
+      // Stage 2: Enumerate Worksheets
+      const s2Start = Date.now();
+      excelEvidence.sheetNames = workbook.SheetNames;
+      const s2Duration = Date.now() - s2Start;
+
+      // Extract Workbook Properties/Metadata
       if (workbook.Props) {
         const props = workbook.Props as Record<string, any>;
         const cleanProps: Record<string, any> = {};
@@ -126,17 +144,24 @@ export const ExcelParser: Parser = {
         });
       }
 
+      let totalFormulaCount = 0;
+      let totalRowCount = 0;
       let projectsRaw: any[] = [];
       let metricsRaw: any[] = [];
       const formulaSet = new Set<string>();
       const measureSet = new Set<string>();
+
+      // Stage 3 & 4 & 5: Read Headers, Rows, Formulas
+      const s3Start = Date.now();
+      let s3Duration = 0;
+      let s4Duration = 0;
+      let s5Duration = 0;
 
       workbook.SheetNames.forEach(sheetName => {
         const nameLower = sheetName.toLowerCase().replace(/\s+/g, "");
         const sheet = workbook.Sheets[sheetName];
         if (!sheet) return;
 
-        // Classify Sheet Role
         let role = "Analytical Worksheet";
         if (nameLower.includes("dashboard") || nameLower.includes("summary") || nameLower.includes("kpi") || nameLower.includes("cockpit") || nameLower.includes("overview")) {
           role = "Executive Dashboard";
@@ -150,36 +175,38 @@ export const ExcelParser: Parser = {
           role = "Data Source";
         }
 
-        // Calculate Row & Column counts from sheet range
         let rowCount = 0;
         let colCount = 0;
         const sheetColumns: string[] = [];
 
+        // Fast Header Extraction directly from range without sheet_to_json
+        const hStart = Date.now();
         if (sheet["!ref"]) {
           try {
             const range = XLSX.utils.decode_range(sheet["!ref"]);
-            rowCount = Math.max(0, range.e.r - range.s.r); // excluding header row
+            rowCount = Math.max(0, range.e.r - range.s.r); // excluding header
             colCount = range.e.c - range.s.c + 1;
+            totalRowCount += rowCount;
+
+            // Direct top row header extraction
+            for (let c = range.s.c; c <= range.e.c && c <= 50; c++) {
+              const cellAddress = XLSX.utils.encode_cell({ r: range.s.r, c });
+              const cell = sheet[cellAddress];
+              if (cell && cell.v !== undefined) {
+                const cleaned = String(cell.v).trim();
+                if (cleaned && !cleaned.match(/^Column\d+$/i) && !cleaned.match(/^Unnamed:\s*\d+$/i)) {
+                  sheetColumns.push(cleaned);
+                  if (!excelEvidence.dimensions.includes(cleaned)) {
+                    excelEvidence.dimensions.push(cleaned);
+                  }
+                }
+              }
+            }
           } catch (_) {
             rowCount = 0;
           }
         }
-
-        // Extract Top Row Headers (Columns)
-        const jsonData: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        if (jsonData.length > 0 && Array.isArray(jsonData[0])) {
-          jsonData[0].forEach((colHeader: any) => {
-            if (colHeader && typeof colHeader === "string") {
-              const cleaned = colHeader.trim();
-              if (cleaned && !cleaned.match(/^Column\d+$/i) && !cleaned.match(/^Unnamed:\s*\d+$/i)) {
-                sheetColumns.push(cleaned);
-                if (!excelEvidence.dimensions.includes(cleaned)) {
-                  excelEvidence.dimensions.push(cleaned);
-                }
-              }
-            }
-          });
-        }
+        s3Duration += Date.now() - hStart;
 
         excelEvidence.worksheets!.push({
           name: sheetName,
@@ -189,7 +216,7 @@ export const ExcelParser: Parser = {
           columns: sheetColumns.slice(0, 25)
         });
 
-        // Detect Pivot tables and Charts metadata
+        // Stage 7 & 8: Pivot tables and Charts metadata
         if ((sheet as any)["!pivots"] && Array.isArray((sheet as any)["!pivots"])) {
           excelEvidence.pivots.push(`${sheetName} (Native Pivot Table)`);
         }
@@ -197,48 +224,64 @@ export const ExcelParser: Parser = {
           excelEvidence.charts.push({ title: `${sheetName} Visual Layout`, chartType: "Spreadsheet Visualization" });
         }
 
-        // Scan Cell Formulas and Calculated Columns
+        // Stage 5: High-speed Adaptive Cell Formula & KPI Sampling
+        const fStart = Date.now();
         const colFormulasMap = new Map<number, { colName: string; count: number; sampleFormula: string }>();
 
-        Object.keys(sheet).forEach(cellAddr => {
-          if (cellAddr.startsWith("!")) return;
-          const cell = sheet[cellAddr];
-          if (cell && cell.f) {
-            const formulaStr = String(cell.f).trim();
-            const upperF = formulaStr.toUpperCase();
+        if (sheet["!ref"]) {
+          try {
+            const range = XLSX.utils.decode_range(sheet["!ref"]);
+            const totalSheetRows = range.e.r - range.s.r + 1;
 
-            // High-signal business calculation detection
-            if (
-              upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") ||
-              upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") ||
-              upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("NPV") ||
-              upperF.includes("IRR") || upperF.includes("PMT") || upperF.includes("GROWTH") ||
-              upperF.includes("MARGIN") || upperF.includes("VAR")
-            ) {
-              if (formulaSet.size < 30) {
-                formulaSet.add(`${sheetName}!${cellAddr}: =${formulaStr}`);
-              }
-              const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
-              if (matchFn && matchFn[1]) {
-                measureSet.add(`Formula Calculation: ${matchFn[1]} in ${sheetName}`);
-              }
+            // Adaptive range selection: For large sheets (> 2000 rows), sample high-signal top & bottom rows
+            const rowsToSample = new Set<number>();
+            if (totalSheetRows <= 2000) {
+              for (let r = range.s.r; r <= range.e.r; r++) rowsToSample.add(r);
+            } else {
+              // Top 60 rows
+              for (let r = range.s.r; r <= range.s.r + 60 && r <= range.e.r; r++) rowsToSample.add(r);
+              // Bottom 40 rows (Summary / Totals)
+              for (let r = Math.max(range.s.r, range.e.r - 40); r <= range.e.r; r++) rowsToSample.add(r);
             }
 
-            // Track calculated column signatures
-            try {
-              const parsedAddr = XLSX.utils.decode_cell(cellAddr);
-              const colIdx = parsedAddr.c;
-              const colHeader = sheetColumns[colIdx] || `Column ${colIdx + 1}`;
-              if (!colFormulasMap.has(colIdx)) {
-                colFormulasMap.set(colIdx, { colName: colHeader, count: 1, sampleFormula: formulaStr });
-              } else {
-                colFormulasMap.get(colIdx)!.count++;
-              }
-            } catch (_) {}
-          }
-        });
+            rowsToSample.forEach(r => {
+              for (let c = range.s.c; c <= range.e.c && c <= 50; c++) {
+                const cellAddr = XLSX.utils.encode_cell({ r, c });
+                const cell = sheet[cellAddr];
+                if (cell && cell.f) {
+                  totalFormulaCount++;
+                  const formulaStr = String(cell.f).trim();
+                  const upperF = formulaStr.toUpperCase();
 
-        // Register Calculated Columns (if >= 2 rows in column use formulas)
+                  if (
+                    upperF.includes("SUM") || upperF.includes("AVERAGE") || upperF.includes("COUNT") ||
+                    upperF.includes("VLOOKUP") || upperF.includes("XLOOKUP") || upperF.includes("INDEX") ||
+                    upperF.includes("MATCH") || upperF.includes("IF") || upperF.includes("NPV") ||
+                    upperF.includes("IRR") || upperF.includes("PMT") || upperF.includes("GROWTH") ||
+                    upperF.includes("MARGIN") || upperF.includes("VAR")
+                  ) {
+                    if (formulaSet.size < 30) {
+                      formulaSet.add(`${sheetName}!${cellAddr}: =${formulaStr}`);
+                    }
+                    const matchFn = upperF.match(/([A-Z_]+)\s*\(/);
+                    if (matchFn && matchFn[1]) {
+                      measureSet.add(`Formula Calculation: ${matchFn[1]} in ${sheetName}`);
+                    }
+                  }
+
+                  const colHeader = sheetColumns[c] || `Column ${c + 1}`;
+                  if (!colFormulasMap.has(c)) {
+                    colFormulasMap.set(c, { colName: colHeader, count: 1, sampleFormula: formulaStr });
+                  } else {
+                    colFormulasMap.get(c)!.count++;
+                  }
+                }
+              }
+            });
+          } catch (_) {}
+        }
+        s5Duration += Date.now() - fStart;
+
         colFormulasMap.forEach((meta) => {
           if (meta.count >= 2) {
             excelEvidence.calculatedColumns!.push({
@@ -250,10 +293,11 @@ export const ExcelParser: Parser = {
           }
         });
 
+        // Fast raw data extraction for explicit project or metric metadata sheets
         if (nameLower === "projects" || nameLower === "casestudies") {
-          projectsRaw = XLSX.utils.sheet_to_json(sheet);
+          projectsRaw = XLSX.utils.sheet_to_json(sheet, { range: 0 });
         } else if (nameLower === "metrics" || nameLower === "kpis") {
-          metricsRaw = XLSX.utils.sheet_to_json(sheet);
+          metricsRaw = XLSX.utils.sheet_to_json(sheet, { range: 0 });
         }
       });
 
@@ -293,6 +337,28 @@ export const ExcelParser: Parser = {
         excelEvidence.metrics.push({ label, value, description: desc });
         excelEvidence.kpis.push({ name: label, actual: value });
       });
+
+      const totalDuration = Date.now() - parseStart;
+      const memAfter = process.memoryUsage().heapUsed / (1024 * 1024);
+      const complexityScore = isLargeWorkbook || totalRowCount > 100000 ? "HIGH" : totalRowCount > 10000 ? "MEDIUM" : "LOW";
+
+      console.log(`\n==========================================================`);
+      console.log(`[EXCEL WORKBOOK PROFILE] File Name: ${fileName}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] File Size: ${fileSizeMb} MB`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Total Worksheets: ${workbook.SheetNames.length}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Total Aggregate Rows: ${totalRowCount.toLocaleString()}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Formulas Detected: ${totalFormulaCount.toLocaleString()}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Pivot Tables: ${excelEvidence.pivots.length}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Charts: ${excelEvidence.charts.length}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Named Ranges: ${excelEvidence.namedRanges!.length}`);
+      console.log(`[EXCEL WORKBOOK PROFILE] Complexity Score: ${complexityScore}`);
+      console.log(`----------------------------------------------------------`);
+      console.log(`[EXCEL STAGE TIMINGS] Stage 1 (Load Workbook): ${s1Duration}ms (Mem delta: +${(memAfterLoad - memBefore).toFixed(1)} MB)`);
+      console.log(`[EXCEL STAGE TIMINGS] Stage 2 (Enumerate Sheets): ${s2Duration}ms`);
+      console.log(`[EXCEL STAGE TIMINGS] Stage 3 (Read Headers): ${s3Duration}ms`);
+      console.log(`[EXCEL STAGE TIMINGS] Stage 4 & 5 (Read Formulas & Sampling): ${s5Duration}ms`);
+      console.log(`[EXCEL STAGE TIMINGS] Total Excel Processing Time: ${totalDuration}ms (Final Mem: ${memAfter.toFixed(1)} MB)`);
+      console.log(`==========================================================\n`);
     } catch (err) {
       console.error("ExcelParser Error:", err);
     }
