@@ -1685,10 +1685,24 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                 Collapsed by default
               </span>
             </div>
-                }`}
-              >
-                All Components ({testResults.length})
-              </button>
+            {expandedSection === "system" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+
+          {expandedSection === "system" && (
+            <div className="p-4 border-t border-slate-800/80 space-y-6 animate-fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/60">
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTestFilter("all")}
+                    className={`px-2.5 py-1 text-[10px] font-mono rounded border transition-all cursor-pointer ${
+                      testFilter === "all"
+                        ? "bg-slate-850 border-slate-700 text-white font-bold"
+                        : "bg-slate-950/50 border-slate-900 text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    All Components ({testResults.length})
+                  </button>
               <button
                 onClick={() => setTestFilter("fail_warn")}
                 className={`px-2.5 py-1 text-[10px] font-mono rounded border transition-all ${
@@ -1865,9 +1879,9 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                 })}
               </div>
             </div>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
       {/* Grid: 1. Project Inventory Table, 2. Profile Management, 3. Backup JSON panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
