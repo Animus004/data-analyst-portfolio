@@ -12,6 +12,7 @@ import {
   PipelineError,
   ProjectUnderstanding
 } from "../types/index";
+import { executeWithTimeout } from "../utils/security";
 
 let aiClient: any = null;
 
@@ -410,42 +411,46 @@ Return refined executive JSON matching the specified schema properties.
 `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: reviewPrompt,
-      config: {
-        systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            subtitle: { type: Type.STRING },
-            executiveSummary: { type: Type.STRING },
-            businessContext: { type: Type.STRING },
-            businessProblem: { type: Type.STRING },
-            businessObjective: { type: Type.STRING },
-            businessImpact: { type: Type.STRING },
-            findings: { type: Type.STRING },
-            recommendations: { type: Type.STRING },
-            resumeBullets: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            linkedInSummary: { type: Type.STRING },
-            starStory: {
-              type: Type.OBJECT,
-              properties: {
-                situation: { type: Type.STRING },
-                task: { type: Type.STRING },
-                action: { type: Type.STRING },
-                result: { type: Type.STRING }
+    const response = await executeWithTimeout(
+      "Gemini Portfolio Compiler",
+      () => ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: reviewPrompt,
+        config: {
+          systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              subtitle: { type: Type.STRING },
+              executiveSummary: { type: Type.STRING },
+              businessContext: { type: Type.STRING },
+              businessProblem: { type: Type.STRING },
+              businessObjective: { type: Type.STRING },
+              businessImpact: { type: Type.STRING },
+              findings: { type: Type.STRING },
+              recommendations: { type: Type.STRING },
+              resumeBullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              linkedInSummary: { type: Type.STRING },
+              starStory: {
+                type: Type.OBJECT,
+                properties: {
+                  situation: { type: Type.STRING },
+                  task: { type: Type.STRING },
+                  action: { type: Type.STRING },
+                  result: { type: Type.STRING }
+                }
               }
             }
           }
         }
-      }
-    });
+      }),
+      15000
+    );
 
     const refined = JSON.parse(response.text.trim());
     if (refined.title) structured.title.value = refined.title;

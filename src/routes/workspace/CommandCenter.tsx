@@ -21,7 +21,7 @@ import {
 } from "../../services/exportService";
 import { storageService } from "../../services/storageService";
 import { uploadProjectPackage } from "../../services/packageUploadService";
-import { authenticatedFetch, getOwnerKey, setOwnerKey } from "../../services/apiClient";
+import { authenticatedFetch, safeParseJsonResponse, getOwnerKey, setOwnerKey } from "../../services/apiClient";
 import { generateId } from "../../utils";
 import { 
   Plus, 
@@ -779,10 +779,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const { ok, data } = await safeParseJsonResponse(res);
+
+      if (ok && data) {
         const projectPayload = data.portfolioProject || data.project || data.rawProject;
-        if (data.success && projectPayload) {
+        if (projectPayload) {
           setAiParsedResult(projectPayload);
           setProjectUnderstanding(data.projectUnderstanding || null);
           setMissingInformation(data.missingInformation || []);
@@ -807,8 +808,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           setAiParseError(data.error || "Failed to parse project package. Please verify your files and try again.");
         }
       } else {
-        const errorData = await res.json();
-        setAiParseError(errorData.error || "Server error occurred during package analysis.");
+        setAiParseError(data.error || "Server error occurred during package analysis.");
       }
     } catch (err: any) {
       console.error("AI package parse error:", err);
@@ -838,10 +838,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const { ok, data } = await safeParseJsonResponse(res);
+
+      if (ok && data) {
         const projectPayload = data.portfolioProject || data.project || data.rawProject;
-        if (data.success && projectPayload) {
+        if (projectPayload) {
           setAiParsedResult(projectPayload);
           if (data.projectUnderstanding) setProjectUnderstanding(data.projectUnderstanding);
           setMissingInformation(data.missingInformation || []);
@@ -849,7 +850,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           if (data.sourceAttributions) setSourceAttributions(data.sourceAttributions);
           if (data.confidenceScores) setConfidenceScores(data.confidenceScores);
           if (data.fileCoverageReport || data.fileCoverage) setFileCoverageReport(data.fileCoverageReport || data.fileCoverage);
+        } else {
+          setAiParseError(data.error || "Failed to re-evaluate portfolio.");
         }
+      } else {
+        setAiParseError(data.error || "Server error occurred during re-evaluation.");
       }
     } catch (err: any) {
       console.error("Re-compile error:", err);

@@ -156,6 +156,7 @@ export async function compileProjectPackage(
   forceCompile?: boolean,
   existingUnderstanding?: ProjectUnderstanding
 ): Promise<UniversalCompilerOutput> {
+  const pipelineStartTime = Date.now();
   let projectType = "Mixed Analytics";
 
   // Quotas
@@ -165,8 +166,7 @@ export async function compileProjectPackage(
   }
 
   // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
-  // The package-level evidence hash is computed here (before parsing) so it can
-  // serve as the cache key for the Project Understanding Engine at Stage 4.
+  const stage1Start = Date.now();
   const allFiles: Array<{ name: string; content: string; type: "text" | "binary"; size: number; sha256: string }> = [];
   const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
 
@@ -218,8 +218,10 @@ export async function compileProjectPackage(
       });
     }
   }
+  const stage1Duration = Date.now() - stage1Start;
 
   // Stage 2: Sandboxed Parser Selection & Evidence Extraction
+  const stage2Start = Date.now();
   const parsedProjects: ExtractedProject[] = [];
   const evidenceNodes: ParserEvidenceNode[] = [];
 
@@ -229,6 +231,7 @@ export async function compileProjectPackage(
 
     if (parser) {
       try {
+        const pStart = Date.now();
         // Sandboxed execution with 15 second threshold
         const result = await executeWithTimeout(
           `Parser[${parser.name}] for '${file.name}'`,
@@ -241,7 +244,7 @@ export async function compileProjectPackage(
         fileCoverage.push({
           fileName: file.name,
           status: "Used",
-          reason: `Parsed via specialized Vercel-native ${parser.name}. SHA-256 verified.`,
+          reason: `Parsed via specialized Vercel-native ${parser.name} in ${Date.now() - pStart}ms. SHA-256 verified.`,
           size: file.size,
           sha256: file.sha256
         });
@@ -265,8 +268,8 @@ export async function compileProjectPackage(
       });
     }
   }
+  const stage2Duration = Date.now() - stage2Start;
 
-  // Refine baseline project type description if single file mode is active
   if (parsedProjects.length === 1 && projectType !== "ZIP Package") {
     const ext = rawFiles[0].name.split(".").pop()?.toLowerCase() || "";
     if (ext === "xlsx" || ext === "xls") projectType = "Excel Analytics";
@@ -277,6 +280,7 @@ export async function compileProjectPackage(
   }
 
   // Stage 3: Build Canonical Evidence Graph
+  const stage3Start = Date.now();
   let evidenceGraph: any;
   try {
     evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
@@ -284,11 +288,10 @@ export async function compileProjectPackage(
   } catch (err: any) {
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
+  const stage3Duration = Date.now() - stage3Start;
 
   // Stage 4: Project Understanding Engine
-  // Three-tier optimization: (1) reuse caller-supplied understanding, (2) LRU cache hit,
-  // (3) Gemini synthesis only when no reusable understanding exists.
-  // The package evidence hash is the cache key — computed from sorted file SHA-256s.
+  const stage4Start = Date.now();
   const packageEvidenceHash = crypto.createHash("sha256")
     .update(allFiles.map(f => f.sha256).sort().join(":"))
     .digest("hex");
@@ -298,25 +301,23 @@ export async function compileProjectPackage(
     packageEvidenceHash,
     existingUnderstanding
   );
+  const stage4Duration = Date.now() - stage4Start;
 
-  // Authoritative archetype comes from ProjectUnderstanding (Gemini-reasoned);
-  // classifyProjectArchetype is kept as a structural cross-reference only.
   const projectArchetype = projectUnderstanding.projectArchetype || classifyProjectArchetype(evidenceGraph);
 
-  // Stage 5: Evidence Completeness Evaluator (consumes ProjectUnderstanding)
+  // Stage 5: Evidence Completeness Evaluator & Conflicts
+  const stage5Start = Date.now();
   const coverageReport = evaluateEvidenceCompleteness(evidenceGraph, userAnswers, projectUnderstanding);
-
-  // Merge User Answers with Evidence Graph (Evidence priority enforcement + conflict detection)
   const { mergedAnswersContext, answerConflicts } = mergeUserAnswersWithEvidence(evidenceGraph, userAnswers);
 
-  // Stage 5: Deterministic Validation & Conflict Detection
   const conflicts = [
     ...validateAndDetectConflicts(parsedProjects),
     ...detectEvidenceConflicts(evidenceGraph),
     ...answerConflicts
   ];
+  const stage5Duration = Date.now() - stage5Start;
 
-  // Stage 6: Decision Logic: Evaluate Completeness Thresholds (all required sections >= 80)
+  // Stage 6: Decision Logic: Evaluate Completeness Thresholds
   const requiredScores = [
     coverageReport.executiveSummary,
     coverageReport.businessObjective,
@@ -330,14 +331,11 @@ export async function compileProjectPackage(
   ];
   const isFullySufficient = requiredScores.every(score => score >= 80);
 
-  // Stage 7: Decision Logic — if evidence is insufficient and user hasn't answered yet,
-  // return NEEDS_USER_INPUT with contextual questions AND the projectUnderstanding.
-  // The frontend must return projectUnderstanding in the subsequent request body so
-  // Stage 4 can skip Gemini entirely (Tier 1 passthrough).
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
     const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
       const rawProject = mergeExtractedProjects(parsedProjects);
+      console.log(`[Timing Profile] Stage 1 (Prep): ${stage1Duration}ms | Stage 2 (Parsers): ${stage2Duration}ms | Stage 3 (Graph): ${stage3Duration}ms | Stage 4 (PUE): ${stage4Duration}ms | Total (NEEDS_INPUT): ${Date.now() - pipelineStartTime}ms`);
       return {
         status: "NEEDS_USER_INPUT",
         projectType,
@@ -356,17 +354,10 @@ export async function compileProjectPackage(
     }
   }
 
-  // Stage 7: Baseline Merged Raw Project
   const rawProject = mergeExtractedProjects(parsedProjects);
 
-  console.log({
-    hasGeminiKey: !!process.env.GEMINI_API_KEY,
-    keyLength: process.env.GEMINI_API_KEY?.length
-  });
-
-  // Stage 8: AI Portfolio Compiler — grounded in the unified ProjectUnderstanding.
-  // No re-derivation of industry, KPIs, or domain happens inside Gemini;
-  // all contextual reasoning flows from projectUnderstanding.
+  // Stage 8: AI Portfolio Compiler
+  const stage8Start = Date.now();
   const synthesized = await compilePortfolioWithGemini(
     evidenceGraph,
     conflicts,
@@ -375,9 +366,25 @@ export async function compileProjectPackage(
     projectArchetype,
     projectUnderstanding
   );
+  const stage8Duration = Date.now() - stage8Start;
 
   // Stage 9: Recruiter Audit Engine
+  const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
+  const stage9Duration = Date.now() - stage9Start;
+
+  const totalDuration = Date.now() - pipelineStartTime;
+
+  console.log(`\n==========================================================`);
+  console.log(`[PIPELINE TIMING PROFILE] Total Duration: ${totalDuration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 1 (File Prep & Unpack): ${stage1Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 2 (Sandboxed Parsers): ${stage2Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 3 (Evidence Graph): ${stage3Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 4 (Project Understanding): ${stage4Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 5 (Completeness & Conflicts): ${stage5Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 8 (Gemini Synthesis): ${stage8Duration}ms`);
+  console.log(`[PIPELINE TIMING PROFILE] Stage 9 (Recruiter Audit Engine): ${stage9Duration}ms`);
+  console.log(`==========================================================\n`);
 
   // packageEvidenceHash already computed at Stage 4 — reused here for auditMetadata.
 

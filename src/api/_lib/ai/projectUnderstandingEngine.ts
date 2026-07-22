@@ -6,6 +6,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EvidenceGraph, ProjectUnderstanding } from "../types/index";
 import { classifyProjectArchetype, disambiguateKPIs } from "./evidenceEvaluator";
+import { executeWithTimeout } from "../utils/security";
 
 // ─── Schema Version ──────────────────────────────────────────────────────────
 //
@@ -418,26 +419,30 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
     "- suggestedSummaries: 1-2 executive summary paragraph suggestions.\n" +
     "- confidence: Your overall confidence in this synthesis (0-100).\n";
 
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const candidateModels = ["gemini-3.5-flash", "gemini-2.5-flash"];
 
   for (const model of candidateModels) {
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: PUE_RESPONSE_SCHEMA
-        }
-      });
+      const response = await executeWithTimeout(
+        `Gemini PUE Model[${model}]`,
+        () => ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: PUE_RESPONSE_SCHEMA
+          }
+        }),
+        12000
+      );
 
       const raw = JSON.parse(response.text.trim());
       const normalized = normalizeUnderstanding(raw, graph);
       console.log(`[PUE] Synthesized via Gemini/${model} (confidence: ${normalized.confidence})`);
       return normalized;
     } catch (err: any) {
-      console.warn(`[PUE] Gemini model ${model} failed: ${err.message}`);
+      console.warn(`[PUE] Gemini model ${model} failed or timed out: ${err.message}`);
     }
   }
 

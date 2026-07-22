@@ -72,3 +72,40 @@ export async function authenticatedFetch(input: RequestInfo | URL, init: Request
     headers: mergedHeaders
   });
 }
+
+/**
+ * Safely parses API HTTP responses to JSON.
+ * Prevents front-end SyntaxError crashes when serverless gateways return HTML/text error pages (e.g. 504 Gateway Timeout).
+ */
+export async function safeParseJsonResponse(res: Response): Promise<{ ok: boolean; data: any; rawText: string }> {
+  let rawText = "";
+  try {
+    rawText = await res.text();
+  } catch (e) {
+    return {
+      ok: false,
+      data: { error: `Failed to read network response body (Status ${res.status}).` },
+      rawText: ""
+    };
+  }
+
+  try {
+    const data = JSON.parse(rawText);
+    return { ok: res.ok, data, rawText };
+  } catch (e) {
+    let readableError = `Server returned an unformatted non-JSON response (HTTP ${res.status}).`;
+    if (res.status === 504) {
+      readableError = `Gateway Timeout (HTTP 504): Package processing exceeded the execution time limit. Try uploading fewer or smaller files.`;
+    } else if (res.status === 502) {
+      readableError = `Bad Gateway (HTTP 502): The serverless process failed to complete.`;
+    } else if (res.status === 500) {
+      readableError = `Server Error (HTTP 500): ${rawText.slice(0, 150) || "Internal server exception."}`;
+    }
+
+    return {
+      ok: false,
+      data: { error: readableError },
+      rawText
+    };
+  }
+}

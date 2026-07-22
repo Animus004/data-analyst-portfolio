@@ -12,10 +12,14 @@ import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
 
 export const config = {
-  runtime: "nodejs"
+  runtime: "nodejs",
+  maxDuration: 60
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Always guarantee JSON response Content-Type
+  res.setHeader("Content-Type", "application/json");
+
   if (!enforceOwnerPermission(req, res)) return;
 
   const startTime = Date.now();
