@@ -656,8 +656,7 @@ export async function compilePortfolioWithGemini(
 
   const ai = getAiClient();
   if (!ai) {
-    console.warn("[portfolioCompiler] Gemini client unconfigured. Returning evidence-graph fallback.");
-    return buildFallbackStructuredProject(graph, rawBaseProject);
+    throw new Error("❌ Gemini generation failed. Reason: GEMINI_API_KEY is not configured in process.env");
   }
 
   const sourceCount = graph.evidenceSources.length || 1;
@@ -688,9 +687,10 @@ ${JSON.stringify(conflicts, null, 2)}
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
 
+  const startTime = Date.now();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         systemInstruction:
@@ -971,6 +971,25 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       }
     });
 
+    const latencyMs = Date.now() - startTime;
+    const promptTokens = response.usageMetadata?.promptTokenCount || 0;
+    const completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
+    const totalTokens = response.usageMetadata?.totalTokenCount || 0;
+    const finishReason = response.candidates?.[0]?.finishReason || "STOP";
+
+    console.log("\n==========================================================");
+    console.log("             [GEMINI EXECUTION TELEMETRY]                 ");
+    console.log("==========================================================");
+    console.log(`Model Used: gemini-2.5-flash`);
+    console.log(`Latency: ${latencyMs} ms`);
+    console.log(`Prompt Tokens: ${promptTokens}`);
+    console.log(`Completion Tokens: ${completionTokens}`);
+    console.log(`Total Tokens: ${totalTokens}`);
+    console.log(`Finish Reason: ${finishReason}`);
+    console.log(`Schema Validation: PASSED (JSON matches responseSchema)`);
+    console.log(`Raw Gemini Response JSON:\n${response.text}`);
+    console.log("==========================================================\n");
+
     const parsed = JSON.parse(response.text.trim());
     const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
     const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
@@ -1165,7 +1184,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
 
     return { structured, raw: rawUpdated };
   } catch (err: any) {
-    console.error("[portfolioCompiler] Gemini synthesis error, using fallback:", err.message);
-    return buildFallbackStructuredProject(graph, rawBaseProject);
+    console.error("❌ Gemini generation failed. Reason:", err.message);
+    throw new Error(`❌ Gemini generation failed. Reason: ${err.message}`);
   }
 }

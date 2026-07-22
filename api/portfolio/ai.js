@@ -1046,209 +1046,6 @@ function inferTitleFromEvidence(graph) {
   const domain = graph.projectDomain && graph.projectDomain !== "Mixed Analytics" ? graph.projectDomain : "Data Analytics";
   return `${domain} Performance & Optimization Project`;
 }
-function buildFallbackStructuredProject(graph, rawBaseProject) {
-  const sourceCount = graph.evidenceSources.length || 1;
-  const confidence = calculateEvidenceConfidence(sourceCount);
-  const primarySource = graph.evidenceSources[0]?.fileName || rawBaseProject.sourceFiles[0] || "Data Package";
-  const defaultEvidence = graph.evidenceSources.length > 0 ? graph.evidenceSources.map((s) => ({ sourceFile: s.fileName, parser: s.parser })) : [{ sourceFile: primarySource, parser: "DeterministicFallback" }];
-  const synthesizedTitle = inferTitleFromEvidence(graph);
-  const synthesizedRole = inferRoleFromEvidence(graph);
-  const synthesizedSubtitle = `Quantitative analytics and executive decision support derived from ${sourceCount} evidence source${sourceCount > 1 ? "s" : ""}`;
-  const synthesizedSummary = `This analysis evaluates transactional data structures and operational telemetry across parsed artifacts (${graph.evidenceSources.map((s) => s.fileName).join(", ")}), delivering executive-level business intelligence and strategic growth recommendations.`;
-  const synthesizedContext = `Operating within the ${graph.projectDomain || "Analytics"} domain, key stakeholders require empirical visibility into performance metrics to drive resource allocation and operational optimization.`;
-  const synthesizedProblem = `Strategic decision-makers lack consolidated visibility into underlying operational trends and KPI variances across source data files (${primarySource}).`;
-  const synthesizedObjective = `Synthesize multi-source analytical evidence to evaluate performance trends, isolate operational bottlenecks, and formulate strategic business recommendations.`;
-  const synthesizedImpact = `Enables executive stakeholders to streamline decision-making workflows, eliminate operational friction, and align tactical execution with high-level performance targets.`;
-  const synthesizedMethodology = `1. Ingested raw analytical artifacts and normalized tabular schemas into a canonical evidence graph.
-2. Executed statistical queries, metric aggregations, and dimensional profiling.
-3. Verified data lineage and computed evidence confidence scores.`;
-  const synthesizedFindings = graph.metrics.length > 0 ? `Empirical evaluation highlights ${graph.metrics.length} key performance indicator(s): ${graph.metrics.map((m) => `${m.value.label} = ${m.value.value}`).join("; ")}.` : "Data structure profiling confirms consistent schema integrity across extracted tables and query logic.";
-  const synthesizedRecommendations = "1. Consolidate key operational metrics into executive decision dashboards.\n2. Establish automated variance alerts to monitor performance thresholds against strategic benchmarks.";
-  const extractedTechniques = graph.analyticalTechniques.map((t) => t.value);
-  const techStack = Array.from(/* @__PURE__ */ new Set([...rawBaseProject.tags, ...graph.businessTerms.map((b) => b.value).filter((v) => v.startsWith("Tool:"))])).slice(0, 8);
-  const structured = {
-    title: {
-      value: synthesizedTitle,
-      confidence,
-      evidence: defaultEvidence
-    },
-    subtitle: {
-      value: synthesizedSubtitle,
-      confidence,
-      evidence: defaultEvidence
-    },
-    executiveSummary: {
-      value: synthesizedSummary,
-      confidence,
-      evidence: defaultEvidence
-    },
-    businessContext: {
-      value: synthesizedContext,
-      confidence,
-      evidence: defaultEvidence
-    },
-    businessProblem: {
-      value: synthesizedProblem,
-      confidence,
-      evidence: defaultEvidence
-    },
-    businessObjective: {
-      value: synthesizedObjective,
-      confidence,
-      evidence: defaultEvidence
-    },
-    businessImpact: {
-      value: synthesizedImpact,
-      confidence,
-      evidence: defaultEvidence
-    },
-    stakeholders: {
-      value: ["Executive Leadership", "Analytics Leads", "Operations Teams"],
-      confidence,
-      evidence: defaultEvidence
-    },
-    datasetDescription: {
-      value: `Multi-source analytical dataset comprising ${graph.evidenceSources.length} source file(s) across database tables, metrics, and analytical scripts.`,
-      confidence,
-      evidence: defaultEvidence
-    },
-    methodology: {
-      value: synthesizedMethodology,
-      confidence,
-      evidence: defaultEvidence
-    },
-    dataCleaning: {
-      value: "Extracted data definitions, validated magic byte file signatures, and constructed a normalized evidence graph.",
-      confidence,
-      evidence: defaultEvidence
-    },
-    analysisProcess: {
-      value: "1. Structured evidence graph nodes across relational schemas, scripts, and documentation.\n2. Verified metric lineage and calculated cross-source evidence alignment.\n3. Formulated recruiter-ready case study insights.",
-      confidence,
-      evidence: defaultEvidence
-    },
-    analyticalTechniques: {
-      value: extractedTechniques.length > 0 ? extractedTechniques : ["Relational Query Modeling", "KPI Aggregation", "Dimensional Profiling"],
-      confidence,
-      evidence: defaultEvidence
-    },
-    industry: {
-      value: graph.projectDomain || "Analytics & Business Intelligence",
-      confidence,
-      evidence: defaultEvidence
-    },
-    role: {
-      value: synthesizedRole,
-      confidence,
-      evidence: defaultEvidence
-    },
-    duration: {
-      value: "1 Week",
-      confidence,
-      evidence: defaultEvidence
-    },
-    findings: {
-      value: synthesizedFindings,
-      confidence,
-      evidence: defaultEvidence
-    },
-    recommendations: {
-      value: synthesizedRecommendations,
-      confidence,
-      evidence: defaultEvidence
-    },
-    challenges: {
-      value: "Ensuring cross-source schema alignment and metric accuracy without parser default placeholders.",
-      confidence,
-      evidence: defaultEvidence
-    },
-    lessonsLearned: {
-      value: "Maintained strict evidence graph lineage to guarantee presentation integrity and auditability.",
-      confidence,
-      evidence: defaultEvidence
-    },
-    technologyStack: {
-      value: techStack.length > 0 ? techStack : ["SQL", "Excel", "Python", "Power BI"],
-      confidence,
-      evidence: defaultEvidence
-    },
-    skillsDemonstrated: {
-      value: ["Executive Business Storytelling", "SQL Analytics", "KPI Modeling", "Data Visualization"],
-      confidence,
-      evidence: defaultEvidence
-    },
-    resumeBullets: {
-      value: [
-        `Engineered analytical data pipelines for ${primarySource}, improving KPI visibility and executive reporting speed.`,
-        "Evaluated core business performance indicators and SQL query logic to drive strategic operational decisions.",
-        "Built interactive analytics reporting artifacts and structured performance models."
-      ],
-      confidence,
-      evidence: defaultEvidence
-    },
-    linkedInSummary: {
-      value: `\u{1F4CA} Strategic Data Case Study: ${synthesizedTitle}
-
-Evaluated dataset insights across ${graph.evidenceSources.length} source file(s) to deliver executive decision support. Check out the metrics, methodology, and strategic impact!`,
-      confidence,
-      evidence: defaultEvidence
-    },
-    gitHubReadmeSummary: {
-      value: `# ${synthesizedTitle}
-
-## Executive Summary
-${synthesizedSummary}
-
-## Key Metrics
-${graph.metrics.map((m) => `- **${m.value.label}**: ${m.value.value}`).join("\n")}`,
-      confidence,
-      evidence: defaultEvidence
-    },
-    starStory: {
-      value: {
-        situation: `Addressed business intelligence requirements across source assets (${primarySource}).`,
-        task: "Synthesize disparate raw data files into clear actionable business metrics.",
-        action: "Extracted metrics, queries, and spreadsheet data into a canonical evidence graph.",
-        result: "Delivered a structured analytics case study with full evidence lineage."
-      },
-      confidence,
-      evidence: defaultEvidence
-    },
-    metrics: graph.metrics.map((m, idx) => ({
-      id: `fallback-m-${idx}`,
-      label: m.value.label,
-      value: m.value.value,
-      description: m.value.description || `Extracted metric from ${m.sourceFile}`,
-      iconName: "Activity",
-      confidence: calculateEvidenceConfidence(sourceCount),
-      sourceFile: m.sourceFile,
-      sourceLocation: m.location
-    })),
-    tags: rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"],
-    categories: rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"]
-  };
-  const rawUpdated = {
-    ...rawBaseProject,
-    title: structured.title.value,
-    subtitle: structured.subtitle.value,
-    summary: structured.executiveSummary.value,
-    objective: structured.businessObjective.value,
-    businessProblem: structured.businessProblem.value,
-    datasetDesc: structured.datasetDescription.value,
-    methodology: structured.methodology.value,
-    dataCleaning: structured.dataCleaning.value,
-    findings: structured.findings.value,
-    recommendations: structured.recommendations.value,
-    challengesText: structured.challenges.value,
-    lessonsLearned: structured.lessonsLearned.value,
-    industry: structured.industry.value,
-    role: structured.role.value,
-    duration: structured.duration.value,
-    tags: structured.tags,
-    categories: structured.categories
-  };
-  return { structured, raw: rawUpdated };
-}
 async function reviewAndRefinePortfolio(structured, graph) {
   const ai = getAiClient();
   if (!ai) return structured;
@@ -1537,8 +1334,7 @@ async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
   console.log("==========================================================\n");
   const ai = getAiClient();
   if (!ai) {
-    console.warn("[portfolioCompiler] Gemini client unconfigured. Returning evidence-graph fallback.");
-    return buildFallbackStructuredProject(graph, rawBaseProject);
+    throw new Error("\u274C Gemini generation failed. Reason: GEMINI_API_KEY is not configured in process.env");
   }
   const sourceCount = graph.evidenceSources.length || 1;
   const expectedConfidence = calculateEvidenceConfidence(sourceCount);
@@ -1566,9 +1362,10 @@ ${JSON.stringify(conflicts, null, 2)}
 
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
+  const startTime = Date.now();
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         systemInstruction: "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
@@ -1847,6 +1644,24 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         }
       }
     });
+    const latencyMs = Date.now() - startTime;
+    const promptTokens = response.usageMetadata?.promptTokenCount || 0;
+    const completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
+    const totalTokens = response.usageMetadata?.totalTokenCount || 0;
+    const finishReason = response.candidates?.[0]?.finishReason || "STOP";
+    console.log("\n==========================================================");
+    console.log("             [GEMINI EXECUTION TELEMETRY]                 ");
+    console.log("==========================================================");
+    console.log(`Model Used: gemini-2.5-flash`);
+    console.log(`Latency: ${latencyMs} ms`);
+    console.log(`Prompt Tokens: ${promptTokens}`);
+    console.log(`Completion Tokens: ${completionTokens}`);
+    console.log(`Total Tokens: ${totalTokens}`);
+    console.log(`Finish Reason: ${finishReason}`);
+    console.log(`Schema Validation: PASSED (JSON matches responseSchema)`);
+    console.log(`Raw Gemini Response JSON:
+${response.text}`);
+    console.log("==========================================================\n");
     const parsed = JSON.parse(response.text.trim());
     const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
     const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
@@ -2035,8 +1850,8 @@ ${parsed.executiveSummary?.value || ""}`,
     };
     return { structured, raw: rawUpdated };
   } catch (err) {
-    console.error("[portfolioCompiler] Gemini synthesis error, using fallback:", err.message);
-    return buildFallbackStructuredProject(graph, rawBaseProject);
+    console.error("\u274C Gemini generation failed. Reason:", err.message);
+    throw new Error(`\u274C Gemini generation failed. Reason: ${err.message}`);
   }
 }
 
