@@ -188,54 +188,90 @@ export async function compileProjectPackage(
   const allFiles: Array<{ name: string; content: string; type: "text" | "binary"; size: number; sha256: string }> = [];
   const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
 
-  for (const file of rawFiles) {
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const fileHash = computeSha256(file.content);
+  let currentFileProcessing = "None";
 
-    // Validate binary signature (magic bytes)
-    const sigCheck = validateFileSignature(file.name, file.content);
-    if (!sigCheck.isValid) {
-      fileCoverage.push({
-        fileName: file.name,
-        status: "Failed",
-        reason: sigCheck.error || "Magic byte file signature mismatch.",
-        size: file.size,
-        sha256: fileHash
-      });
-      continue;
-    }
+  try {
+    for (const file of rawFiles) {
+      currentFileProcessing = file.name;
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
 
-    if (ext === "zip") {
-      projectType = "ZIP Package";
-      const unpacked = await unpackZipFile(file.content);
-      unpacked.forEach(u => {
-        const uHash = computeSha256(u.content);
-        allFiles.push({
-          name: u.name,
-          content: u.content,
-          type: u.type,
-          size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
-          sha256: uHash
+      console.log(`[STAGE 1 TRACE] Processing file '${file.name}' | ext: '.${ext}' | size: ${file.size} bytes`);
+      const fileHash = computeSha256(file.content);
+
+      // Validate binary signature (magic bytes)
+      const sigCheck = validateFileSignature(file.name, file.content);
+      if (!sigCheck.isValid) {
+        console.warn(`[STAGE 1 WARN] Signature check failed for '${file.name}': ${sigCheck.error}`);
+        fileCoverage.push({
+          fileName: file.name,
+          status: "Failed",
+          reason: sigCheck.error || "Magic byte file signature mismatch.",
+          size: file.size,
+          sha256: fileHash
         });
-      });
-      fileCoverage.push({
-        fileName: file.name,
-        status: "Used",
-        reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
-        size: file.size,
-        sha256: fileHash
-      });
-    } else {
-      const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
-      allFiles.push({
-        name: file.name,
-        content: file.content,
-        type: isText ? "text" : "binary",
-        size: file.size,
-        sha256: fileHash
-      });
+        continue;
+      }
+
+      if (ext === "zip") {
+        projectType = "ZIP Package";
+        console.log(`\n----------------------------------------`);
+        console.log(`[AWAIT BEGIN] Line 210 | Function: compileProjectPackage`);
+        console.log(`Statement: await unpackZipFile(file.content)`);
+        console.log(`Target File: '${file.name}' (${file.size} bytes)`);
+        console.log(`----------------------------------------\n`);
+
+        const unpackStart = Date.now();
+        const unpacked = await unpackZipFile(file.content);
+
+        console.log(`\n----------------------------------------`);
+        console.log(`[AWAIT END] Line 210 | Function: compileProjectPackage`);
+        console.log(`Statement: await unpackZipFile(file.content)`);
+        console.log(`Target File: '${file.name}'`);
+        console.log(`Status: SUCCESS | Unpacked Count: ${unpacked.length} files | Duration: ${Date.now() - unpackStart}ms`);
+        console.log(`----------------------------------------\n`);
+
+        unpacked.forEach(u => {
+          const uHash = computeSha256(u.content);
+          allFiles.push({
+            name: u.name,
+            content: u.content,
+            type: u.type,
+            size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
+            sha256: uHash
+          });
+        });
+        fileCoverage.push({
+          fileName: file.name,
+          status: "Used",
+          reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
+          size: file.size,
+          sha256: fileHash
+        });
+      } else {
+        const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
+        allFiles.push({
+          name: file.name,
+          content: file.content,
+          type: isText ? "text" : "binary",
+          size: file.size,
+          sha256: fileHash
+        });
+      }
     }
+  } catch (stage1Err: any) {
+    console.error(`\n==========================================================`);
+    console.error(`[FIRST THROWN EXCEPTION DETECTED: Stage 1]`);
+    console.error(`Source File: src/api/_lib/compiler/index.ts`);
+    console.error(`Line Number: ~191-240`);
+    console.error(`Stage Name: Stage 1: File Detection, Signature Validation & ZIP Unpacking`);
+    console.error(`Current File Being Processed: '${currentFileProcessing}'`);
+    console.error(`Error Name: ${stage1Err?.name || "Stage1Error"}`);
+    console.error(`Error Message: ${stage1Err?.message || stage1Err}`);
+    console.error(`Stack Trace:\n${stage1Err?.stack || "No Stack Available"}`);
+    console.error(`==========================================================\n`);
+    throw stage1Err;
   }
+
   const stage1Duration = Date.now() - stage1Start;
   s1.end(`${allFiles.length} file(s) prepared`);
   console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);

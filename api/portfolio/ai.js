@@ -3278,50 +3278,87 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
   const stage1Start = Date.now();
   const allFiles = [];
   const fileCoverage = [];
-  for (const file of rawFiles) {
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const fileHash = computeSha256(file.content);
-    const sigCheck = validateFileSignature(file.name, file.content);
-    if (!sigCheck.isValid) {
-      fileCoverage.push({
-        fileName: file.name,
-        status: "Failed",
-        reason: sigCheck.error || "Magic byte file signature mismatch.",
-        size: file.size,
-        sha256: fileHash
-      });
-      continue;
-    }
-    if (ext === "zip") {
-      projectType = "ZIP Package";
-      const unpacked = await unpackZipFile(file.content);
-      unpacked.forEach((u) => {
-        const uHash = computeSha256(u.content);
-        allFiles.push({
-          name: u.name,
-          content: u.content,
-          type: u.type,
-          size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
-          sha256: uHash
+  let currentFileProcessing = "None";
+  try {
+    for (const file of rawFiles) {
+      currentFileProcessing = file.name;
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      console.log(`[STAGE 1 TRACE] Processing file '${file.name}' | ext: '.${ext}' | size: ${file.size} bytes`);
+      const fileHash = computeSha256(file.content);
+      const sigCheck = validateFileSignature(file.name, file.content);
+      if (!sigCheck.isValid) {
+        console.warn(`[STAGE 1 WARN] Signature check failed for '${file.name}': ${sigCheck.error}`);
+        fileCoverage.push({
+          fileName: file.name,
+          status: "Failed",
+          reason: sigCheck.error || "Magic byte file signature mismatch.",
+          size: file.size,
+          sha256: fileHash
         });
-      });
-      fileCoverage.push({
-        fileName: file.name,
-        status: "Used",
-        reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
-        size: file.size,
-        sha256: fileHash
-      });
-    } else {
-      const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
-      allFiles.push({
-        name: file.name,
-        content: file.content,
-        type: isText ? "text" : "binary",
-        size: file.size,
-        sha256: fileHash
-      });
+        continue;
+      }
+      if (ext === "zip") {
+        projectType = "ZIP Package";
+        console.log(`
+----------------------------------------`);
+        console.log(`[AWAIT BEGIN] Line 210 | Function: compileProjectPackage`);
+        console.log(`Statement: await unpackZipFile(file.content)`);
+        console.log(`Target File: '${file.name}' (${file.size} bytes)`);
+        console.log(`----------------------------------------
+`);
+        const unpackStart = Date.now();
+        const unpacked = await unpackZipFile(file.content);
+        console.log(`
+----------------------------------------`);
+        console.log(`[AWAIT END] Line 210 | Function: compileProjectPackage`);
+        console.log(`Statement: await unpackZipFile(file.content)`);
+        console.log(`Target File: '${file.name}'`);
+        console.log(`Status: SUCCESS | Unpacked Count: ${unpacked.length} files | Duration: ${Date.now() - unpackStart}ms`);
+        console.log(`----------------------------------------
+`);
+        unpacked.forEach((u) => {
+          const uHash = computeSha256(u.content);
+          allFiles.push({
+            name: u.name,
+            content: u.content,
+            type: u.type,
+            size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
+            sha256: uHash
+          });
+        });
+        fileCoverage.push({
+          fileName: file.name,
+          status: "Used",
+          reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
+          size: file.size,
+          sha256: fileHash
+        });
+      } else {
+        const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
+        allFiles.push({
+          name: file.name,
+          content: file.content,
+          type: isText ? "text" : "binary",
+          size: file.size,
+          sha256: fileHash
+        });
+      }
     }
+  } catch (stage1Err) {
+    console.error(`
+==========================================================`);
+    console.error(`[FIRST THROWN EXCEPTION DETECTED: Stage 1]`);
+    console.error(`Source File: src/api/_lib/compiler/index.ts`);
+    console.error(`Line Number: ~191-240`);
+    console.error(`Stage Name: Stage 1: File Detection, Signature Validation & ZIP Unpacking`);
+    console.error(`Current File Being Processed: '${currentFileProcessing}'`);
+    console.error(`Error Name: ${stage1Err?.name || "Stage1Error"}`);
+    console.error(`Error Message: ${stage1Err?.message || stage1Err}`);
+    console.error(`Stack Trace:
+${stage1Err?.stack || "No Stack Available"}`);
+    console.error(`==========================================================
+`);
+    throw stage1Err;
   }
   const stage1Duration = Date.now() - stage1Start;
   s1.end(`${allFiles.length} file(s) prepared`);
@@ -4104,6 +4141,39 @@ var config = {
   runtime: "nodejs",
   maxDuration: 60
 };
+var lastCompletedStage = "Stage 0: HTTP Handler Entry";
+if (!global.__CRASH_HANDLERS_REGISTERED__) {
+  global.__CRASH_HANDLERS_REGISTERED__ = true;
+  process.on("uncaughtException", (err) => {
+    console.error(`
+==========================================================`);
+    console.error(`[PROCESS CRASH DETECTED: uncaughtException]`);
+    console.error(`Error Message: ${err?.message || err}`);
+    console.error(`Error Name: ${err?.name || "UncaughtException"}`);
+    console.error(`Last Completed Stage: ${lastCompletedStage}`);
+    console.error(`Stack Trace:
+${err?.stack || "No Stack Available"}`);
+    console.error(`==========================================================
+`);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error(`
+==========================================================`);
+    console.error(`[PROCESS CRASH DETECTED: unhandledRejection]`);
+    console.error(`Rejection Reason: ${reason?.message || reason}`);
+    console.error(`Rejection Name: ${reason?.name || "UnhandledRejection"}`);
+    console.error(`Last Completed Stage: ${lastCompletedStage}`);
+    console.error(`Stack Trace:
+${reason?.stack || "No Stack Available"}`);
+    console.error(`==========================================================
+`);
+  });
+  process.on("exit", (code) => {
+    console.error(`
+[PROCESS EXIT EVENT] Exit Code: ${code} | Last Completed Stage: ${lastCompletedStage}
+`);
+  });
+}
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
   if (!enforceOwnerPermission(req, res)) return;

@@ -17,6 +17,36 @@ export const config = {
   maxDuration: 60
 };
 
+let lastCompletedStage = "Stage 0: HTTP Handler Entry";
+
+if (!(global as any).__CRASH_HANDLERS_REGISTERED__) {
+  (global as any).__CRASH_HANDLERS_REGISTERED__ = true;
+
+  process.on("uncaughtException", (err: any) => {
+    console.error(`\n==========================================================`);
+    console.error(`[PROCESS CRASH DETECTED: uncaughtException]`);
+    console.error(`Error Message: ${err?.message || err}`);
+    console.error(`Error Name: ${err?.name || "UncaughtException"}`);
+    console.error(`Last Completed Stage: ${lastCompletedStage}`);
+    console.error(`Stack Trace:\n${err?.stack || "No Stack Available"}`);
+    console.error(`==========================================================\n`);
+  });
+
+  process.on("unhandledRejection", (reason: any) => {
+    console.error(`\n==========================================================`);
+    console.error(`[PROCESS CRASH DETECTED: unhandledRejection]`);
+    console.error(`Rejection Reason: ${reason?.message || reason}`);
+    console.error(`Rejection Name: ${reason?.name || "UnhandledRejection"}`);
+    console.error(`Last Completed Stage: ${lastCompletedStage}`);
+    console.error(`Stack Trace:\n${reason?.stack || "No Stack Available"}`);
+    console.error(`==========================================================\n`);
+  });
+
+  process.on("exit", (code: number) => {
+    console.error(`\n[PROCESS EXIT EVENT] Exit Code: ${code} | Last Completed Stage: ${lastCompletedStage}\n`);
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Always guarantee JSON response Content-Type
   res.setHeader("Content-Type", "application/json");
