@@ -385,6 +385,19 @@ function AiUnderstandingPanel({ understanding }: { understanding: ProjectUnderst
 
 // ─── Section 3: AI Generated Portfolio (grouped, edit-only, accepted by default) ─
 
+// Helper functions to safely extract string values from either primitives or FieldWithEvidence objects
+function extractString(val: any): string {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && typeof val.value === "string") return val.value;
+  return "";
+}
+
+function extractStringArray(val: any): string[] {
+  if (Array.isArray(val)) return val.map(extractString).filter(Boolean);
+  if (val && typeof val === "object" && Array.isArray(val.value)) return val.value.map(extractString).filter(Boolean);
+  return [];
+}
+
 interface EditState {
   [field: string]: { editing: boolean; draft: string };
 }
@@ -424,8 +437,6 @@ function AiGeneratedPortfolioSection({
   const getSources = (key: string) => sourceAttributions?.[key]?.join(", ") ?? "";
   const getClass = (key: string) => classifications?.[key] ?? "";
 
-  // High-confidence fields (≥80): show value + Edit button
-  // Low-confidence fields (<80): show amber "Needs Confirmation" state + Edit
   const FieldRow = ({
     field,
     label,
@@ -436,20 +447,21 @@ function AiGeneratedPortfolioSection({
   }: {
     field: string;
     label: string;
-    value: string;
+    value: any;
     confKey: string;
     multiline?: boolean;
     sourceKey?: string;
   }) => {
+    const strVal = extractString(value);
     const conf = getConf(confKey);
     const src = getSources(sourceKey ?? confKey);
     const cls = getClass(field);
     const col = confidenceColor(conf);
     const isEditing = editState[field]?.editing;
     const isLowConf = conf < 75;
-    const isEmpty = !value || value.trim().length === 0;
+    const isEmpty = !strVal || strVal.trim().length === 0;
 
-    if (isEmpty) return null; // Let HelpPrompt handle truly missing fields
+    if (isEmpty) return null;
 
     return (
       <div className={`rounded-lg border p-2.5 space-y-1.5 ${
@@ -476,7 +488,7 @@ function AiGeneratedPortfolioSection({
             {!isEditing && (
               <button
                 type="button"
-                onClick={() => startEdit(field, value)}
+                onClick={() => startEdit(field, strVal)}
                 className="flex items-center gap-0.5 text-[8px] font-mono text-slate-400 hover:text-indigo-400 border border-slate-700 hover:border-indigo-700 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
               >
                 <Edit3 className="w-2.5 h-2.5" /> Edit
@@ -489,7 +501,7 @@ function AiGeneratedPortfolioSection({
           <div className="space-y-1.5">
             {multiline ? (
               <textarea
-                value={editState[field]?.draft ?? ""}
+                value={editState[field]?.draft ?? strVal}
                 onChange={e => setEditState(s => ({ ...s, [field]: { ...s[field], draft: e.target.value } }))}
                 rows={4}
                 className="w-full bg-slate-950 border border-indigo-700 rounded p-2 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 font-sans resize-none"
@@ -498,7 +510,7 @@ function AiGeneratedPortfolioSection({
             ) : (
               <input
                 type="text"
-                value={editState[field]?.draft ?? ""}
+                value={editState[field]?.draft ?? strVal}
                 onChange={e => setEditState(s => ({ ...s, [field]: { ...s[field], draft: e.target.value } }))}
                 className="w-full bg-slate-950 border border-indigo-700 rounded p-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 font-sans"
                 autoFocus
@@ -523,11 +535,10 @@ function AiGeneratedPortfolioSection({
           </div>
         ) : (
           <div className="space-y-1">
-            <p className="text-slate-200 text-[11px] leading-relaxed font-sans">{value}</p>
+            <p className="text-slate-200 text-[11px] leading-relaxed font-sans">{strVal}</p>
           </div>
         )}
 
-        {/* Thin confidence bar */}
         <div className="w-full bg-slate-950 h-0.5 rounded-full overflow-hidden">
           <div className={`h-full ${col.bar}`} style={{ width: `${conf}%` }} />
         </div>
@@ -543,7 +554,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="title"
         label="Case Study Title"
-        value={project.title ?? ""}
+        value={extractString(project.title)}
         confKey="title"
         sourceKey="title"
       />
@@ -552,7 +563,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="summary"
         label="Executive Summary"
-        value={project.summary ?? ""}
+        value={extractString(project.summary || project.executiveSummary)}
         confKey="summary"
         multiline
         sourceKey="summary"
@@ -562,7 +573,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="objective"
         label="Business Objective"
-        value={project.objective ?? ""}
+        value={extractString(project.objective || project.businessObjective)}
         confKey="businessContext"
         multiline
         sourceKey="businessContext"
@@ -572,7 +583,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="businessProblem"
         label="Business Problem"
-        value={project.businessProblem ?? ""}
+        value={extractString(project.businessProblem)}
         confKey="businessProblem"
         multiline
         sourceKey="businessProblem"
@@ -582,7 +593,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="methodology"
         label="Methodology"
-        value={project.methodology ?? ""}
+        value={extractString(project.methodology)}
         confKey="methodology"
         multiline
         sourceKey="methodology"
@@ -592,7 +603,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="findings"
         label="Key Findings"
-        value={project.findings ?? ""}
+        value={extractString(project.findings)}
         confKey="findings"
         multiline
         sourceKey="findings"
@@ -602,7 +613,7 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="recommendations"
         label="Strategic Recommendations"
-        value={project.recommendations ?? ""}
+        value={extractString(project.recommendations)}
         confKey="recommendations"
         multiline
         sourceKey="recommendations"
@@ -612,14 +623,14 @@ function AiGeneratedPortfolioSection({
       <FieldRow
         field="businessImpact"
         label="Business Impact"
-        value={project.businessImpact ?? ""}
+        value={extractString(project.businessImpact)}
         confKey="businessImpact"
         multiline
         sourceKey="businessImpact"
       />
 
       {/* Metrics summary row */}
-      {project.metrics && project.metrics.length > 0 && (
+      {Array.isArray(project.metrics) && project.metrics.length > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-mono uppercase text-slate-400 font-bold">Detected KPI Metrics</span>
@@ -628,8 +639,8 @@ function AiGeneratedPortfolioSection({
           <div className="grid grid-cols-2 gap-1.5">
             {project.metrics.slice(0, 6).map((m: any, i: number) => (
               <div key={i} className="bg-slate-950/40 border border-slate-800/40 rounded p-2">
-                <div className="text-emerald-400 font-mono font-bold text-[11px]">{m.value}</div>
-                <div className="text-slate-300 text-[9px] font-medium mt-0.5 truncate">{m.label}</div>
+                <div className="text-emerald-400 font-mono font-bold text-[11px]">{extractString(m.value)}</div>
+                <div className="text-slate-300 text-[9px] font-medium mt-0.5 truncate">{extractString(m.label)}</div>
               </div>
             ))}
           </div>
@@ -637,11 +648,11 @@ function AiGeneratedPortfolioSection({
       )}
 
       {/* Tags */}
-      {project.tags && project.tags.length > 0 && (
+      {extractStringArray(project.tags).length > 0 && (
         <div className="space-y-1.5">
           <span className="text-[9px] font-mono uppercase text-slate-400 font-bold">Tech Tags</span>
           <div className="flex flex-wrap gap-1">
-            {project.tags.map((tag: string, i: number) => (
+            {extractStringArray(project.tags).map((tag: string, i: number) => (
               <span key={i} className="text-[9px] font-mono bg-indigo-950/40 border border-indigo-900/60 text-indigo-300 px-1.5 py-0.5 rounded">
                 {tag}
               </span>

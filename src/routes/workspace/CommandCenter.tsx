@@ -22,6 +22,7 @@ import {
 import { storageService } from "../../services/storageService";
 import { uploadProjectPackage } from "../../services/packageUploadService";
 import { authenticatedFetch, getOwnerKey, setOwnerKey } from "../../services/apiClient";
+import { generateId } from "../../utils";
 import { 
   Plus, 
   Edit, 
@@ -868,10 +869,109 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       return;
     }
 
-    const duplicateIndex = projects.findIndex(p => p.id === aiParsedResult.id || p.title.toLowerCase() === aiParsedResult.title.toLowerCase());
+    // String/array extraction helper to normalize FieldWithEvidence objects vs string primitives
+    const extractStr = (field: any, fallback: string = ""): string => {
+      if (typeof field === "string") return field;
+      if (field && typeof field === "object" && typeof field.value === "string") return field.value;
+      return fallback;
+    };
+
+    const extractArr = (field: any, fallback: string[] = []): string[] => {
+      if (Array.isArray(field)) return field.map(x => extractStr(x)).filter(Boolean);
+      if (field && typeof field === "object" && Array.isArray(field.value)) return field.value.map((x: any) => extractStr(x)).filter(Boolean);
+      return fallback;
+    };
+
+    const titleStr = extractStr(aiParsedResult.title, "Untitled Portfolio Case Study");
+    const subtitleStr = extractStr(aiParsedResult.subtitle, "Data Analytics Case Study");
+    const summaryStr = extractStr(aiParsedResult.summary || aiParsedResult.executiveSummary, "Executive analytical case study.");
+    const objectiveStr = extractStr(aiParsedResult.objective || aiParsedResult.businessObjective, "Evaluate key performance metrics and operational trends.");
+    const problemStr = extractStr(aiParsedResult.businessProblem, "");
+    const methodologyStr = extractStr(aiParsedResult.methodology, "Data extraction, dimensional profiling, and metric verification.");
+    const findingsStr = extractStr(aiParsedResult.findings, "");
+    const recommendationsStr = extractStr(aiParsedResult.recommendations, "");
+    const datasetDescStr = extractStr(aiParsedResult.datasetDesc || aiParsedResult.datasetDescription, "");
+    const dataCleaningStr = extractStr(aiParsedResult.dataCleaning, "");
+    const industryStr = extractStr(aiParsedResult.industry, "Analytics & Business Intelligence");
+    const roleStr = extractStr(aiParsedResult.role, "Lead Data Analyst");
+    const durationStr = extractStr(aiParsedResult.duration, "1 Week");
+
+    const tagsArr = extractArr(aiParsedResult.tags, ["Analytics"]);
+    const categoriesArr = extractArr(aiParsedResult.categories, ["Data Analysis"]);
+
+    const cleanId = (typeof aiParsedResult.id === "string" && aiParsedResult.id.trim()) 
+      ? aiParsedResult.id.trim() 
+      : generateId("project");
+
+    const cleanSlug = (typeof aiParsedResult.slug === "string" && aiParsedResult.slug.trim())
+      ? aiParsedResult.slug.trim()
+      : titleStr.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `case-study-${Date.now()}`;
+
+    const rawMetrics = Array.isArray(aiParsedResult.metrics) ? aiParsedResult.metrics : [];
+    const normalizedMetrics: MetricHighlight[] = rawMetrics.map((m: any, idx: number) => ({
+      id: typeof m.id === "string" ? m.id : `metric-${idx}-${Date.now()}`,
+      label: extractStr(m.label, "Metric"),
+      value: extractStr(m.value, "N/A"),
+      description: extractStr(m.description, ""),
+      iconName: typeof m.iconName === "string" ? m.iconName : "TrendingUp"
+    }));
+
+    const rawStoryBlocks = Array.isArray(aiParsedResult.storyBlocks) ? aiParsedResult.storyBlocks : [];
+    const normalizedStoryBlocks: ContentBlock[] = rawStoryBlocks.map((sb: any, idx: number) => ({
+      id: typeof sb.id === "string" ? sb.id : `sb-${idx}-${Date.now()}`,
+      type: sb.type || "markdown",
+      title: extractStr(sb.title, `Section ${idx + 1}`),
+      bodyContent: extractStr(sb.bodyContent, ""),
+      language: sb.language
+    }));
+
+    const canonicalRecord: ProjectRecord = {
+      id: cleanId,
+      title: titleStr,
+      slug: cleanSlug,
+      subtitle: subtitleStr,
+      summary: summaryStr,
+      industry: industryStr,
+      role: roleStr,
+      duration: durationStr,
+      status: (aiParsedResult.status as ProjectStatus) || ProjectStatus.PUBLISHED,
+      difficulty: (aiParsedResult.difficulty as TechnicalDifficulty) || TechnicalDifficulty.ADVANCED,
+
+      objective: objectiveStr,
+      datasetDesc: datasetDescStr,
+      methodology: methodologyStr,
+      businessProblem: problemStr,
+      dataCleaning: dataCleaningStr,
+      findings: findingsStr,
+      recommendations: recommendationsStr,
+      challengesText: extractStr(aiParsedResult.challengesText || aiParsedResult.challenges, ""),
+      lessonsLearned: extractStr(aiParsedResult.lessonsLearned, ""),
+
+      tags: tagsArr,
+      categories: categoriesArr,
+      metrics: normalizedMetrics,
+      storyBlocks: normalizedStoryBlocks,
+
+      githubUrl: typeof aiParsedResult.githubUrl === "string" ? aiParsedResult.githubUrl : undefined,
+      liveUrl: typeof aiParsedResult.liveUrl === "string" ? aiParsedResult.liveUrl : undefined,
+      documentationUrl: typeof aiParsedResult.documentationUrl === "string" ? aiParsedResult.documentationUrl : undefined,
+
+      date: typeof aiParsedResult.date === "string" ? aiParsedResult.date : new Date().toISOString().split("T")[0],
+      featured: typeof aiParsedResult.featured === "boolean" ? aiParsedResult.featured : true,
+      visibility: aiParsedResult.visibility || "public",
+      order: typeof aiParsedResult.order === "number" ? aiParsedResult.order : projects.length,
+
+      createdAt: (typeof aiParsedResult.createdAt === "string" && aiParsedResult.createdAt) ? aiParsedResult.createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const duplicateIndex = projects.findIndex(p => {
+      const pTitle = extractStr(p.title);
+      return p.id === canonicalRecord.id || (pTitle && pTitle.toLowerCase() === titleStr.toLowerCase());
+    });
     
     let updatedProjects = [...projects];
-    const projectId = aiParsedResult.id || "imported-project";
+    const projectId = canonicalRecord.id;
     
     // Create new approved version before saving
     const projectVersions = importVersions[projectId] || [];
@@ -883,8 +983,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       created: new Date().toLocaleString(),
       modified: new Date().toLocaleString(),
       importedByAi: true,
-      manualChanges: Object.values(classifications).includes("USER EDITED"),
-      projectData: JSON.parse(JSON.stringify(aiParsedResult)),
+      manualChanges: Object.values(classifications || {}).includes("USER EDITED"),
+      projectData: JSON.parse(JSON.stringify(canonicalRecord)),
       metadata: {
         projectType,
         sourceAttributions,
@@ -909,19 +1009,19 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
     if (duplicateIndex !== -1) {
       updatedProjects[duplicateIndex] = {
-        ...aiParsedResult,
+        ...canonicalRecord,
         id: projects[duplicateIndex].id,
         slug: projects[duplicateIndex].slug
       };
     } else {
-      updatedProjects.push(aiParsedResult);
+      updatedProjects.push(canonicalRecord);
     }
 
     onSaveProjects(updatedProjects);
     
     setBackupStatus({
       type: "success",
-      msg: `🎉 Success: Project "${aiParsedResult.title}" imported (Version ${nextVer}) into your portfolio. It is in "${aiParsedResult.status}" mode.`
+      msg: `🎉 Success: Case study "${canonicalRecord.title}" saved (Version ${nextVer}) into your portfolio inventory. Status: "${canonicalRecord.status}".`
     });
 
     setPackageFiles([]);
