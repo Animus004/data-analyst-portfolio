@@ -10,6 +10,7 @@ import { getSupabaseClient } from "../_lib/storage/index";
 import { validateFileBuffer, isAllowedFileType, categorizeStorageError, enforceOwnerPermission, executeWithTimeout, createStepLogger } from "../_lib/utils/security";
 import { sendError, sendSuccess, logExecution } from "../_lib/utils/index";
 import { PipelineStage, parseStackLocation } from "../_lib/types/index";
+import { PipelineProfiler } from "../_lib/utils/pipelineProfiler";
 
 export const config = {
   runtime: "nodejs",

@@ -3784,6 +3784,123 @@ function logExecution(stats) {
   `);
 }
 
+// src/api/_lib/utils/pipelineProfiler.ts
+var PipelineProfiler = class {
+  constructor() {
+    this.stages = [];
+    this.peakHeap = 0;
+    this.peakRss = 0;
+    this.maxAllocatedSize = 0;
+    this.maxAllocatedLabel = "None";
+    this.pipelineStartTime = Date.now();
+    const mem = process.memoryUsage();
+    this.updatePeaks(mem);
+  }
+  updatePeaks(mem) {
+    if (mem.heapUsed > this.peakHeap) this.peakHeap = mem.heapUsed;
+    if (mem.rss > this.peakRss) this.peakRss = mem.rss;
+  }
+  recordAllocation(label, sizeInBytes) {
+    if (sizeInBytes > this.maxAllocatedSize) {
+      this.maxAllocatedSize = sizeInBytes;
+      this.maxAllocatedLabel = label;
+    }
+  }
+  profileStageStart(stageNumber, stageName, inputSize) {
+    const mem = process.memoryUsage();
+    this.updatePeaks(mem);
+    const now = Date.now();
+    const metric = {
+      stageName,
+      stageNumber,
+      startTime: now,
+      heapUsedStart: mem.heapUsed,
+      rssStart: mem.rss,
+      externalStart: mem.external,
+      uptimeStart: process.uptime(),
+      inputSize: inputSize || "N/A",
+      status: "BEGIN"
+    };
+    console.time(`[PIPELINE PROFILER] Stage ${stageNumber}: ${stageName}`);
+    console.log(`
+====================================================`);
+    console.log(`[PIPELINE PROFILER] BEGIN Stage ${stageNumber}: ${stageName}`);
+    console.log(`Start: ${new Date(now).toISOString()}`);
+    console.log(`Process Uptime: ${metric.uptimeStart.toFixed(2)}s`);
+    console.log(`Heap Used: ${(mem.heapUsed / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`RSS: ${(mem.rss / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`External: ${(mem.external / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`Input Size: ${metric.inputSize}`);
+    console.log(`====================================================
+`);
+    this.stages.push(metric);
+    return metric;
+  }
+  profileStageEnd(metric, outputSize, status = "END", errorMsg) {
+    const now = Date.now();
+    const mem = process.memoryUsage();
+    this.updatePeaks(mem);
+    metric.endTime = now;
+    metric.durationMs = now - metric.startTime;
+    metric.heapUsedEnd = mem.heapUsed;
+    metric.rssEnd = mem.rss;
+    metric.externalEnd = mem.external;
+    metric.uptimeEnd = process.uptime();
+    metric.outputSize = outputSize || "N/A";
+    metric.status = status;
+    metric.errorMsg = errorMsg;
+    console.timeEnd(`[PIPELINE PROFILER] Stage ${metric.stageNumber}: ${metric.stageName}`);
+    console.log(`
+====================================================`);
+    console.log(`[PIPELINE PROFILER] ${status} Stage ${metric.stageNumber}: ${metric.stageName}`);
+    console.log(`Start: ${new Date(metric.startTime).toISOString()}`);
+    console.log(`End: ${new Date(now).toISOString()}`);
+    console.log(`Duration: ${metric.durationMs} ms (${(metric.durationMs / 1e3).toFixed(2)}s)`);
+    console.log(`Heap Used: ${(mem.heapUsed / (1024 * 1024)).toFixed(2)} MB (Delta: ${((mem.heapUsed - metric.heapUsedStart) / (1024 * 1024)).toFixed(2)} MB)`);
+    console.log(`RSS: ${(mem.rss / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`External: ${(mem.external / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`Input Size: ${metric.inputSize}`);
+    console.log(`Output Size: ${metric.outputSize}`);
+    if (metric.durationMs > 15e3) {
+      console.warn(`\u{1F6A8} EXECUTION BUDGET RISK - Stage ${metric.stageNumber}: ${metric.stageName} took ${metric.durationMs}ms (>15s threshold)!`);
+    } else if (metric.durationMs > 5e3) {
+      console.warn(`\u26A0 LONG RUNNING STAGE - Stage ${metric.stageNumber}: ${metric.stageName} took ${metric.durationMs}ms (>5s threshold)!`);
+    }
+    console.log(`====================================================
+`);
+  }
+  printFinalReport() {
+    const totalDuration = Date.now() - this.pipelineStartTime;
+    const sorted = [...this.stages].sort((a, b) => (b.durationMs || 0) - (a.durationMs || 0));
+    const top5 = sorted.slice(0, 5);
+    const getStageDuration = (namePattern) => {
+      const found = this.stages.find((s) => s.stageName.toLowerCase().includes(namePattern.toLowerCase()));
+      return found && found.durationMs ? found.durationMs : 0;
+    };
+    const excelDuration = getStageDuration("excel");
+    const geminiDuration = getStageDuration("gemini") || getStageDuration("compiler (gemini)") || getStageDuration("portfolio compiler");
+    const serializationDuration = getStageDuration("serialization") || getStageDuration("final json");
+    console.log(`
+==============================`);
+    console.log(`PIPELINE SUMMARY`);
+    console.log(`==============================`);
+    console.log(`Total Execution Time: ${totalDuration} ms (${(totalDuration / 1e3).toFixed(2)}s)`);
+    console.log(`Memory Peak (Heap): ${(this.peakHeap / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`Memory Peak (RSS): ${(this.peakRss / (1024 * 1024)).toFixed(2)} MB`);
+    console.log(`Largest Object Allocated: ${this.maxAllocatedLabel} (${(this.maxAllocatedSize / (1024 * 1024)).toFixed(2)} MB)`);
+    console.log(`Excel Duration: ${excelDuration} ms (${(excelDuration / 1e3).toFixed(2)}s)`);
+    console.log(`Gemini Duration: ${geminiDuration} ms (${(geminiDuration / 1e3).toFixed(2)}s)`);
+    console.log(`Serialization Duration: ${serializationDuration} ms (${(serializationDuration / 1e3).toFixed(2)}s)`);
+    console.log(`------------------------------`);
+    console.log(`Top 5 Slowest Stages:`);
+    top5.forEach((s, idx) => {
+      console.log(` ${idx + 1}. [Stage ${s.stageNumber}] ${s.stageName}: ${s.durationMs || 0} ms (${((s.durationMs || 0) / 1e3).toFixed(2)}s) - Status: ${s.status}`);
+    });
+    console.log(`==============================
+`);
+  }
+};
+
 // src/api/portfolio/ai.ts
 var config = {
   runtime: "nodejs",
