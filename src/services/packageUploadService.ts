@@ -15,16 +15,27 @@ export interface UploadedPackageFileMeta {
   fallbackContent?: string;
 }
 
+export interface PackageUploadFile {
+  fileObject: File;
+  name: string;
+  size: number;
+  type: string;
+  detectedType?: string;
+}
+
 export interface PackageUploadProgress {
   fileName: string;
   bytesUploaded: number;
   totalBytes: number;
   percentage: number;
-  status: "idle" | "uploading" | "completed" | "error";
+  status: "idle" | "pending" | "uploading" | "completed" | "error";
   errorMsg?: string;
 }
 
+export type UploadProgressMap = Record<string, PackageUploadProgress>;
+
 const STORAGE_BUCKET = "portfolio-uploads";
+const MAX_INLINE_FALLBACK_SIZE = 4.5 * 1024 * 1024; // 4.5 MB threshold for inline Base64 payload
 
 export type StorageErrorCategory = 
   | "bucket_not_found"
@@ -46,7 +57,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
   const msg = rawMessage.toLowerCase();
   const statusCode = String(error.statusCode || error.status || error.code || "").toLowerCase();
 
-  // Bucket does not exist
   if (
     msg.includes("bucket not found") ||
     msg.includes("bucket does not exist") ||
@@ -55,7 +65,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
     return { category: "bucket_not_found", message: rawMessage };
   }
 
-  // Permission denied / RLS
   if (
     msg.includes("row-level security") ||
     msg.includes("permission denied") ||
@@ -68,7 +77,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
     return { category: "permission_denied", message: rawMessage };
   }
 
-  // Invalid storage path
   if (
     msg.includes("invalid path") ||
     msg.includes("invalid key") ||
@@ -78,7 +86,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
     return { category: "invalid_path", message: rawMessage };
   }
 
-  // Network error
   if (
     msg.includes("failed to fetch") ||
     msg.includes("networkerror") ||
@@ -88,7 +95,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
     return { category: "network_error", message: rawMessage };
   }
 
-  // Object not found
   if (
     msg.includes("object not found") ||
     msg.includes("not_found") ||
@@ -102,8 +108,6 @@ export function categorizeStorageError(error: any): { category: StorageErrorCate
 
 /**
  * Verifies if the dedicated Supabase Storage bucket is operational and accessible.
- * Uses a non-administrative operational read (client.storage.from().list('', { limit: 1 }))
- * instead of client.storage.listBuckets(), which is intentionally restricted for client 'anon' keys.
  */
 export async function verifyUploadBucket(): Promise<{ exists: boolean; message?: string }> {
   const client = getSupabaseClient();
@@ -146,29 +150,8 @@ export async function verifyUploadBucket(): Promise<{ exists: boolean; message?:
 }
 
 /**
- * Uploads project package files directly as binary objects to Supabase Storage.
- * Never converts files to Base64 strings in browser memory for network transmission.
+ * Converts any browser File object to Base64 in chunked memory blocks.
  */
-export async function uploadProjectPackage(
-  files: Array<{ fileObject: File; name: string; size: number; type: string; detectedType: string }>,
-  packageId: string,
-  onProgress?: (progressMap: Record<string, PackageUploadProgress>) => void
-): Promise<{ success: boolean; uploadedFiles: UploadedPackageFileMeta[]; error?: string }> {
-  const client = getSupabaseClient();
-  const progressMap: Record<string, PackageUploadProgress> = {};
-
-  files.forEach((f) => {
-    progressMap[f.name] = {
-      fileName: f.name,
-      bytesUploaded: 0,
-      totalBytes: f.size,
-      percentage: 0,
-      status: "idle"
-    };
-  });
-
-const MAX_INLINE_FALLBACK_SIZE = 4.5 * 1024 * 1024; // 4.5 MB threshold for inline Base64 payload
-
 async function readArrayBufferAsBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -180,6 +163,9 @@ async function readArrayBufferAsBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+/**
+ * Attempts storage upload with exponential retries (1s, 2s, 4s).
+ */
 async function uploadWithRetry(
   client: any,
   storagePath: string,
@@ -204,12 +190,109 @@ async function uploadWithRetry(
     lastError = error;
     console.warn(`[packageUploadService] Storage upload attempt ${attempt}/${maxRetries} failed for '${fileObject.name}':`, error?.message);
     if (attempt < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 500)); // 1s, 2s, 4s exponential backoff
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 500));
     }
   }
   return { data: null, error: lastError };
 }
 
+/**
+ * SINGLE SHARED FILE DESCRIPTOR BUILDER
+ * Constructs a unified UploadedPackageFileMeta for EVERY file type (Excel, PDF, DOCX, Markdown, PNG, JPG, ZIP, SQL, JSON, etc.)
+ */
+export async function buildPackageFileDescriptor(
+  file: PackageUploadFile,
+  packageId: string,
+  storagePathOverride?: string,
+  storageUploadSuccess: boolean = false
+): Promise<UploadedPackageFileMeta> {
+  const fileName = file.name;
+  const mimeType = file.type || file.fileObject.type || "application/octet-stream";
+  const size = file.size || file.fileObject.size;
+
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = storagePathOverride || `uploads/default/${packageId}/${sanitizedFileName}`;
+
+  const isSmallFile = size <= MAX_INLINE_FALLBACK_SIZE;
+  let fallbackContent: string | undefined = undefined;
+
+  // Include Base64 fallbackContent for small files (<=4.5MB) OR if storage upload failed
+  if (isSmallFile || !storageUploadSuccess) {
+    try {
+      fallbackContent = await readArrayBufferAsBase64(file.fileObject);
+    } catch (b64Err: any) {
+      console.warn(`[SingleSharedBuilder] Base64 encoding warning for '${fileName}':`, b64Err.message);
+    }
+  }
+
+  const descriptor: UploadedPackageFileMeta = {
+    name: fileName,
+    storagePath,
+    size,
+    type: mimeType,
+    detectedType: file.detectedType || mimeType,
+    fallbackContent
+  };
+
+  const hasStoragePath = Boolean(descriptor.storagePath && descriptor.storagePath.trim().length > 0);
+  const hasFallback = Boolean(descriptor.fallbackContent && descriptor.fallbackContent.trim().length > 0);
+  const isDescriptorValid = hasStoragePath || hasFallback;
+
+  console.log(`[SHARED DESCRIPTOR BUILDER AUDIT]`);
+  console.log(`  - filename: "${fileName}"`);
+  console.log(`  - mimeType: "${mimeType}"`);
+  console.log(`  - size: ${size} bytes (${(size / (1024 * 1024)).toFixed(2)} MB)`);
+  console.log(`  - storagePath: "${storagePath}"`);
+  console.log(`  - fallbackContent exists? ${hasFallback ? "YES" : "NO"}`);
+  console.log(`  - descriptor valid? ${isDescriptorValid ? "VALID ✓" : "INVALID ❌"}`);
+
+  return descriptor;
+}
+
+/**
+ * PACKAGE-WIDE CLIENT VALIDATION ENGINE
+ * Verifies all file descriptors in a package before sending HTTP request to /api/portfolio/ai-package-parse.
+ */
+export function validatePackageFileDescriptors(descriptors: UploadedPackageFileMeta[]): {
+  isValid: boolean;
+  invalidFiles: string[];
+  auditLogs: string[];
+} {
+  const auditLogs: string[] = [];
+  const invalidFiles: string[] = [];
+
+  console.log(`\n==========================================================`);
+  console.log(`[PACKAGE-WIDE CLIENT VALIDATION AUDIT]`);
+  console.log(`Total Descriptors: ${descriptors.length}`);
+  console.log(`==========================================================\n`);
+
+  for (const d of descriptors) {
+    const hasStoragePath = Boolean(d.storagePath && d.storagePath.trim().length > 0);
+    const hasFallback = Boolean(d.fallbackContent && d.fallbackContent.trim().length > 0);
+    const isValid = hasStoragePath || hasFallback;
+
+    const logLine = `- File: "${d.name}" | mimeType: "${d.type || "unknown"}" | size: ${d.size} bytes | storagePath: "${d.storagePath || "NONE"}" | fallbackContent exists? ${hasFallback ? "YES" : "NO"} | descriptor valid? ${isValid ? "VALID ✓" : "INVALID ❌"}`;
+    console.log(logLine);
+    auditLogs.push(logLine);
+
+    if (!isValid) {
+      invalidFiles.push(d.name);
+    }
+  }
+
+  const allValid = invalidFiles.length === 0 && descriptors.length > 0;
+  console.log(`\n[PACKAGE-WIDE VALIDATION RESULT] ${allValid ? "PASSED ALL CHECKS ✓" : `FAILED ❌ (${invalidFiles.length} invalid files)`}\n`);
+
+  return {
+    isValid: allValid,
+    invalidFiles,
+    auditLogs
+  };
+}
+
+/**
+ * Main Upload Function using Single Shared Builder for every file type.
+ */
 export async function uploadProjectPackage(
   packageId: string,
   files: PackageUploadFile[],
@@ -218,7 +301,6 @@ export async function uploadProjectPackage(
   const client = getSupabaseClient();
   const progressMap: UploadProgressMap = {};
 
-  // Stage 1: Browser File Selection & Initialization Audit
   console.log(`\n==========================================================`);
   console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1] Browser File Selection`);
   console.log(`Package ID: ${packageId}`);
@@ -234,12 +316,12 @@ export async function uploadProjectPackage(
       status: "pending"
     };
     const isLarge = f.size > MAX_INLINE_FALLBACK_SIZE;
-    console.log(`[UPLOAD PIPELINE AUDIT - STAGE 1 File] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | Mode: ${isLarge ? "Storage Stream (>4.5MB)" : "Dual Storage/Fallback (<=4.5MB)"}`);
+    console.log(`[STAGE 1 File] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | Mode: ${isLarge ? "Storage Stream (>4.5MB)" : "Dual Storage/Fallback (<=4.5MB)"}`);
   });
 
   if (onProgress) onProgress({ ...progressMap });
 
-  // Fallback mode if Supabase keys are unconfigured in local development environment
+  // In-memory fallback mode if Supabase keys are unconfigured
   if (!client) {
     console.warn("[Upload Pipeline Audit] Supabase Storage unconfigured. Using in-memory fallback.");
     const fallbackFiles: UploadedPackageFileMeta[] = [];
@@ -247,19 +329,8 @@ export async function uploadProjectPackage(
       progressMap[f.name].status = "uploading";
       if (onProgress) onProgress({ ...progressMap });
 
-      const localPath = `local-uploads/${packageId}/${f.name}`;
-      const base64 = await readArrayBufferAsBase64(f.fileObject);
-
-      fallbackFiles.push({
-        name: f.name,
-        storagePath: localPath,
-        size: f.size,
-        type: f.type,
-        detectedType: f.detectedType,
-        fallbackContent: base64
-      });
-
-      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (In-Memory Fallback)] Name: "${f.name}" | storagePath: "${localPath}" | fallbackContent exists? YES | status: COMPLETED`);
+      const descriptor = await buildPackageFileDescriptor(f, packageId, undefined, false);
+      fallbackFiles.push(descriptor);
 
       progressMap[f.name].bytesUploaded = f.size;
       progressMap[f.name].percentage = 100;
@@ -287,22 +358,7 @@ export async function uploadProjectPackage(
 
       const sanitizedFileName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const storagePath = `uploads/default/${packageId}/${sanitizedFileName}`;
-      const isSmallFile = f.size <= MAX_INLINE_FALLBACK_SIZE;
 
-      // Smart Thresholding: Include Base64 fallbackContent ONLY for small files (<= 4.5 MB)
-      // Large files (> 4.5 MB) rely exclusively on Supabase Storage with retries to keep HTTP request JSON < 5 KB
-      let base64Content: string | undefined = undefined;
-      if (isSmallFile) {
-        try {
-          base64Content = await readArrayBufferAsBase64(f.fileObject);
-        } catch (b64Err: any) {
-          console.warn(`[packageUploadService] Base64 encoding warning for '${f.name}':`, b64Err.message);
-        }
-      } else {
-        console.log(`[Upload Pipeline Audit] Large asset detected for '${f.name}' (${(f.size / (1024 * 1024)).toFixed(2)} MB > 4.5 MB threshold). Bypassing inline Base64 fallback to prevent serverless request size limits.`);
-      }
-
-      // Execute storage upload with 3 exponential retries
       const { data, error } = await uploadWithRetry(
         client,
         storagePath,
@@ -311,51 +367,27 @@ export async function uploadProjectPackage(
         3
       );
 
+      const resolvedStoragePath = data?.path || storagePath;
+      const isStorageSuccess = Boolean(!error && data);
+
       if (error) {
         const { category, message } = categorizeStorageError(error);
         console.warn(`[packageUploadService] Storage upload failed for '${f.name}' after 3 retries [Category: ${category}]: ${message}`);
         
-        if (isSmallFile && base64Content) {
-          progressMap[f.name].status = "completed";
-          if (onProgress) onProgress({ ...progressMap });
-
-          uploadedFiles.push({
-            name: f.name,
-            storagePath: storagePath,
-            size: f.size,
-            type: f.type,
-            detectedType: f.detectedType,
-            fallbackContent: base64Content
-          });
-
-          console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Small File Fallback)] Name: "${f.name}" | storagePath: "${storagePath}" | fallbackContent exists? YES | status: COMPLETED_FALLBACK`);
-          continue;
-        } else {
-          // Large file storage upload failed — surface clean error instead of sending huge Base64
+        if (f.size > MAX_INLINE_FALLBACK_SIZE) {
           throw new Error(`Failed to upload large file '${f.name}' (${(f.size / (1024 * 1024)).toFixed(2)} MB) to storage after 3 retries: ${message}`);
         }
       }
 
-      const { data: publicUrlData } = client.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
+      // Build Descriptor via Single Shared Descriptor Builder for EVERY file type!
+      const descriptor = await buildPackageFileDescriptor(f, packageId, resolvedStoragePath, isStorageSuccess);
 
       progressMap[f.name].bytesUploaded = f.size;
       progressMap[f.name].percentage = 100;
       progressMap[f.name].status = "completed";
       if (onProgress) onProgress({ ...progressMap });
 
-      const resolvedStoragePath = data?.path || storagePath;
-
-      uploadedFiles.push({
-        name: f.name,
-        storagePath: resolvedStoragePath,
-        size: f.size,
-        type: f.type,
-        detectedType: f.detectedType,
-        publicUrl: publicUrlData?.publicUrl,
-        fallbackContent: base64Content
-      });
-
-      console.log(`[UPLOAD PIPELINE AUDIT - STAGE 2 File (Storage Upload Success)] Name: "${f.name}" | mimeType: "${f.type || "unknown"}" | size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | storagePath: "${resolvedStoragePath}" | inline fallbackContent included? ${Boolean(base64Content)} | status: COMPLETED_SUCCESS`);
+      uploadedFiles.push(descriptor);
     } catch (err: any) {
       console.error(`Exception uploading file ${f.name}:`, err);
       progressMap[f.name].status = "error";
@@ -364,13 +396,14 @@ export async function uploadProjectPackage(
     }
   }
 
-  console.log(`\n==========================================================`);
-  console.log(`[UPLOAD PIPELINE AUDIT - STAGE 3 & 4] Upload State & Payload Serialization`);
-  console.log(`Total Descriptors Serialized: ${uploadedFiles.length}`);
-  uploadedFiles.forEach(meta => {
-    console.log(`- Descriptor: filename="${meta.name}" | storagePath="${meta.storagePath}" | fallbackContent.length=${meta.fallbackContent ? meta.fallbackContent.length : 0}`);
-  });
-  console.log(`==========================================================\n`);
+  // Perform Package-Wide Validation on Client
+  const clientValidation = validatePackageFileDescriptors(uploadedFiles);
+  if (!clientValidation.isValid) {
+    return {
+      success: false,
+      error: `Package-wide client descriptor validation failed. Invalid descriptor for file(s): ${clientValidation.invalidFiles.join(", ")}.`
+    };
+  }
 
   return {
     success: uploadedFiles.length > 0,

@@ -20,7 +20,7 @@ import {
   downloadTextFile 
 } from "../../services/exportService";
 import { storageService } from "../../services/storageService";
-import { uploadProjectPackage } from "../../services/packageUploadService";
+import { uploadProjectPackage, validatePackageFileDescriptors } from "../../services/packageUploadService";
 import { authenticatedFetch, safeParseJsonResponse, getOwnerKey, setOwnerKey } from "../../services/apiClient";
 import { generateId } from "../../utils";
 import { 
@@ -839,6 +839,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setUploadProgressText("Re-evaluating portfolio with your answers...");
     setAiParseError(null);
     try {
+      const validation = validatePackageFileDescriptors(uploadedFileMetas);
+      if (!validation.isValid) {
+        throw new Error(`Package descriptor validation failed on client: File(s) [${validation.invalidFiles.join(", ")}] are missing both storagePath and fallbackContent.`);
+      }
+
       const packageId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `pkg-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
       const res = await authenticatedFetch("/api/portfolio/ai-package-parse", {
         method: "POST",
