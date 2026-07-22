@@ -16,7 +16,18 @@ import {
 export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): EvidenceGraph {
   const graph: EvidenceGraph = {
     projectDomain: undefined,
+    industry: undefined,
     businessTerms: [],
+    businessEntities: [],
+    businessQuestions: [],
+    analyticalTechniques: [],
+    detectedKPIs: [],
+    detectedDimensions: [],
+    detectedMeasures: [],
+    dashboardInsights: [],
+    visualNarratives: [],
+    timeDimensions: [],
+    stakeholderIndicators: [],
     metrics: [],
     dimensions: [],
     kpis: [],
@@ -45,14 +56,17 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
       case "excel": {
         data.metrics.forEach(m => {
           graph.metrics.push({ value: m, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: m.label, actual: m.value }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.kpis.forEach(k => {
           graph.kpis.push({ value: { name: k.name, target: k.target, value: k.actual }, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: k.name, target: k.target, actual: k.actual }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.charts.forEach(c => {
           graph.charts.push({ value: { title: c.title, type: c.chartType }, sourceFile, parser, confidence, location });
+          graph.visualNarratives.push({ value: `Visual Chart: ${c.title} (${c.chartType || 'Standard Visual'})`, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.businessTerms.forEach(t => {
@@ -61,11 +75,28 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
         });
         data.dimensions.forEach(d => {
           graph.dimensions.push({ value: d, sourceFile, parser, confidence, location });
+          graph.detectedDimensions.push({ value: d, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
+
+          // Derive time dimensions and business entities
+          const lower = d.toLowerCase();
+          if (lower.includes("date") || lower.includes("year") || lower.includes("month") || lower.includes("quarter") || lower.includes("time")) {
+            graph.timeDimensions.push({ value: d, sourceFile, parser, confidence, location });
+          }
+          if (lower.includes("customer") || lower.includes("client") || lower.includes("product") || lower.includes("region") || lower.includes("store")) {
+            graph.businessEntities.push({ value: d, sourceFile, parser, confidence, location });
+          }
         });
+        if (data.formulas.length > 0) {
+          graph.analyticalTechniques.push({ value: `Spreadsheet Formulas (${data.formulas.length} calculated cells)`, sourceFile, parser, confidence, location });
+        }
+        if (data.pivots.length > 0) {
+          graph.analyticalTechniques.push({ value: `Pivot Table Analysis (${data.pivots.join(", ")})`, sourceFile, parser, confidence, location });
+        }
         if (data.dashboardTitles.length > 0) {
           data.dashboardTitles.forEach(t => {
             graph.dashboards.push({ value: { name: t, pages: data.sheetNames }, sourceFile, parser, confidence, location });
+            graph.dashboardInsights.push({ value: `Dashboard Layout Sheet: ${t}`, sourceFile, parser, confidence, location });
             sourceMeta.nodesExtracted++;
           });
         }
@@ -86,6 +117,13 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
             confidence,
             location
           });
+          data.tables.forEach(t => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
+          if (data.joins.length > 0) {
+            graph.analyticalTechniques.push({ value: `Relational Join Modeling (${data.joins.length} join criteria)`, sourceFile, parser, confidence });
+          }
+          if (data.windowFunctions.length > 0) {
+            graph.analyticalTechniques.push({ value: `Advanced SQL Window Functions (${data.windowFunctions.length} window definitions)`, sourceFile, parser, confidence });
+          }
           sourceMeta.nodesExtracted++;
         }
         data.calculatedMetrics.forEach(cm => {
@@ -96,10 +134,12 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
             confidence,
             location
           });
+          graph.detectedMeasures.push({ value: `${cm.name} (${cm.formula})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.businessQuestions.forEach(q => {
           graph.businessTerms.push({ value: q, sourceFile, parser, confidence, location });
+          graph.businessQuestions.push({ value: q, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         break;
@@ -108,14 +148,17 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
       case "powerbi": {
         data.visuals.forEach(v => {
           graph.charts.push({ value: { title: v.title, type: v.type }, sourceFile, parser, confidence, location });
+          graph.visualNarratives.push({ value: `Visual Card: ${v.title} (${v.type})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.kpis.forEach(k => {
           graph.kpis.push({ value: { name: k.label, value: k.value }, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: k.label, actual: k.value }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         if (data.pages.length > 0) {
           graph.dashboards.push({ value: { name: `${sourceFile} Dashboard`, pages: data.pages, visualCount: data.visuals.length }, sourceFile, parser, confidence, location });
+          graph.dashboardInsights.push({ value: `Power BI Dashboard Pages: ${data.pages.join(", ")}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         data.daxMeasures.forEach(dax => {
@@ -126,6 +169,8 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
             confidence,
             location
           });
+          graph.analyticalTechniques.push({ value: `DAX Calculated Measure: ${dax.name}`, sourceFile, parser, confidence });
+          graph.detectedMeasures.push({ value: dax.name, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         break;
@@ -134,14 +179,17 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
       case "readme": {
         if (data.objective) {
           graph.documentation.push({ value: { key: "Objective", text: data.objective }, sourceFile, parser, confidence });
+          graph.businessQuestions.push({ value: `Objective Query: ${data.objective}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.methodology) {
           graph.methodology.push({ value: data.methodology, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: `Methodology Overview: ${data.methodology.slice(0, 100)}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.findings) {
           graph.documentation.push({ value: { key: "Findings", text: data.findings }, sourceFile, parser, confidence });
+          graph.dashboardInsights.push({ value: `Parsed Findings: ${data.findings.slice(0, 150)}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.recommendations) {
@@ -164,6 +212,9 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
         }
         data.sections.forEach(s => {
           graph.documentation.push({ value: { key: s.heading, text: s.content }, sourceFile, parser, confidence, location: s.heading });
+          if (s.heading.toLowerCase().includes("question") || s.heading.toLowerCase().includes("objective")) {
+            graph.businessQuestions.push({ value: s.content.slice(0, 150), sourceFile, parser, confidence, location: s.heading });
+          }
           sourceMeta.nodesExtracted++;
         });
         data.extractedTerms.forEach(t => {
@@ -176,14 +227,17 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
       case "image": {
         if (data.dashboardDetected) {
           graph.dashboards.push({ value: { name: `Image Visual: ${sourceFile}`, visualCount: data.charts.length + data.kpiCards.length }, sourceFile, parser, confidence });
+          graph.dashboardInsights.push({ value: `Visual Dashboard Screenshot: ${sourceFile}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         data.kpiCards.forEach(k => {
           graph.kpis.push({ value: { name: k }, sourceFile, parser, confidence });
+          graph.detectedKPIs.push({ value: { name: k }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.charts.forEach(c => {
           graph.charts.push({ value: { title: c }, sourceFile, parser, confidence });
+          graph.visualNarratives.push({ value: `Visual Image Element: ${c}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         const detected = [...data.kpiCards, ...data.charts, ...data.tables, ...data.filters];

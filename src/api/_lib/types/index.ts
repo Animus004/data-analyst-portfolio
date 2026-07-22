@@ -140,7 +140,18 @@ export interface CanonicalEvidenceNode<T> {
 
 export interface EvidenceGraph {
   projectDomain?: string;
+  industry?: string;
   businessTerms: Array<CanonicalEvidenceNode<string>>;
+  businessEntities: Array<CanonicalEvidenceNode<string>>;
+  businessQuestions: Array<CanonicalEvidenceNode<string>>;
+  analyticalTechniques: Array<CanonicalEvidenceNode<string>>;
+  detectedKPIs: Array<CanonicalEvidenceNode<{ name: string; category?: string; target?: string; actual?: string }>>;
+  detectedDimensions: Array<CanonicalEvidenceNode<string>>;
+  detectedMeasures: Array<CanonicalEvidenceNode<string>>;
+  dashboardInsights: Array<CanonicalEvidenceNode<string>>;
+  visualNarratives: Array<CanonicalEvidenceNode<string>>;
+  timeDimensions: Array<CanonicalEvidenceNode<string>>;
+  stakeholderIndicators: Array<CanonicalEvidenceNode<string>>;
   metrics: Array<CanonicalEvidenceNode<{ label: string; value: string; description?: string }>>;
   dimensions: Array<CanonicalEvidenceNode<string>>;
   kpis: Array<CanonicalEvidenceNode<{ name: string; value?: string; target?: string }>>;
@@ -164,13 +175,16 @@ export interface StructuredPortfolioProject {
   title: FieldWithEvidence<string>;
   subtitle: FieldWithEvidence<string>;
   executiveSummary: FieldWithEvidence<string>;
+  businessContext: FieldWithEvidence<string>;
   businessProblem: FieldWithEvidence<string>;
   businessObjective: FieldWithEvidence<string>;
+  businessImpact: FieldWithEvidence<string>;
   stakeholders: FieldWithEvidence<string[]>;
   datasetDescription: FieldWithEvidence<string>;
   methodology: FieldWithEvidence<string>;
   dataCleaning: FieldWithEvidence<string>;
   analysisProcess: FieldWithEvidence<string>;
+  analyticalTechniques: FieldWithEvidence<string[]>;
   industry: FieldWithEvidence<string>;
   role: FieldWithEvidence<string>;
   duration: FieldWithEvidence<string>;

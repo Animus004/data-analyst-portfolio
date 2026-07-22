@@ -736,7 +736,18 @@ function categorizeStorageError(error) {
 function mergeToEvidenceGraph(extractedNodes) {
   const graph = {
     projectDomain: void 0,
+    industry: void 0,
     businessTerms: [],
+    businessEntities: [],
+    businessQuestions: [],
+    analyticalTechniques: [],
+    detectedKPIs: [],
+    detectedDimensions: [],
+    detectedMeasures: [],
+    dashboardInsights: [],
+    visualNarratives: [],
+    timeDimensions: [],
+    stakeholderIndicators: [],
     metrics: [],
     dimensions: [],
     kpis: [],
@@ -761,14 +772,17 @@ function mergeToEvidenceGraph(extractedNodes) {
       case "excel": {
         data.metrics.forEach((m) => {
           graph.metrics.push({ value: m, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: m.label, actual: m.value }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.kpis.forEach((k) => {
           graph.kpis.push({ value: { name: k.name, target: k.target, value: k.actual }, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: k.name, target: k.target, actual: k.actual }, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.charts.forEach((c) => {
           graph.charts.push({ value: { title: c.title, type: c.chartType }, sourceFile, parser, confidence, location });
+          graph.visualNarratives.push({ value: `Visual Chart: ${c.title} (${c.chartType || "Standard Visual"})`, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         data.businessTerms.forEach((t) => {
@@ -777,11 +791,26 @@ function mergeToEvidenceGraph(extractedNodes) {
         });
         data.dimensions.forEach((d) => {
           graph.dimensions.push({ value: d, sourceFile, parser, confidence, location });
+          graph.detectedDimensions.push({ value: d, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
+          const lower = d.toLowerCase();
+          if (lower.includes("date") || lower.includes("year") || lower.includes("month") || lower.includes("quarter") || lower.includes("time")) {
+            graph.timeDimensions.push({ value: d, sourceFile, parser, confidence, location });
+          }
+          if (lower.includes("customer") || lower.includes("client") || lower.includes("product") || lower.includes("region") || lower.includes("store")) {
+            graph.businessEntities.push({ value: d, sourceFile, parser, confidence, location });
+          }
         });
+        if (data.formulas.length > 0) {
+          graph.analyticalTechniques.push({ value: `Spreadsheet Formulas (${data.formulas.length} calculated cells)`, sourceFile, parser, confidence, location });
+        }
+        if (data.pivots.length > 0) {
+          graph.analyticalTechniques.push({ value: `Pivot Table Analysis (${data.pivots.join(", ")})`, sourceFile, parser, confidence, location });
+        }
         if (data.dashboardTitles.length > 0) {
           data.dashboardTitles.forEach((t) => {
             graph.dashboards.push({ value: { name: t, pages: data.sheetNames }, sourceFile, parser, confidence, location });
+            graph.dashboardInsights.push({ value: `Dashboard Layout Sheet: ${t}`, sourceFile, parser, confidence, location });
             sourceMeta.nodesExtracted++;
           });
         }
@@ -801,6 +830,13 @@ function mergeToEvidenceGraph(extractedNodes) {
             confidence,
             location
           });
+          data.tables.forEach((t) => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
+          if (data.joins.length > 0) {
+            graph.analyticalTechniques.push({ value: `Relational Join Modeling (${data.joins.length} join criteria)`, sourceFile, parser, confidence });
+          }
+          if (data.windowFunctions.length > 0) {
+            graph.analyticalTechniques.push({ value: `Advanced SQL Window Functions (${data.windowFunctions.length} window definitions)`, sourceFile, parser, confidence });
+          }
           sourceMeta.nodesExtracted++;
         }
         data.calculatedMetrics.forEach((cm) => {
@@ -811,10 +847,12 @@ function mergeToEvidenceGraph(extractedNodes) {
             confidence,
             location
           });
+          graph.detectedMeasures.push({ value: `${cm.name} (${cm.formula})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.businessQuestions.forEach((q) => {
           graph.businessTerms.push({ value: q, sourceFile, parser, confidence, location });
+          graph.businessQuestions.push({ value: q, sourceFile, parser, confidence, location });
           sourceMeta.nodesExtracted++;
         });
         break;
@@ -822,14 +860,17 @@ function mergeToEvidenceGraph(extractedNodes) {
       case "powerbi": {
         data.visuals.forEach((v) => {
           graph.charts.push({ value: { title: v.title, type: v.type }, sourceFile, parser, confidence, location });
+          graph.visualNarratives.push({ value: `Visual Card: ${v.title} (${v.type})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.kpis.forEach((k) => {
           graph.kpis.push({ value: { name: k.label, value: k.value }, sourceFile, parser, confidence, location });
+          graph.detectedKPIs.push({ value: { name: k.label, actual: k.value }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         if (data.pages.length > 0) {
           graph.dashboards.push({ value: { name: `${sourceFile} Dashboard`, pages: data.pages, visualCount: data.visuals.length }, sourceFile, parser, confidence, location });
+          graph.dashboardInsights.push({ value: `Power BI Dashboard Pages: ${data.pages.join(", ")}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         data.daxMeasures.forEach((dax) => {
@@ -840,6 +881,8 @@ function mergeToEvidenceGraph(extractedNodes) {
             confidence,
             location
           });
+          graph.analyticalTechniques.push({ value: `DAX Calculated Measure: ${dax.name}`, sourceFile, parser, confidence });
+          graph.detectedMeasures.push({ value: dax.name, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         break;
@@ -847,14 +890,17 @@ function mergeToEvidenceGraph(extractedNodes) {
       case "readme": {
         if (data.objective) {
           graph.documentation.push({ value: { key: "Objective", text: data.objective }, sourceFile, parser, confidence });
+          graph.businessQuestions.push({ value: `Objective Query: ${data.objective}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.methodology) {
           graph.methodology.push({ value: data.methodology, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: `Methodology Overview: ${data.methodology.slice(0, 100)}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.findings) {
           graph.documentation.push({ value: { key: "Findings", text: data.findings }, sourceFile, parser, confidence });
+          graph.dashboardInsights.push({ value: `Parsed Findings: ${data.findings.slice(0, 150)}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.recommendations) {
@@ -876,6 +922,9 @@ function mergeToEvidenceGraph(extractedNodes) {
         }
         data.sections.forEach((s) => {
           graph.documentation.push({ value: { key: s.heading, text: s.content }, sourceFile, parser, confidence, location: s.heading });
+          if (s.heading.toLowerCase().includes("question") || s.heading.toLowerCase().includes("objective")) {
+            graph.businessQuestions.push({ value: s.content.slice(0, 150), sourceFile, parser, confidence, location: s.heading });
+          }
           sourceMeta.nodesExtracted++;
         });
         data.extractedTerms.forEach((t) => {
@@ -887,14 +936,17 @@ function mergeToEvidenceGraph(extractedNodes) {
       case "image": {
         if (data.dashboardDetected) {
           graph.dashboards.push({ value: { name: `Image Visual: ${sourceFile}`, visualCount: data.charts.length + data.kpiCards.length }, sourceFile, parser, confidence });
+          graph.dashboardInsights.push({ value: `Visual Dashboard Screenshot: ${sourceFile}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         data.kpiCards.forEach((k) => {
           graph.kpis.push({ value: { name: k }, sourceFile, parser, confidence });
+          graph.detectedKPIs.push({ value: { name: k }, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         data.charts.forEach((c) => {
           graph.charts.push({ value: { title: c }, sourceFile, parser, confidence });
+          graph.visualNarratives.push({ value: `Visual Image Element: ${c}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         const detected = [...data.kpiCards, ...data.charts, ...data.tables, ...data.filters];
@@ -1001,15 +1053,19 @@ function buildFallbackStructuredProject(graph, rawBaseProject) {
   const defaultEvidence = graph.evidenceSources.length > 0 ? graph.evidenceSources.map((s) => ({ sourceFile: s.fileName, parser: s.parser })) : [{ sourceFile: primarySource, parser: "DeterministicFallback" }];
   const synthesizedTitle = inferTitleFromEvidence(graph);
   const synthesizedRole = inferRoleFromEvidence(graph);
-  const synthesizedSubtitle = `Quantitative analytics and insights derived from ${sourceCount} evidence source${sourceCount > 1 ? "s" : ""}`;
-  const synthesizedSummary = `Structured data case study synthesized from parsed analytical artifacts (${graph.evidenceSources.map((s) => s.fileName).join(", ")}).`;
-  const synthesizedProblem = `Optimize business metrics and analyze transactional structures across ${primarySource}.`;
-  const synthesizedObjective = `Evaluate business performance metrics and provide data-backed recommendations.`;
-  const synthesizedMethodology = `1. Ingested raw source data and parsed analytical structures.
-2. Built canonical evidence graph.
-3. Verified metric lineage and calculated field confidence.`;
-  const synthesizedFindings = graph.metrics.length > 0 ? `Extracted ${graph.metrics.length} key performance indicator(s): ${graph.metrics.map((m) => `${m.value.label} = ${m.value.value}`).join("; ")}.` : "Processed data schema and extracted core analytical variables.";
-  const synthesizedRecommendations = "1. Consolidate key analytical metrics into executive dashboards.\n2. Monitor variance against operational targets.";
+  const synthesizedSubtitle = `Quantitative analytics and executive decision support derived from ${sourceCount} evidence source${sourceCount > 1 ? "s" : ""}`;
+  const synthesizedSummary = `This analysis evaluates transactional data structures and operational telemetry across parsed artifacts (${graph.evidenceSources.map((s) => s.fileName).join(", ")}), delivering executive-level business intelligence and strategic growth recommendations.`;
+  const synthesizedContext = `Operating within the ${graph.projectDomain || "Analytics"} domain, key stakeholders require empirical visibility into performance metrics to drive resource allocation and operational optimization.`;
+  const synthesizedProblem = `Strategic decision-makers lack consolidated visibility into underlying operational trends and KPI variances across source data files (${primarySource}).`;
+  const synthesizedObjective = `Synthesize multi-source analytical evidence to evaluate performance trends, isolate operational bottlenecks, and formulate strategic business recommendations.`;
+  const synthesizedImpact = `Enables executive stakeholders to streamline decision-making workflows, eliminate operational friction, and align tactical execution with high-level performance targets.`;
+  const synthesizedMethodology = `1. Ingested raw analytical artifacts and normalized tabular schemas into a canonical evidence graph.
+2. Executed statistical queries, metric aggregations, and dimensional profiling.
+3. Verified data lineage and computed evidence confidence scores.`;
+  const synthesizedFindings = graph.metrics.length > 0 ? `Empirical evaluation highlights ${graph.metrics.length} key performance indicator(s): ${graph.metrics.map((m) => `${m.value.label} = ${m.value.value}`).join("; ")}.` : "Data structure profiling confirms consistent schema integrity across extracted tables and query logic.";
+  const synthesizedRecommendations = "1. Consolidate key operational metrics into executive decision dashboards.\n2. Establish automated variance alerts to monitor performance thresholds against strategic benchmarks.";
+  const extractedTechniques = graph.analyticalTechniques.map((t) => t.value);
+  const techStack = Array.from(/* @__PURE__ */ new Set([...rawBaseProject.tags, ...graph.businessTerms.map((b) => b.value).filter((v) => v.startsWith("Tool:"))])).slice(0, 8);
   const structured = {
     title: {
       value: synthesizedTitle,
@@ -1026,6 +1082,11 @@ function buildFallbackStructuredProject(graph, rawBaseProject) {
       confidence,
       evidence: defaultEvidence
     },
+    businessContext: {
+      value: synthesizedContext,
+      confidence,
+      evidence: defaultEvidence
+    },
     businessProblem: {
       value: synthesizedProblem,
       confidence,
@@ -1036,13 +1097,18 @@ function buildFallbackStructuredProject(graph, rawBaseProject) {
       confidence,
       evidence: defaultEvidence
     },
+    businessImpact: {
+      value: synthesizedImpact,
+      confidence,
+      evidence: defaultEvidence
+    },
     stakeholders: {
       value: ["Executive Leadership", "Analytics Leads", "Operations Teams"],
       confidence,
       evidence: defaultEvidence
     },
     datasetDescription: {
-      value: `Multi-source analytical dataset comprising ${graph.evidenceSources.length} source file(s) across tables, metrics, and scripts.`,
+      value: `Multi-source analytical dataset comprising ${graph.evidenceSources.length} source file(s) across database tables, metrics, and analytical scripts.`,
       confidence,
       evidence: defaultEvidence
     },
@@ -1052,12 +1118,17 @@ function buildFallbackStructuredProject(graph, rawBaseProject) {
       evidence: defaultEvidence
     },
     dataCleaning: {
-      value: "Extracted raw data definitions, checked magic byte signatures, and built structured evidence graph.",
+      value: "Extracted data definitions, validated magic byte file signatures, and constructed a normalized evidence graph.",
       confidence,
       evidence: defaultEvidence
     },
     analysisProcess: {
-      value: "1. Collected evidence nodes across spreadsheets, SQL scripts, and documentation.\n2. Built canonical evidence graph.\n3. Verified metric lineage and synthesized portfolio artifacts.",
+      value: "1. Structured evidence graph nodes across relational schemas, scripts, and documentation.\n2. Verified metric lineage and calculated cross-source evidence alignment.\n3. Formulated recruiter-ready case study insights.",
+      confidence,
+      evidence: defaultEvidence
+    },
+    analyticalTechniques: {
+      value: extractedTechniques.length > 0 ? extractedTechniques : ["Relational Query Modeling", "KPI Aggregation", "Dimensional Profiling"],
       confidence,
       evidence: defaultEvidence
     },
@@ -1087,45 +1158,45 @@ function buildFallbackStructuredProject(graph, rawBaseProject) {
       evidence: defaultEvidence
     },
     challenges: {
-      value: "Ensuring cross-source schema alignment and metric accuracy without parser placeholders.",
+      value: "Ensuring cross-source schema alignment and metric accuracy without parser default placeholders.",
       confidence,
       evidence: defaultEvidence
     },
     lessonsLearned: {
-      value: "Maintained strict evidence graph lineage to guarantee presentation integrity.",
+      value: "Maintained strict evidence graph lineage to guarantee presentation integrity and auditability.",
       confidence,
       evidence: defaultEvidence
     },
     technologyStack: {
-      value: rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["SQL", "Excel", "Python", "Power BI"],
+      value: techStack.length > 0 ? techStack : ["SQL", "Excel", "Python", "Power BI"],
       confidence,
       evidence: defaultEvidence
     },
     skillsDemonstrated: {
-      value: ["Data Analysis", "SQL Querying", "KPI Modeling", "Data Visualization"],
+      value: ["Executive Business Storytelling", "SQL Analytics", "KPI Modeling", "Data Visualization"],
       confidence,
       evidence: defaultEvidence
     },
     resumeBullets: {
       value: [
-        `Engineered analytical data pipelines for ${primarySource}, improving data accessibility and KPI visibility.`,
-        "Analyzed key business metrics and query logic to drive evidence-backed decision making.",
-        "Built interactive reporting artifacts and structured performance models."
+        `Engineered analytical data pipelines for ${primarySource}, improving KPI visibility and executive reporting speed.`,
+        "Evaluated core business performance indicators and SQL query logic to drive strategic operational decisions.",
+        "Built interactive analytics reporting artifacts and structured performance models."
       ],
       confidence,
       evidence: defaultEvidence
     },
     linkedInSummary: {
-      value: `\u{1F4CA} New Data Case Study: ${synthesizedTitle}
+      value: `\u{1F4CA} Strategic Data Case Study: ${synthesizedTitle}
 
-Processed dataset insights across ${graph.evidenceSources.length} source file(s) to build a structured analytics portfolio case study. Check out the metrics and methodology!`,
+Evaluated dataset insights across ${graph.evidenceSources.length} source file(s) to deliver executive decision support. Check out the metrics, methodology, and strategic impact!`,
       confidence,
       evidence: defaultEvidence
     },
     gitHubReadmeSummary: {
       value: `# ${synthesizedTitle}
 
-## Overview
+## Executive Summary
 ${synthesizedSummary}
 
 ## Key Metrics
@@ -1137,7 +1208,7 @@ ${graph.metrics.map((m) => `- **${m.value.label}**: ${m.value.value}`).join("\n"
       value: {
         situation: `Addressed business intelligence requirements across source assets (${primarySource}).`,
         task: "Synthesize disparate raw data files into clear actionable business metrics.",
-        action: "Extracted metrics, queries, and spreadsheet data into canonical evidence graph.",
+        action: "Extracted metrics, queries, and spreadsheet data into a canonical evidence graph.",
         result: "Delivered a structured analytics case study with full evidence lineage."
       },
       confidence,
@@ -1178,6 +1249,94 @@ ${graph.metrics.map((m) => `- **${m.value.label}**: ${m.value.value}`).join("\n"
   };
   return { structured, raw: rawUpdated };
 }
+async function reviewAndRefinePortfolio(structured, graph) {
+  const ai = getAiClient();
+  if (!ai) return structured;
+  const reviewPrompt = `
+You are a Senior Principal Data Analyst & Hiring Manager at a top-tier management consulting firm (McKinsey / BCG / Deloitte).
+Your job is to audit and elevate the following Data Analyst portfolio case study payload.
+
+### CANDIDATE CASE STUDY PAYLOAD:
+${JSON.stringify({
+    title: structured.title.value,
+    subtitle: structured.subtitle.value,
+    executiveSummary: structured.executiveSummary.value,
+    businessContext: structured.businessContext.value,
+    businessProblem: structured.businessProblem.value,
+    businessObjective: structured.businessObjective.value,
+    businessImpact: structured.businessImpact.value,
+    findings: structured.findings.value,
+    recommendations: structured.recommendations.value,
+    resumeBullets: structured.resumeBullets.value,
+    linkedInSummary: structured.linkedInSummary.value,
+    starStory: structured.starStory.value
+  }, null, 2)}
+
+### MANDATORY HIRING MANAGER EVALUATION & REFINEMENT CRITERIA:
+1. **ELIMINATE GENERIC AI PHRASING**: Completely remove phrases like "This project aims to...", "The dashboard shows...", "In conclusion". Use active executive consulting prose ("This analysis evaluates...", "Empirical evidence reveals...", "Strategic diagnostic indicates...").
+2. **BUSINESS THINKING & WHY IT MATTERS**: Ensure every finding explicitly explains *Why it matters* and *What strategic business decision it supports*.
+3. **RESUME & INTERVIEW VALUE**: Bullet points must use high-impact action verbs ("Engineered", "Optimized", "Synthesized", "Quantified"), metrics, and clear analytical value.
+
+Return refined executive JSON matching the specified schema properties.
+`;
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: reviewPrompt,
+      config: {
+        systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            subtitle: { type: Type.STRING },
+            executiveSummary: { type: Type.STRING },
+            businessContext: { type: Type.STRING },
+            businessProblem: { type: Type.STRING },
+            businessObjective: { type: Type.STRING },
+            businessImpact: { type: Type.STRING },
+            findings: { type: Type.STRING },
+            recommendations: { type: Type.STRING },
+            resumeBullets: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            linkedInSummary: { type: Type.STRING },
+            starStory: {
+              type: Type.OBJECT,
+              properties: {
+                situation: { type: Type.STRING },
+                task: { type: Type.STRING },
+                action: { type: Type.STRING },
+                result: { type: Type.STRING }
+              }
+            }
+          }
+        }
+      }
+    });
+    const refined = JSON.parse(response.text.trim());
+    if (refined.title) structured.title.value = refined.title;
+    if (refined.subtitle) structured.subtitle.value = refined.subtitle;
+    if (refined.executiveSummary) structured.executiveSummary.value = refined.executiveSummary;
+    if (refined.businessContext) structured.businessContext.value = refined.businessContext;
+    if (refined.businessProblem) structured.businessProblem.value = refined.businessProblem;
+    if (refined.businessObjective) structured.businessObjective.value = refined.businessObjective;
+    if (refined.businessImpact) structured.businessImpact.value = refined.businessImpact;
+    if (refined.findings) structured.findings.value = refined.findings;
+    if (refined.recommendations) structured.recommendations.value = refined.recommendations;
+    if (refined.resumeBullets && Array.isArray(refined.resumeBullets) && refined.resumeBullets.length > 0) {
+      structured.resumeBullets.value = refined.resumeBullets;
+    }
+    if (refined.linkedInSummary) structured.linkedInSummary.value = refined.linkedInSummary;
+    if (refined.starStory && refined.starStory.situation) structured.starStory.value = refined.starStory;
+    return structured;
+  } catch (err) {
+    console.warn("[portfolioCompiler] Internal AI quality review pass bypassed:", err.message);
+    return structured;
+  }
+}
 async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
   const ai = getAiClient();
   if (!ai) {
@@ -1187,19 +1346,19 @@ async function compilePortfolioWithGemini(graph, conflicts, rawBaseProject) {
   const sourceCount = graph.evidenceSources.length || 1;
   const expectedConfidence = calculateEvidenceConfidence(sourceCount);
   const prompt = `
-You are the world's leading AI Portfolio Compiler and Business Intelligence Consultant.
-Your job is to act as an evidence-driven reasoning engine that synthesizes a normalized Evidence Graph into a world-class, recruiter-ready data analytics case study.
+You are the world's leading AI Portfolio Compiler and Strategic Business Intelligence Consultant (McKinsey / BCG / Deloitte level).
+Your job is to act as an evidence-driven reasoning engine that synthesizes a normalized Evidence Graph into a recruiter-ready data analytics case study.
 
-### SYSTEM INSTRUCTIONS & GROUNDING DIRECTIVES:
-1. **GEMINI IS THE SINGLE SOURCE OF TRUTH**: You MUST generate ALL portfolio-facing presentation content (title, subtitle, role, executive summary, business problem, business objective, methodology, findings, recommendations, resume bullets, LinkedIn summary, STAR story). Never depend on parser placeholders.
-2. **NEVER USE FILENAMES AS PROJECT TITLES**: Never title a project "script.py", "data.xlsx", or "query.sql". Create a descriptive, strategic domain-focused title (e.g. "E-Commerce Customer Churn & Revenue Optimization Engine").
-3. **INFER PROFESSIONAL ROLE**: Infer the appropriate professional job role (e.g. "Data Analyst", "BI Engineer", "Data Scientist", "Analytics Engineer", "Financial Analyst") strictly based on the evidence nodes and tools present in the Evidence Graph.
-4. **DYNAMIC CONFIDENCE SCORING BASED ON EVIDENCE COVERAGE**:
-   - 1 evidence source file: score confidence ~60%
+### SYSTEM INSTRUCTIONS & EXECUTIVE COPYWRITING DIRECTIVES:
+1. **SENIOR CONSULTANT COPYWRITING**: Write like a Senior Business Analyst / Consultant. Never use generic AI phrases like "This project aims to...", "The dashboard shows...", "In summary". Use executive prose: "This analysis evaluates...", "Empirical evidence reveals...", "Strategic evaluation demonstrates...".
+2. **BUSINESS UNDERSTANDING & DECISION SUPPORT**: Infer the target industry, business department (e.g. Strategic Finance, Revenue Operations, Growth Marketing, Supply Chain), key stakeholders, and specific business decisions supported by this analysis.
+3. **KPI DISCOVERY ENGINE**: Identify all KPIs supported by uploaded evidence (Revenue, Profit, Margin, Retention, Churn, Conversion, AOV, LTV, Review Rating, Inventory, Forecasting). Ground every metric in the Evidence Graph. Never fabricate fake numbers.
+4. **EXPLAIN WHY IT MATTERS**: Every finding must explain *Why it matters* and *What business action decision-makers should take*.
+5. **DYNAMIC CONFIDENCE SCORING**:
+   - 1 source file: score confidence ~60%
    - 2 agreeing source files: score confidence ~85%
    - 3+ agreeing source files: score confidence ~95%
-5. **ZERO FABRICATION & STRICT GROUNDING**: Never invent fake metrics or numbers. Ground all numeric claims directly in the Evidence Graph.
-6. **HIRING MANAGER AUDIT**: Produce executive-ready, polished copy that would impress a hiring manager reviewing a senior Data Analyst portfolio.
+6. **GROUNDED EVIDENCE PRIORITY**: Ground every claim directly in evidence. If evidence is lacking for a section, write "Insufficient evidence."
 
 ### CANONICAL EVIDENCE GRAPH:
 ${JSON.stringify(graph, null, 2)}
@@ -1214,7 +1373,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You are an AI Portfolio Compiler reasoning engine. Transform input Evidence Graphs into structured JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
+        systemInstruction: "You are an elite AI Portfolio Compiler and Strategy Consultant reasoning engine. Transform input Evidence Graphs into executive JSON portfolio case studies with confidence scores and evidence attributions. Never output markdown filler.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -1243,6 +1402,14 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
               },
               required: ["value", "confidence"]
             },
+            businessContext: {
+              type: Type.OBJECT,
+              properties: {
+                value: { type: Type.STRING },
+                confidence: { type: Type.INTEGER }
+              },
+              required: ["value", "confidence"]
+            },
             businessProblem: {
               type: Type.OBJECT,
               properties: {
@@ -1252,6 +1419,14 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
               required: ["value", "confidence"]
             },
             businessObjective: {
+              type: Type.OBJECT,
+              properties: {
+                value: { type: Type.STRING },
+                confidence: { type: Type.INTEGER }
+              },
+              required: ["value", "confidence"]
+            },
+            businessImpact: {
               type: Type.OBJECT,
               properties: {
                 value: { type: Type.STRING },
@@ -1298,6 +1473,17 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
               type: Type.OBJECT,
               properties: {
                 value: { type: Type.STRING },
+                confidence: { type: Type.INTEGER }
+              },
+              required: ["value", "confidence"]
+            },
+            analyticalTechniques: {
+              type: Type.OBJECT,
+              properties: {
+                value: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
                 confidence: { type: Type.INTEGER }
               },
               required: ["value", "confidence"]
@@ -1464,24 +1650,28 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       }
     });
     const parsed = JSON.parse(response.text.trim());
-    const sourceCount2 = graph.evidenceSources.length || 1;
-    const dynamicConfidence = calculateEvidenceConfidence(sourceCount2);
+    const dynamicConfidence = calculateEvidenceConfidence(sourceCount);
     const primarySource = graph.evidenceSources[0]?.fileName || "Source Asset";
     const defaultEvidence = graph.evidenceSources.length > 0 ? graph.evidenceSources.map((s) => ({ sourceFile: s.fileName, parser: s.parser })) : [{ sourceFile: primarySource }];
-    const structured = {
+    let structured = {
       title: {
         value: parsed.title?.value || inferTitleFromEvidence(graph),
         confidence: parsed.title?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
       subtitle: {
-        value: parsed.subtitle?.value || `Quantitative analysis derived from ${sourceCount2} evidence source(s)`,
+        value: parsed.subtitle?.value || `Quantitative analysis derived from ${sourceCount} evidence source(s)`,
         confidence: parsed.subtitle?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
       executiveSummary: {
         value: parsed.executiveSummary?.value || "Synthesized analysis derived from canonical evidence graph.",
         confidence: parsed.executiveSummary?.confidence || dynamicConfidence,
+        evidence: defaultEvidence
+      },
+      businessContext: {
+        value: parsed.businessContext?.value || `Strategic evaluation operating within the ${graph.projectDomain || "Analytics"} domain.`,
+        confidence: parsed.businessContext?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
       businessProblem: {
@@ -1494,13 +1684,18 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         confidence: parsed.businessObjective?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
+      businessImpact: {
+        value: parsed.businessImpact?.value || "Streamlines executive decision workflows and enhances operational metric visibility.",
+        confidence: parsed.businessImpact?.confidence || dynamicConfidence,
+        evidence: defaultEvidence
+      },
       stakeholders: {
         value: parsed.stakeholders?.value || ["Executive Leadership", "Analytics Leads"],
         confidence: parsed.stakeholders?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
       datasetDescription: {
-        value: parsed.datasetDescription?.value || `Multi-source analytical dataset comprising ${sourceCount2} evidence source(s).`,
+        value: parsed.datasetDescription?.value || `Multi-source analytical dataset comprising ${sourceCount} evidence source(s).`,
         confidence: parsed.datasetDescription?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
@@ -1517,6 +1712,11 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       analysisProcess: {
         value: parsed.analysisProcess?.value || "1. Built canonical evidence graph.\n2. Verified metric lineage.\n3. Synthesized recruiter-ready case study.",
         confidence: parsed.analysisProcess?.confidence || dynamicConfidence,
+        evidence: defaultEvidence
+      },
+      analyticalTechniques: {
+        value: parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map((t) => t.value) : ["Relational Query Modeling", "KPI Profiling"]),
+        confidence: parsed.analyticalTechniques?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
       industry: {
@@ -1560,7 +1760,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
         evidence: defaultEvidence
       },
       skillsDemonstrated: {
-        value: parsed.skillsDemonstrated?.value || ["Data Analysis", "SQL Querying", "KPI Modeling", "Data Visualization"],
+        value: parsed.skillsDemonstrated?.value || ["Executive Business Storytelling", "SQL Analytics", "KPI Modeling", "Data Visualization"],
         confidence: parsed.skillsDemonstrated?.confidence || dynamicConfidence,
         evidence: defaultEvidence
       },
@@ -1606,6 +1806,7 @@ ${parsed.executiveSummary?.value || ""}`,
       tags: parsed.tags || (rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"]),
       categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
     };
+    structured = await reviewAndRefinePortfolio(structured, graph);
     const rawUpdated = {
       ...rawBaseProject,
       title: structured.title.value,
@@ -1859,14 +2060,20 @@ async function compileProjectPackage(rawFiles) {
   if (synthesized.structured) {
     confidenceScores.title = synthesized.structured.title.confidence;
     confidenceScores.summary = synthesized.structured.executiveSummary.confidence;
+    confidenceScores.businessContext = synthesized.structured.businessContext.confidence;
     confidenceScores.businessProblem = synthesized.structured.businessProblem.confidence;
+    confidenceScores.businessImpact = synthesized.structured.businessImpact.confidence;
     confidenceScores.methodology = synthesized.structured.methodology.confidence;
+    confidenceScores.analyticalTechniques = synthesized.structured.analyticalTechniques.confidence;
     confidenceScores.findings = synthesized.structured.findings.confidence;
     confidenceScores.recommendations = synthesized.structured.recommendations.confidence;
     sourceAttributions.title = synthesized.structured.title.evidence.map((e) => e.sourceFile);
     sourceAttributions.summary = synthesized.structured.executiveSummary.evidence.map((e) => e.sourceFile);
+    sourceAttributions.businessContext = synthesized.structured.businessContext.evidence.map((e) => e.sourceFile);
     sourceAttributions.businessProblem = synthesized.structured.businessProblem.evidence.map((e) => e.sourceFile);
+    sourceAttributions.businessImpact = synthesized.structured.businessImpact.evidence.map((e) => e.sourceFile);
     sourceAttributions.methodology = synthesized.structured.methodology.evidence.map((e) => e.sourceFile);
+    sourceAttributions.analyticalTechniques = synthesized.structured.analyticalTechniques.evidence.map((e) => e.sourceFile);
     sourceAttributions.findings = synthesized.structured.findings.evidence.map((e) => e.sourceFile);
     sourceAttributions.recommendations = synthesized.structured.recommendations.evidence.map((e) => e.sourceFile);
   }

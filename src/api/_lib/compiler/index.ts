@@ -289,15 +289,21 @@ export async function compileProjectPackage(
   if (synthesized.structured) {
     confidenceScores.title = synthesized.structured.title.confidence;
     confidenceScores.summary = synthesized.structured.executiveSummary.confidence;
+    confidenceScores.businessContext = synthesized.structured.businessContext.confidence;
     confidenceScores.businessProblem = synthesized.structured.businessProblem.confidence;
+    confidenceScores.businessImpact = synthesized.structured.businessImpact.confidence;
     confidenceScores.methodology = synthesized.structured.methodology.confidence;
+    confidenceScores.analyticalTechniques = synthesized.structured.analyticalTechniques.confidence;
     confidenceScores.findings = synthesized.structured.findings.confidence;
     confidenceScores.recommendations = synthesized.structured.recommendations.confidence;
 
     sourceAttributions.title = synthesized.structured.title.evidence.map(e => e.sourceFile);
     sourceAttributions.summary = synthesized.structured.executiveSummary.evidence.map(e => e.sourceFile);
+    sourceAttributions.businessContext = synthesized.structured.businessContext.evidence.map(e => e.sourceFile);
     sourceAttributions.businessProblem = synthesized.structured.businessProblem.evidence.map(e => e.sourceFile);
+    sourceAttributions.businessImpact = synthesized.structured.businessImpact.evidence.map(e => e.sourceFile);
     sourceAttributions.methodology = synthesized.structured.methodology.evidence.map(e => e.sourceFile);
+    sourceAttributions.analyticalTechniques = synthesized.structured.analyticalTechniques.evidence.map(e => e.sourceFile);
     sourceAttributions.findings = synthesized.structured.findings.evidence.map(e => e.sourceFile);
     sourceAttributions.recommendations = synthesized.structured.recommendations.evidence.map(e => e.sourceFile);
   }
