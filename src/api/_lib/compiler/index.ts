@@ -623,7 +623,7 @@ export async function compileProjectPackage(
   const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
   const stage9Duration = Date.now() - stage9Start;
-  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallScore}`);
+  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallQualityScore}`);
   console.log(`[Pipeline] Stage 9 Complete (${stage9Duration}ms)`);
   stageTimings.push({ stage: "Stage 9 (Recruiter Audit Engine)", durationMs: stage9Duration, status: "Completed" as const });
 

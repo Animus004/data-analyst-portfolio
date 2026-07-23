@@ -17,7 +17,7 @@ interface State {
   errorId: string;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReturnToCommandCenter = () => {
-    this.setState({ hasError: false, error: null, errorId: "" });
+    (this as any).setState({ hasError: false, error: null, errorId: "" });
     // Soft navigation to root workspace
     if (typeof window !== "undefined") {
       window.location.hash = "";
@@ -48,8 +48,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+      if ((this as any).props.fallback) {
+        return (this as any).props.fallback;
       }
 
       return (
@@ -97,6 +97,6 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }

@@ -344,7 +344,7 @@ export async function parseStreamExcel(fileName: string, content: string | Buffe
         extractedAt: new Date().toISOString(),
         confidence: excelEvidence.confidence,
         data: excelEvidence
-      };
+      } as any;
 
       return { project: proj, evidenceNode };
     } catch (err: any) {
@@ -407,7 +407,7 @@ export async function parseStreamExcel(fileName: string, content: string | Buffe
     extractedAt: new Date().toISOString(),
     confidence: excelEvidence.confidence,
     data: excelEvidence
-  };
+  } as any;
 
   return { project: proj, evidenceNode };
 }

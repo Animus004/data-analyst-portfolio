@@ -336,7 +336,7 @@ export function detectEvidenceConflicts(graph: EvidenceGraph): ConflictRecord[] 
           resolvedValue: undefined,
           isUserResolved: false,
           impactScore: 85
-        });
+        } as any);
       }
     }
   });

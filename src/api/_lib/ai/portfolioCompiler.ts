@@ -452,7 +452,7 @@ Return refined executive JSON matching the specified schema properties.
       20000 // Raised from 15000ms: review pass uses gemini-3.5-flash which also runs slow on larger prompts.
     );
 
-    const refined = JSON.parse(response.text.trim());
+    const refined = JSON.parse((response as any).text.trim());
     if (refined.title) structured.title.value = refined.title;
     if (refined.subtitle) structured.subtitle.value = refined.subtitle;
     if (refined.executiveSummary) structured.executiveSummary.value = refined.executiveSummary;

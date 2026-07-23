@@ -116,7 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (client) {
               try {
                 const bucket = process.env.SUPABASE_STORAGE_BUCKET || "portfolio-uploads";
-                const downloadRes = await executeWithTimeout(
+                const downloadRes: any = await executeWithTimeout(
                   `Supabase Download [${name}]`,
                   () => client.storage.from(bucket).download(fileMeta.storagePath!),
                   12000
@@ -188,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name,
             size: fileMeta.size || buffer.length,
             type: fileMeta.type || "binary",
-            content: buffer,
+            content: buffer as any,
             storagePath: fileMeta.storagePath
           });
         }
@@ -209,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: fileName,
           size: buffer.length,
           type: fileType || "binary",
-          content: buffer
+          content: buffer as any
         });
       } else {
         return sendError(

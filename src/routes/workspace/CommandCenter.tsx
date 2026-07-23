@@ -960,7 +960,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       : titleStr.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `case-study-${Date.now()}`;
 
     const rawMetrics = Array.isArray(aiParsedResult.metrics) ? aiParsedResult.metrics : [];
-    const normalizedMetrics: MetricHighlight[] = rawMetrics.map((m: any, idx: number) => ({
+    const normalizedMetrics: any[] = rawMetrics.map((m: any, idx: number) => ({
       id: typeof m.id === "string" ? m.id : `metric-${idx}-${Date.now()}`,
       label: extractStr(m.label, "Metric"),
       value: extractStr(m.value, "N/A"),
@@ -969,7 +969,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     }));
 
     const rawStoryBlocks = Array.isArray(aiParsedResult.storyBlocks) ? aiParsedResult.storyBlocks : [];
-    const normalizedStoryBlocks: ContentBlock[] = rawStoryBlocks.map((sb: any, idx: number) => ({
+    const normalizedStoryBlocks: any[] = rawStoryBlocks.map((sb: any, idx: number) => ({
       id: typeof sb.id === "string" ? sb.id : `sb-${idx}-${Date.now()}`,
       type: sb.type || "markdown",
       title: extractStr(sb.title, `Section ${idx + 1}`),

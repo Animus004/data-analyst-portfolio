@@ -140,7 +140,7 @@ function SectionLabel({ icon: Icon, label, badge }: { icon: any; label: string; 
   );
 }
 
-function ToolChip({ tool }: { tool: string }) {
+const ToolChip: React.FC<{ tool: string }> = ({ tool }) => {
   const lower = tool.toLowerCase();
   let cls = "bg-slate-800/60 border-slate-700 text-slate-300";
   if (lower.includes("sql") || lower.includes("postgres") || lower.includes("mysql")) cls = "bg-blue-950/40 border-blue-800/60 text-blue-300";
@@ -803,7 +803,7 @@ export const AiReviewPanel: React.FC<AiReviewPanelProps> = ({
 
   const handleSubmitAnswers = useCallback(async () => {
     const filled = Object.fromEntries(
-      Object.entries(answers).filter(([, v]) => v.trim().length > 0)
+      Object.entries(answers).filter(([, v]) => (v as string).trim().length > 0)
     );
     if (Object.keys(filled).length === 0) return;
     setIsSubmitting(true);
