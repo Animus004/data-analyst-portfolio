@@ -1474,19 +1474,12 @@ export const CaseStudyBuilder: React.FC<CaseStudyBuilderProps> = ({
         {(previewMode === "split" || previewMode === "preview") && (
           <div className={`${previewMode === "preview" ? "w-full max-w-4xl mx-auto" : ""} space-y-4`}>
             
-            {/* Simulated browser window wrapper */}
-            <div className="rounded-xl border border-slate-800/70 bg-slate-950 overflow-hidden shadow-2xl flex flex-col h-[75vh]">
-              {/* Browser control bar */}
-              <div className="bg-slate-900 px-4 py-2 border-b border-slate-800/80 flex items-center justify-between no-print">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80"></span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500/80"></span>
-                </div>
-                <div className="bg-slate-950 text-[10px] font-mono text-slate-400 px-6 py-1 rounded-md border border-slate-800/40 w-1/2 text-center truncate">
-                  portfolio-os://draft-case-studies/{draftProject.slug || "preview"}
-                </div>
-                <Badge variant="status">LIVE PREVIEW</Badge>
+            {/* Clean Preview wrapper */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden shadow-sm flex flex-col h-[75vh]">
+              {/* Minimal preview header */}
+              <div className="bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between no-print">
+                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">Live Preview Canvas</span>
+                <Badge variant="status">LIVE DRAFT</Badge>
               </div>
 
               {/* Scrollable preview content pane */}

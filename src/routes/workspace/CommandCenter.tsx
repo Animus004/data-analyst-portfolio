@@ -1761,6 +1761,23 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                 </div>
               )}
 
+              {/* AI Processing Skeleton Loader */}
+              {aiParsing && (
+                <div className="pt-4 space-y-3 animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>
+                    <span className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider">
+                      {uploadProgressText || "Synthesizing Case Study Pipeline"}
+                    </span>
+                  </div>
+                  <div className="space-y-2.5 px-3.5 border-l-2 border-indigo-900/40">
+                    <div className="h-1.5 bg-slate-800 rounded-full w-full animate-pulse"></div>
+                    <div className="h-1.5 bg-slate-800 rounded-full w-4/5 animate-pulse opacity-80"></div>
+                    <div className="h-1.5 bg-slate-800 rounded-full w-2/3 animate-pulse opacity-60"></div>
+                  </div>
+                </div>
+              )}
+
               {/* Controls */}
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800/60">
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
