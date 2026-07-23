@@ -428,7 +428,7 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
     "- suggestedSummaries: 1-2 executive summary paragraph suggestions.\n" +
     "- confidence: Your overall confidence in this synthesis (0-100).\n";
 
-  const candidateModels = ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
 
   for (const model of candidateModels) {
     const modelStart = Date.now();

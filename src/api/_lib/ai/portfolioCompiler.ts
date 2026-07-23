@@ -813,8 +813,9 @@ ${JSON.stringify(conflicts, null, 2)}
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
 
-  // gemini-1.5-flash removed — returns HTTP 404 (NOT_FOUND) on v1beta API as of 2026-07.
-  const candidateModels = ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"];
+  // Prioritizing Gemini 3 Flash Live as requested by the user, followed by a fast lite model 
+  // to ensure we don't breach the strict 30s Stage 8 limit if the primary models run slowly.
+  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
   let lastError: any = null;
   let response: any = null;
   let usedModel = candidateModels[0];

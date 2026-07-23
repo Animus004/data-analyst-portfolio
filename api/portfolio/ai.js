@@ -1785,7 +1785,7 @@ ${JSON.stringify(conflicts, null, 2)}
 
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
-  const candidateModels = ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
   let lastError = null;
   let response = null;
   let usedModel = candidateModels[0];
@@ -3015,7 +3015,7 @@ ${digest}
 - suggestedSummaries: 1-2 executive summary paragraph suggestions.
 - confidence: Your overall confidence in this synthesis (0-100).
 `;
-  const candidateModels = ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
   for (const model of candidateModels) {
     const modelStart = Date.now();
     console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
