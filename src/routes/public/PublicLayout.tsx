@@ -42,14 +42,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col text-slate-800 selection:bg-slate-900 selection:text-white font-sans">
       {/* Sticky Premium Header */}
-      <header className="sticky top-0 z-50 bg-white/85 backdrop-blur-md border-b border-slate-200/50 shadow-xs">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm transition-all duration-200">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Brand/Logo */}
           <div 
             onClick={() => onNavigate("home")} 
             className="flex items-center gap-2.5 cursor-pointer group shrink-0"
           >
-            <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white transition-all duration-300 group-hover:scale-105 group-hover:shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-white transition-all duration-200 group-hover:scale-[1.02] group-hover:shadow-md">
               <Terminal className="w-4 h-4" />
             </div>
             <div>
@@ -73,8 +73,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               variant="ghost" 
               size="sm" 
               onClick={() => onNavigate("home")}
-              className={`text-xs font-medium px-2.5 sm:px-3 h-[34px] ${
-                currentTab === "home" ? "bg-slate-100 text-slate-950 font-semibold" : "text-slate-600"
+              className={`text-xs font-medium px-2.5 sm:px-3 h-[34px] rounded-lg transition-all duration-200 ${
+                currentTab === "home" ? "bg-slate-100 text-slate-950 font-semibold shadow-sm" : "text-slate-600 hover:bg-slate-50"
               }`}
             >
               Projects
@@ -118,13 +118,13 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
       </main>
 
       {/* Modern, Structured Footer */}
-      <footer className="bg-white border-t border-slate-100 mt-16 no-print">
+      <footer className="bg-white border-t border-slate-200 mt-16 no-print">
         <div className="max-w-6xl mx-auto px-4 py-10">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-8 border-b border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-8 border-b border-slate-200">
             {/* Info */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-slate-900 flex items-center justify-center text-white font-mono text-xs font-semibold">
+                <div className="w-6 h-6 rounded-lg bg-slate-900 flex items-center justify-center text-white font-mono text-xs font-semibold shadow-sm">
                   P
                 </div>
                 <span className="font-display font-bold text-slate-900 tracking-tight">PORTFOLIO OS</span>
@@ -139,23 +139,23 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               <h4 className="font-display font-semibold text-xs text-slate-900 uppercase tracking-wider mb-3">Networking Connections</h4>
               <div className="flex flex-wrap gap-2">
                 {profile.githubUrl && (
-                  <a href={profile.githubUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-100 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">
+                  <a href={profile.githubUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200">
                     <Github className="w-3.5 h-3.5" /> GitHub
                   </a>
                 )}
                 {profile.linkedinUrl && (
-                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-100 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">
+                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200">
                     <Linkedin className="w-3.5 h-3.5" /> LinkedIn
                   </a>
                 )}
-                <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-100 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">
+                <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200">
                   <Mail className="w-3.5 h-3.5" /> Email Direct
                 </a>
               </div>
             </div>
 
             {/* Availability Widget */}
-            <div className="bg-slate-50/80 border border-slate-100 p-4 rounded-xl space-y-2">
+            <div className="bg-slate-50/80 border border-slate-200 p-5 rounded-2xl space-y-2 shadow-sm transition-all duration-200 hover:shadow-md">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span className="font-display font-semibold text-xs text-slate-900">Immediate Availability</span>

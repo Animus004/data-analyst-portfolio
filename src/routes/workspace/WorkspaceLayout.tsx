@@ -99,11 +99,11 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
               Resource Telemetry
             </span>
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-center">
+              <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-center shadow-sm hover:border-slate-700 hover:shadow-md transition-all duration-200">
                 <span className="text-xs text-slate-500 font-mono block">Published</span>
                 <span className="text-lg font-bold text-emerald-400">{publishedCount}</span>
               </div>
-              <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg text-center">
+              <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-center shadow-sm hover:border-slate-700 hover:shadow-md transition-all duration-200">
                 <span className="text-xs text-slate-500 font-mono block">Drafts</span>
                 <span className="text-lg font-bold text-amber-400">{draftCount}</span>
               </div>
@@ -114,7 +114,7 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
         {/* Workspace Footer links */}
         <div className="space-y-3">
           {syncStatus && (
-            <div className="p-3 bg-slate-900/50 border border-slate-800/60 rounded-xl space-y-1.5">
+            <div className="p-3 bg-slate-900/50 border border-slate-800/60 rounded-xl space-y-1.5 shadow-sm hover:border-slate-700 hover:shadow-md transition-all duration-200">
               <div className="flex items-center justify-between text-[10px] font-mono">
                 <div className="flex items-center gap-1.5 text-slate-400">
                   <Database className="w-3.5 h-3.5 text-indigo-400" />
@@ -149,7 +149,7 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
             </div>
           )}
 
-          <div className="p-3 bg-slate-900/50 border border-slate-800/60 rounded-xl space-y-1">
+          <div className="p-3 bg-slate-900/50 border border-slate-800/60 rounded-xl space-y-1 shadow-sm hover:border-slate-700 hover:shadow-md transition-all duration-200">
             <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-mono">
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
               <span>SECURITY ACTIVE</span>
@@ -174,7 +174,7 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950/40">
         {/* Top bar for mobile and general actions */}
-        <header className="h-16 border-b border-slate-800 bg-slate-950 px-6 flex items-center justify-between">
+        <header className="h-16 border-b border-slate-800 bg-slate-950 px-6 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <h2 className="font-display font-bold text-sm text-white tracking-tight flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-slate-400" />
