@@ -1665,7 +1665,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
       </div>
 
       {/* ─── 🎯 PRIMARY OWNER WORKFLOW CARD (1. Upload → 2. AI Understanding → 3. AI Generated Portfolio → 4. Clarify → 5. Save) ─── */}
-      <Card className="bg-slate-900 border-indigo-900/60 text-slate-100 shadow-2xl overflow-hidden">
+      <Card className="bg-slate-900 rounded-2xl border border-slate-800 text-slate-100 shadow-sm transition-all duration-200 hover:border-slate-700 hover:shadow-md overflow-hidden">
         <CardHeader className="border-b border-slate-800 bg-slate-950/80 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1717,7 +1717,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                 <span className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Upload className="w-4 h-4" /> 1. Upload Project Package
                 </span>
-                <label className="border-2 border-dashed border-slate-800 hover:border-indigo-500/60 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50 hover:bg-slate-900/40 transition-all group min-h-[140px] text-center">
+                <label className="border border-dashed border-slate-700 hover:border-indigo-500/60 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50 hover:bg-slate-900/60 transition-all duration-200 group min-h-[140px] text-center">
                   <input
                     type="file"
                     multiple
@@ -1821,7 +1821,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
 
         {/* Accordion 1: ▼ Portfolio Management */}
-        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+        <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40 shadow-sm transition-all duration-200 hover:border-slate-700">
           <button
             type="button"
             onClick={() => setExpandedSection(expandedSection === "portfolio" ? null : "portfolio")}
@@ -1840,8 +1840,8 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Project Inventory Table (Spans 2 columns) */}
                 <div className="lg:col-span-2 space-y-6">
-                  <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-                    <CardHeader className="border-slate-800 bg-slate-950/60 flex flex-row items-center justify-between">
+                  <Card className="bg-slate-900 rounded-2xl border-slate-800 text-slate-100 shadow-sm overflow-hidden">
+                    <CardHeader className="border-b border-slate-800 bg-slate-950/60 flex flex-row items-center justify-between">
                       <div>
                         <CardTitle className="text-white text-sm uppercase tracking-wider font-mono">Case Study Content Inventory</CardTitle>
                         <CardDescription className="text-slate-400">Total indexed records: {projects.length}</CardDescription>
@@ -1970,8 +1970,8 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
 
                 {/* Creator Profile Editor */}
                 <div className="space-y-6">
-                  <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl">
-                    <CardHeader className="border-slate-800 bg-slate-950/60 flex flex-row items-center justify-between">
+                  <Card className="bg-slate-900 rounded-2xl border-slate-800 text-slate-100 shadow-sm">
+                    <CardHeader className="border-b border-slate-800 bg-slate-950/60 flex flex-row items-center justify-between">
                       <div>
                         <CardTitle className="text-white text-sm uppercase tracking-wider font-mono">Creator Profile</CardTitle>
                         <CardDescription className="text-slate-400">Owner metadata & bio</CardDescription>
@@ -2012,7 +2012,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
 
         {/* Accordion 2: ▼ AI Workspace & Config */}
-        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+        <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40 shadow-sm transition-all duration-200 hover:border-slate-700">
           <button
             type="button"
             onClick={() => setExpandedSection(expandedSection === "ai" ? null : "ai")}
@@ -2045,7 +2045,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
 
         {/* Accordion 3: ▼ Data Management */}
-        <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+        <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40 shadow-sm transition-all duration-200 hover:border-slate-700">
           <button
             type="button"
             onClick={() => setExpandedSection(expandedSection === "data" ? null : "data")}
@@ -2061,8 +2061,8 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
 
           {expandedSection === "data" && (
             <div className="p-4 border-t border-slate-800/80 space-y-6 animate-fade-in">
-              <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-                <CardHeader className="border-slate-800 bg-slate-950/60 flex items-center justify-between">
+              <Card className="bg-slate-900 rounded-2xl border-slate-800 text-slate-100 shadow-sm overflow-hidden">
+                <CardHeader className="border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
                   <CardTitle className="text-white text-xs font-mono uppercase">Portfolio CMS Import & Export Engine</CardTitle>
                 </CardHeader>
                 <CardContent className="p-5 space-y-4">
@@ -2101,7 +2101,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
 
         {/* Accordion 4: ▼ System / Developer Mode (Collapsed by default!) */}
-        <div className="border border-slate-800/80 rounded-xl overflow-hidden bg-slate-950/60">
+        <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-950/60 shadow-sm transition-all duration-200 hover:border-slate-700">
           <button
             type="button"
             onClick={() => setExpandedSection(expandedSection === "system" ? null : "system")}
@@ -2120,8 +2120,8 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
           {expandedSection === "system" && (
             <div className="p-4 border-t border-slate-800/80 space-y-6 animate-fade-in">
               {/* 🧪 SYSTEM DIAGNOSTICS & STABILIZATION TEST CENTER */}
-              <Card className="bg-slate-900 border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-                <CardHeader className="border-slate-800 bg-slate-950/40 p-4 flex flex-row items-center justify-between">
+              <Card className="bg-slate-900 rounded-2xl border-slate-800 text-slate-100 shadow-sm overflow-hidden">
+                <CardHeader className="border-b border-slate-800 bg-slate-950/40 p-4 flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-indigo-400" />
                     <CardTitle className="text-white text-xs font-mono font-bold uppercase">System Diagnostic Suite</CardTitle>
