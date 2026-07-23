@@ -414,7 +414,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
         </div>
 
         {/* Right Metadata Panel */}
-        <div className="bg-slate-50 border border-slate-200/80 p-5 rounded-xl space-y-4 shadow-2xs h-fit relative overflow-hidden">
+        <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm h-fit relative overflow-hidden">
           <div className="absolute top-0 right-0 left-0 h-[3px] bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500"></div>
           
           <div className="flex justify-between items-center text-[8px] font-mono text-slate-400 select-none tracking-widest leading-none pb-1">
@@ -455,7 +455,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
             <span className="text-slate-400 block font-mono text-[9px] uppercase tracking-wider mb-1.5">Tech Tags</span>
             <div className="flex flex-wrap gap-1">
               {project.tags.map((tag) => (
-                <span key={tag} className="px-2 py-0.5 font-mono text-[9px] font-semibold bg-white text-indigo-700 rounded border border-indigo-100 shadow-2xs">
+                <span key={tag} className="px-2 py-0.5 font-mono text-[9px] font-semibold bg-white text-indigo-700 rounded-lg border border-indigo-100 shadow-sm">
                   {tag}
                 </span>
               ))}
@@ -464,8 +464,8 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
         </div>
       </div>
 
-      {/* ─── PRIORITY 6: EXECUTIVE OVERVIEW BRIEFING CARD ─── */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-2xl p-6 border border-slate-800 shadow-2xl space-y-6">
+      {/* ─── 1. EXECUTIVE OVERVIEW BRIEFING CARD ─── */}
+      <section className="bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-white rounded-2xl p-6 border border-slate-800 shadow-sm space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
@@ -482,7 +482,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+          <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 space-y-1.5 shadow-sm">
             <span className="text-[9px] font-mono uppercase text-indigo-400 font-bold block flex items-center gap-1">
               <Target className="w-3 h-3" /> Project Goal
             </span>
@@ -491,7 +491,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
             </p>
           </div>
 
-          <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+          <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 space-y-1.5 shadow-sm">
             <span className="text-[9px] font-mono uppercase text-emerald-400 font-bold block flex items-center gap-1">
               <Award className="w-3 h-3" /> Strategic Business Value
             </span>
@@ -500,7 +500,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
             </p>
           </div>
 
-          <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+          <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 space-y-1.5 shadow-sm">
             <span className="text-[9px] font-mono uppercase text-amber-400 font-bold block flex items-center gap-1">
               <Database className="w-3 h-3" /> Dataset Scale
             </span>
@@ -509,13 +509,13 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
             </p>
           </div>
 
-          <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+          <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 space-y-1.5 shadow-sm">
             <span className="text-[9px] font-mono uppercase text-purple-400 font-bold block flex items-center gap-1">
               <Wrench className="w-3 h-3" /> Primary Stack
             </span>
             <div className="flex flex-wrap gap-1 pt-0.5">
               {project.tags.slice(0, 4).map(t => (
-                <span key={t} className="text-[9px] font-mono bg-slate-950 border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded">
+                <span key={t} className="text-[9px] font-mono bg-slate-950 border border-slate-800 text-slate-300 px-1.5 py-0.5 rounded-md">
                   {t}
                 </span>
               ))}
@@ -524,7 +524,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
         </div>
 
         {/* Key Recommendation Box */}
-        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-xl p-4 flex items-start gap-3">
+        <div className="bg-indigo-950/40 border border-indigo-800/60 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
           <Lightbulb className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <span className="text-[9px] font-mono font-bold text-amber-400 uppercase tracking-wider block">Primary Strategic Recommendation</span>
@@ -535,9 +535,17 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
         </div>
       </section>
 
-      {/* ─── PRIORITY 3: HERO DASHBOARD SCREENSHOT ─── */}
+      {/* ─── 2. HERO DASHBOARD SCREENSHOT ─── */}
       {topImage && (
-        <section className="space-y-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+        <section className="space-y-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-sm overflow-hidden hover:scale-[1.01] transition-transform duration-300 cursor-zoom-in group"
+          onClick={() => {
+            const w = window.open();
+            if (w) {
+              w.document.write(`<img src="${topImage}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+              w.document.title = `${project.title} - Executive Dashboard`;
+            }
+          }}
+        >
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2 text-white text-xs font-mono font-bold uppercase tracking-wider">
               <BarChart3 className="w-4 h-4 text-emerald-400" />
@@ -547,173 +555,36 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
               Verified Hero Visual
             </span>
           </div>
-          <div 
-            className="group relative aspect-[16/9] sm:aspect-[21/9] rounded-xl overflow-hidden border border-slate-800 bg-slate-900 cursor-zoom-in"
-            onClick={() => {
-              const w = window.open();
-              if (w) {
-                w.document.write(`<img src="${topImage}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
-                w.document.title = `${project.title} - Executive Dashboard`;
-              }
-            }}
-          >
+          <div className="relative aspect-[16/9] sm:aspect-[21/9] rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
             <img 
               src={topImage} 
               alt={`${project.title} Dashboard`} 
-              className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+              className="object-cover w-full h-full"
               referrerPolicy="no-referrer"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end p-4">
-              <span className="text-xs font-mono text-white bg-slate-900/90 border border-slate-700 px-3 py-1 rounded-lg backdrop-blur">
-                Click to inspect full resolution dashboard screenshot
+            <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+              <span className="text-[10px] font-mono text-white bg-slate-900/90 border border-slate-700 px-3 py-1.5 rounded-lg shadow-xl font-bold tracking-widest uppercase">
+                Enlarge Dashboard
               </span>
             </div>
           </div>
         </section>
       )}
 
-      {/* ─── PRIORITY 4: NORMALIZED KPI DASHBOARD RIBBON ─── */}
-      <section className="bg-slate-950 text-white rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
-        <div className="px-5 py-4 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <span className="font-display font-semibold text-xs tracking-wider uppercase text-slate-200">
-              Verified Quantifiable Performance Metrics
-            </span>
-          </div>
-          <span className="font-mono text-[9px] uppercase tracking-wider text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-900/40 px-2 py-0.5 rounded">
-            Audited KPIs
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-800/80">
-          {project.metrics.map((metric, idx) => {
-            const normalizedLabel = normalizeKpiLabel(metric.label);
-            const sanitizedValue = cleanKpiValue(metric.value, normalizedLabel);
-            const gaugePcts = [82, 94, 88];
-            const pct = gaugePcts[idx % 3];
-
-            return (
-              <div key={metric.id || idx} className="p-6 space-y-3 hover:bg-slate-900/40 transition-colors">
-                <div className="space-y-1">
-                  <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">
-                    {normalizedLabel}
-                  </span>
-                  <span className="text-3xl font-display font-bold text-white block tracking-tight">
-                    {sanitizedValue}
-                  </span>
-                </div>
-                
-                <div className="space-y-1">
-                  <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700/30">
-                    <div 
-                      className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
-                      style={{ width: `${pct}%` }} 
-                    />
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono text-slate-500">
-                    <span>AUDITED METRIC</span>
-                    <span className="text-emerald-400 font-bold">{pct}% CONFIDENCE</span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                  {metric.description || "Extracted and verified across source dataset files."}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ─── PRIORITY 2 & 5: RECRUITER-FIRST SCANNABLE CASE STUDY CORE ─── */}
+      {/* ─── MAIN GRID ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-2">
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Section 1: Objective & Business Problem */}
-          <div className="space-y-4">
-            <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-              <Target className="w-5 h-5 text-indigo-600" />
-              1. Business Objective & Problem Statement
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white border border-slate-200/80 p-5 rounded-xl space-y-2.5 shadow-2xs">
-                <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" /> Primary Strategic Goal
-                </span>
-                {formatParagraphsToBullets(project.objective)}
-              </div>
-
-              {project.businessProblem && (
-                <div className="bg-rose-50/30 border border-rose-100 p-5 rounded-xl space-y-2.5 shadow-2xs">
-                  <span className="text-[10px] font-mono font-bold text-rose-600 uppercase tracking-wider block flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> The Business Problem
-                  </span>
-                  {formatParagraphsToBullets(project.businessProblem)}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section 2: Data Corpus & Cleaning Protocols */}
-          {(project.datasetDesc || project.dataCleaning) && (
-            <div className="space-y-4 bg-slate-50/80 border border-slate-200/80 p-6 rounded-2xl space-y-4 shadow-2xs">
-              <h3 className="font-display font-bold text-base text-slate-900 flex items-center gap-2 border-b border-slate-200/60 pb-3">
-                <Layers className="w-5 h-5 text-slate-700" />
-                Data Corpus & Information Architecture
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {project.datasetDesc && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Source Dataset Architecture</span>
-                    {formatParagraphsToBullets(project.datasetDesc)}
-                  </div>
-                )}
-
-                {project.dataCleaning && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">Data Cleaning & Transformation</span>
-                    {formatParagraphsToBullets(project.dataCleaning)}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Section 3: Technical Methodology */}
-          <div className="space-y-4">
-            <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-              <Wrench className="w-5 h-5 text-indigo-600" />
-              2. Technical Methodology & Execution Workflow
-            </h3>
-            
-            <div className="bg-white border border-slate-200/80 p-5 rounded-xl space-y-4 shadow-2xs">
-              <div className="space-y-2">
-                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Execution Strategy</span>
-                {formatParagraphsToBullets(project.methodology)}
-              </div>
-
-              {project.analysisText && (
-                <div className="space-y-2 pt-4 border-t border-slate-100">
-                  <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">Statistical Modeling & Analytical Querying</span>
-                  {formatParagraphsToBullets(project.analysisText)}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section 4: Findings & Recommendations */}
+          {/* 3. INSIGHTS (Findings & Recommendations) */}
           {(project.findings || project.recommendations) && (
             <div className="space-y-4">
-              <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+              <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
                 <Award className="w-5 h-5 text-emerald-600" />
-                3. Analytical Discoveries & Strategic Action Plan
+                Strategic Insights & Action Plan
               </h3>
               
               {project.findings && (
-                <div className="p-5 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-2 shadow-2xs">
+                <div className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-2 shadow-sm">
                   <span className="text-[10px] font-mono font-bold text-emerald-800 uppercase tracking-wider block flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Key Discoveries
                   </span>
@@ -722,7 +593,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
               )}
 
               {project.recommendations && (
-                <div className="p-5 bg-white border border-slate-200/80 rounded-xl space-y-2 shadow-2xs">
+                <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-2 shadow-sm">
                   <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block flex items-center gap-1.5">
                     <Lightbulb className="w-3.5 h-3.5 text-amber-500" /> Executive Action Items
                   </span>
@@ -732,48 +603,151 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
             </div>
           )}
 
-          {/* Section 5: Engineering Retrospective */}
-          {(project.challengesText || project.lessonsLearned) && (
+          {/* 4. METHODOLOGY (Objective + Data + Execution) */}
+          <div className="space-y-4">
+            <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
+              <Wrench className="w-5 h-5 text-indigo-600" />
+              Methodology & Execution
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2.5 shadow-sm">
+                <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-indigo-600" /> Primary Objective
+                </span>
+                {formatParagraphsToBullets(project.objective)}
+              </div>
+
+              {project.businessProblem && (
+                <div className="bg-rose-50/30 border border-rose-200 p-5 rounded-2xl space-y-2.5 shadow-sm">
+                  <span className="text-[10px] font-mono font-bold text-rose-600 uppercase tracking-wider block flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> The Problem
+                  </span>
+                  {formatParagraphsToBullets(project.businessProblem)}
+                </div>
+              )}
+            </div>
+
+            {(project.datasetDesc || project.dataCleaning) && (
+              <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm mt-4">
+                <h4 className="font-display font-bold text-base text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-2">
+                  <Layers className="w-4 h-4 text-slate-700" /> Data Corpus
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {project.datasetDesc && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Source Architecture</span>
+                      {formatParagraphsToBullets(project.datasetDesc)}
+                    </div>
+                  )}
+                  {project.dataCleaning && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">Transformation</span>
+                      {formatParagraphsToBullets(project.dataCleaning)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm mt-4">
+              <div className="space-y-2">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Execution Strategy</span>
+                {formatParagraphsToBullets(project.methodology)}
+              </div>
+              {project.analysisText && (
+                <div className="space-y-2 pt-4 border-t border-slate-100">
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">Analytical Modeling</span>
+                  {formatParagraphsToBullets(project.analysisText)}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. KPIs */}
+          <div className="space-y-4">
+            <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
+              Verified Performance Metrics
+            </h3>
+            
+            <div className="bg-slate-950 text-white rounded-2xl overflow-hidden border border-slate-800 shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-800">
+                {project.metrics.map((metric, idx) => {
+                  const normalizedLabel = normalizeKpiLabel(metric.label);
+                  const sanitizedValue = cleanKpiValue(metric.value, normalizedLabel);
+                  const gaugePcts = [82, 94, 88];
+                  const pct = gaugePcts[idx % 3];
+
+                  return (
+                    <div key={metric.id || idx} className="p-5 space-y-3 hover:bg-slate-900 transition-colors">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">
+                          {normalizedLabel}
+                        </span>
+                        <span className="text-3xl font-display font-bold text-white block tracking-tight">
+                          {sanitizedValue}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700/30">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[8px] font-mono text-slate-500">
+                          <span>AUDITED</span>
+                          <span className="text-emerald-400 font-bold">{pct}% CONFIDENCE</span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                        {metric.description || "Extracted and verified across source dataset files."}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 6. ENGINEERING RETROSPECTIVE */}
+          {(project.challengesText || project.lessonsLearned || project.storyBlocks.length > 0) && (
             <div className="space-y-4">
-              <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
+              <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-200 pb-2 flex items-center gap-2">
                 <Cpu className="w-5 h-5 text-slate-700" />
-                4. Engineering Retrospective
+                Engineering Retrospective
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {project.challengesText && (
-                  <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 shadow-2xs">
+                  <div className="p-5 bg-amber-50/30 border border-amber-200 rounded-2xl space-y-2 shadow-sm">
                     <span className="text-[10px] font-mono font-bold text-amber-700 uppercase tracking-wider block">Technical Obstacles</span>
                     {formatParagraphsToBullets(project.challengesText)}
                   </div>
                 )}
-
                 {project.lessonsLearned && (
-                  <div className="p-5 bg-white border border-slate-200/80 rounded-xl space-y-2 shadow-2xs">
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-2 shadow-sm">
                     <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Lessons Learned</span>
                     {formatParagraphsToBullets(project.lessonsLearned)}
                   </div>
                 )}
               </div>
+
+              {project.storyBlocks.length > 0 && (
+                <div className="space-y-6 pt-4">
+                  {project.storyBlocks.map(renderStoryBlock)}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Dynamic Story Walkthrough Blocks */}
-          {project.storyBlocks.length > 0 && (
-            <div className="space-y-6 pt-4">
-              <h3 className="font-display font-bold text-xl text-slate-900 border-b border-slate-100 pb-2">
-                Technical Code & Narrative Walkthrough
-              </h3>
-              {project.storyBlocks.map(renderStoryBlock)}
-            </div>
-          )}
         </div>
 
-        {/* Right Sticky Sidebar: Recruiter Checklist & Media Gallery */}
+        {/* Right Sticky Sidebar */}
         <div className="space-y-6">
           <div className="sticky top-24 space-y-6">
-            <div className="bg-white border border-slate-200/80 p-5 rounded-xl space-y-4 shadow-2xs">
-              <h4 className="font-display font-bold text-xs text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
+            <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm">
+              <h4 className="font-display font-bold text-xs text-slate-900 uppercase tracking-widest flex items-center gap-1.5 border-b border-slate-100 pb-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Recruiter Evaluation
               </h4>
               
@@ -792,7 +766,6 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
                 </li>
               </ul>
 
-              {/* ─── PRIORITY 3: PROJECT GALLERY ─── */}
               {project.images && project.images.length > 0 && (
                 <div className="pt-4 border-t border-slate-100 space-y-2.5">
                   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block flex items-center gap-1">
@@ -802,7 +775,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
                     {project.images.map((img, index) => (
                       <div 
                         key={index} 
-                        className="group/img relative aspect-[4/3] rounded-lg border border-slate-200 overflow-hidden bg-slate-50 cursor-zoom-in shadow-2xs"
+                        className="group/img relative aspect-[4/3] rounded-xl border border-slate-200 overflow-hidden bg-slate-50 cursor-zoom-in shadow-sm hover:scale-[1.01] transition-transform duration-300"
                         onClick={() => {
                           const w = window.open();
                           if (w) {
@@ -814,11 +787,11 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
                         <img 
                           src={img} 
                           alt={`Project Asset ${index + 1}`}
-                          className="object-cover w-full h-full group-hover/img:scale-105 transition-transform duration-200"
+                          className="object-cover w-full h-full"
                           referrerPolicy="no-referrer"
                         />
                         <div className="absolute inset-0 bg-slate-950/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="text-[9px] font-mono text-white bg-slate-900/90 px-2 py-0.5 rounded font-bold">Zoom</span>
+                          <span className="text-[9px] font-mono text-white bg-slate-900/90 px-2 py-0.5 rounded font-bold uppercase tracking-widest">Zoom</span>
                         </div>
                       </div>
                     ))}
@@ -831,7 +804,7 @@ export const CaseStudyDetail: React.FC<CaseStudyDetailProps> = ({
                   variant="primary" 
                   size="sm" 
                   onClick={() => onNavigate("home")} 
-                  className="w-full text-xs font-semibold bg-slate-950 hover:bg-slate-800 text-white cursor-pointer"
+                  className="w-full text-xs font-semibold bg-slate-950 hover:bg-slate-800 text-white cursor-pointer shadow-sm rounded-xl"
                 >
                   Return to Portfolio Index
                 </Button>
