@@ -1316,7 +1316,9 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
   };
 
   // Task 8: Run automated internal AI Quality Review audit & refinement loop
-  structured = await reviewAndRefinePortfolio(structured, graph);
+  // DISABLED: In a serverless environment (60s max), running two sequential Gemini generations 
+  // (PUE + Portfolio Gen) already consumes ~40-45s of the budget. Running a 3rd review pass guarantees a timeout.
+  // structured = await reviewAndRefinePortfolio(structured, graph);
 
   // Guarantee clean Business Objective & Tags after AI refinement
   structured.businessObjective.value = sanitizeBusinessObjective(

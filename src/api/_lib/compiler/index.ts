@@ -606,9 +606,8 @@ export async function compileProjectPackage(
       projectArchetype,
       projectUnderstanding
     ),
-    40000 // Raised from 15000ms: compilePortfolioWithGemini has 15,000ms inner timeouts per model (×3 models)
-          // plus a 15,000ms review pass — the outer 15,000ms always fired before any model could respond.
-          // 40,000ms = ~15s primary Gemini call + ~15s review pass + 10s margin.
+    25000 // Lowered from 40000ms: Stages 1-7 take ~29s. Vercel maxDuration is 60s. 
+          // Stage 8 only has ~27-30s maximum possible time left anyway.
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);

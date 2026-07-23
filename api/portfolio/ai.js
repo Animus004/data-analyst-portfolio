@@ -1522,99 +1522,6 @@ function sanitizeBusinessObjective(rawObjective, domain = "Analytics", industry 
   const kpiMention = topKPI ? ` tracking key performance indicators such as ${topKPI}` : "";
   return `This project evaluates operational telemetry and performance trends within the ${domain} domain in ${industry}${kpiMention}. The primary objective is to analyze metric variances, isolate operational bottlenecks, and formulate strategic business recommendations for executive decision-makers.`;
 }
-async function reviewAndRefinePortfolio(structured, graph) {
-  const ai = getAiClient();
-  if (!ai) return structured;
-  const reviewPrompt = `
-You are a Senior Principal Data Analyst & Hiring Manager at a top-tier management consulting firm (McKinsey / BCG / Deloitte).
-Your job is to audit and elevate the following Data Analyst portfolio case study payload.
-
-### CANDIDATE CASE STUDY PAYLOAD:
-${JSON.stringify({
-    title: structured.title.value,
-    subtitle: structured.subtitle.value,
-    executiveSummary: structured.executiveSummary.value,
-    businessContext: structured.businessContext.value,
-    businessProblem: structured.businessProblem.value,
-    businessObjective: structured.businessObjective.value,
-    businessImpact: structured.businessImpact.value,
-    findings: structured.findings.value,
-    recommendations: structured.recommendations.value,
-    resumeBullets: structured.resumeBullets.value,
-    linkedInSummary: structured.linkedInSummary.value,
-    starStory: structured.starStory.value
-  }, null, 2)}
-
-### MANDATORY HIRING MANAGER EVALUATION & REFINEMENT CRITERIA:
-1. **ELIMINATE GENERIC AI PHRASING**: Completely remove phrases like "This project aims to...", "The dashboard shows...", "In conclusion". Use active executive consulting prose ("This analysis evaluates...", "Empirical evidence reveals...", "Strategic diagnostic indicates...").
-2. **BUSINESS THINKING & WHY IT MATTERS**: Ensure every finding explicitly explains *Why it matters* and *What strategic business decision it supports*.
-3. **RESUME & INTERVIEW VALUE**: Bullet points must use high-impact action verbs ("Engineered", "Optimized", "Synthesized", "Quantified"), metrics, and clear analytical value.
-
-Return refined executive JSON matching the specified schema properties.
-`;
-  try {
-    const response = await executeWithTimeout(
-      "Gemini Portfolio Compiler",
-      () => ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: reviewPrompt,
-        config: {
-          systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              subtitle: { type: Type.STRING },
-              executiveSummary: { type: Type.STRING },
-              businessContext: { type: Type.STRING },
-              businessProblem: { type: Type.STRING },
-              businessObjective: { type: Type.STRING },
-              businessImpact: { type: Type.STRING },
-              findings: { type: Type.STRING },
-              recommendations: { type: Type.STRING },
-              resumeBullets: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              linkedInSummary: { type: Type.STRING },
-              starStory: {
-                type: Type.OBJECT,
-                properties: {
-                  situation: { type: Type.STRING },
-                  task: { type: Type.STRING },
-                  action: { type: Type.STRING },
-                  result: { type: Type.STRING }
-                }
-              }
-            }
-          }
-        }
-      }),
-      2e4
-      // Raised from 15000ms: review pass uses gemini-3.5-flash which also runs slow on larger prompts.
-    );
-    const refined = JSON.parse(response.text.trim());
-    if (refined.title) structured.title.value = refined.title;
-    if (refined.subtitle) structured.subtitle.value = refined.subtitle;
-    if (refined.executiveSummary) structured.executiveSummary.value = refined.executiveSummary;
-    if (refined.businessContext) structured.businessContext.value = refined.businessContext;
-    if (refined.businessProblem) structured.businessProblem.value = refined.businessProblem;
-    if (refined.businessObjective) structured.businessObjective.value = refined.businessObjective;
-    if (refined.businessImpact) structured.businessImpact.value = refined.businessImpact;
-    if (refined.findings) structured.findings.value = refined.findings;
-    if (refined.recommendations) structured.recommendations.value = refined.recommendations;
-    if (refined.resumeBullets && Array.isArray(refined.resumeBullets) && refined.resumeBullets.length > 0) {
-      structured.resumeBullets.value = refined.resumeBullets;
-    }
-    if (refined.linkedInSummary) structured.linkedInSummary.value = refined.linkedInSummary;
-    if (refined.starStory && refined.starStory.situation) structured.starStory.value = refined.starStory;
-    return structured;
-  } catch (err) {
-    console.warn("[portfolioCompiler] Internal AI quality review pass bypassed:", err.message);
-    return structured;
-  }
-}
 function sanitizeAndPrioritizeEvidenceGraph(graph) {
   const seenStr = /* @__PURE__ */ new Set();
   const dedupeStrings = (items) => {
@@ -2373,7 +2280,6 @@ ${parsed.executiveSummary?.value || ""}`,
     ),
     categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
   };
-  structured = await reviewAndRefinePortfolio(structured, graph);
   structured.businessObjective.value = sanitizeBusinessObjective(
     structured.businessObjective.value,
     graph.projectDomain || "Analytics & Business Intelligence",
@@ -3757,10 +3663,9 @@ ${err.stack}
       projectArchetype,
       projectUnderstanding
     ),
-    4e4
-    // Raised from 15000ms: compilePortfolioWithGemini has 15,000ms inner timeouts per model (×3 models)
-    // plus a 15,000ms review pass — the outer 15,000ms always fired before any model could respond.
-    // 40,000ms = ~15s primary Gemini call + ~15s review pass + 10s margin.
+    25e3
+    // Lowered from 40000ms: Stages 1-7 take ~29s. Vercel maxDuration is 60s. 
+    // Stage 8 only has ~27-30s maximum possible time left anyway.
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);
