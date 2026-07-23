@@ -1591,7 +1591,8 @@ Return refined executive JSON matching the specified schema properties.
           }
         }
       }),
-      15e3
+      2e4
+      // Raised from 15000ms: review pass uses gemini-3.5-flash which also runs slow on larger prompts.
     );
     const refined = JSON.parse(response.text.trim());
     if (refined.title) structured.title.value = refined.title;
@@ -1877,7 +1878,7 @@ ${JSON.stringify(conflicts, null, 2)}
 
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
   let lastError = null;
   let response = null;
   let usedModel = candidateModels[0];
@@ -2167,7 +2168,8 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
             }
           }
         }),
-        15e3
+        25e3
+        // Raised from 15000ms: portfolio compiler prompt is large; gemini-2.5-flash needs up to 20-25s.
       );
       if (response && response.text) {
         break;
@@ -4402,7 +4404,7 @@ async function handler(req, res) {
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
         () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
-        5e4
+        56e3
       );
       compileStep.end(JSON.stringify(output).length);
       rawFilesToCompile.forEach((f) => {

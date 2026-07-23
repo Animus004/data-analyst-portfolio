@@ -220,15 +220,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       prepStep.end(`${rawFilesToCompile.length} file(s) resolved`);
 
-      // Execute package compiler with a 50-second hard deadline (raised from 25s).
-      // Live profiler evidence: Excel parser (5,959ms) + PUE (21,692ms) = 27,651ms before Gemini compiler
-      // even starts — the old 25,000ms ceiling was structurally impossible to meet. 50,000ms fits within
-      // Vercel's 60s maxDuration with ~10s headroom for Supabase download, request overhead, and serialization.
+      // Execute package compiler with a 56-second hard deadline.
+      // Budget: stages 1-7 take ~29s measured + Stage 8 primary Gemini call (25s inner) = 54s hard path.
+      // 56s gives 2s margin within Vercel's 60s maxDuration. The Stage 8 review pass (20s inner) is
+      // soft-optional — its catch block returns the already-generated structured output on timeout.
       const compileStep = logger.start("Package Compiler Pipeline Execution");
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
         () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
-        50000
+        56000
       );
       compileStep.end(JSON.stringify(output).length);
 

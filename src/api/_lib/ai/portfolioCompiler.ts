@@ -449,7 +449,7 @@ Return refined executive JSON matching the specified schema properties.
           }
         }
       }),
-      15000
+      20000 // Raised from 15000ms: review pass uses gemini-3.5-flash which also runs slow on larger prompts.
     );
 
     const refined = JSON.parse(response.text.trim());
@@ -813,7 +813,8 @@ ${JSON.stringify(conflicts, null, 2)}
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
 
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  // gemini-1.5-flash removed — returns HTTP 404 (NOT_FOUND) on v1beta API as of 2026-07.
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
   let lastError: any = null;
   let response: any = null;
   let usedModel = candidateModels[0];
@@ -1105,7 +1106,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
             }
           }
         }),
-        15000
+        25000 // Raised from 15000ms: portfolio compiler prompt is large; gemini-2.5-flash needs up to 20-25s.
       );
       if (response && response.text) {
         break;
