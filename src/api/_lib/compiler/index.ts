@@ -606,8 +606,7 @@ export async function compileProjectPackage(
       projectArchetype,
       projectUnderstanding
     ),
-    25000 // Lowered from 40000ms: Stages 1-7 take ~29s. Vercel maxDuration is 60s. 
-          // Stage 8 only has ~27-30s maximum possible time left anyway.
+    31000 // Raised from 25000ms: maximizing remaining time. 29s (Stages 1-7) + 31s (Stage 8) = 60s.
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);

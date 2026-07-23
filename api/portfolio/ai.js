@@ -2075,8 +2075,8 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
             }
           }
         }),
-        25e3
-        // Raised from 15000ms: portfolio compiler prompt is large; gemini-2.5-flash needs up to 20-25s.
+        29e3
+        // Raised from 25000ms: squeezing every available millisecond out of the 60s Vercel budget.
       );
       if (response && response.text) {
         break;
@@ -3663,9 +3663,8 @@ ${err.stack}
       projectArchetype,
       projectUnderstanding
     ),
-    25e3
-    // Lowered from 40000ms: Stages 1-7 take ~29s. Vercel maxDuration is 60s. 
-    // Stage 8 only has ~27-30s maximum possible time left anyway.
+    31e3
+    // Raised from 25000ms: maximizing remaining time. 29s (Stages 1-7) + 31s (Stage 8) = 60s.
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);
@@ -4309,7 +4308,7 @@ async function handler(req, res) {
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
         () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
-        56e3
+        59e3
       );
       compileStep.end(JSON.stringify(output).length);
       rawFilesToCompile.forEach((f) => {

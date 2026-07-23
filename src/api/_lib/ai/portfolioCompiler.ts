@@ -1106,7 +1106,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
             }
           }
         }),
-        25000 // Raised from 15000ms: portfolio compiler prompt is large; gemini-2.5-flash needs up to 20-25s.
+        29000 // Raised from 25000ms: squeezing every available millisecond out of the 60s Vercel budget.
       );
       if (response && response.text) {
         break;
