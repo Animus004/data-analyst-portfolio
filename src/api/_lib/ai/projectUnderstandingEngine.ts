@@ -435,19 +435,44 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
     console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
     try {
       console.log(`[PUE-TIMER] synthesizeViaGemini: calling executeWithTimeout(12000ms) for model "${model}" | T+${Date.now() - pueViaGeminiStart}ms`);
+      const geminiTimerLabel = `[GEMINI LATENCY] Model: ${model}`;
+      console.time(geminiTimerLabel);
       const response = await executeWithTimeout(
         `Gemini PUE Model[${model}]`,
-        () => ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: PUE_RESPONSE_SCHEMA
-          }
-        }),
+        async () => {
+          const promptTokenEstimate = Math.ceil(prompt.length / 4);
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`[GEMINI API] BEFORE ai.models.generateContent()`);
+          console.log(`[GEMINI API] Model:                ${model}`);
+          console.log(`[GEMINI API] Prompt Char Length:   ${prompt.length}`);
+          console.log(`[GEMINI API] Prompt Token Estimate: ~${promptTokenEstimate} tokens`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+          const apiResult = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema: PUE_RESPONSE_SCHEMA
+            }
+          });
+          const promptTokens    = apiResult.usageMetadata?.promptTokenCount      ?? "N/A";
+          const responseTokens  = apiResult.usageMetadata?.candidatesTokenCount  ?? "N/A";
+          const totalTokens     = apiResult.usageMetadata?.totalTokenCount        ?? "N/A";
+          const finishReason    = apiResult.candidates?.[0]?.finishReason         ?? "N/A";
+          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`[GEMINI API] AFTER ai.models.generateContent()`);
+          console.log(`[GEMINI API] Model:              ${model}`);
+          console.log(`[GEMINI API] Prompt Tokens:      ${promptTokens}`);
+          console.log(`[GEMINI API] Response Tokens:    ${responseTokens}`);
+          console.log(`[GEMINI API] Total Tokens:       ${totalTokens}`);
+          console.log(`[GEMINI API] Finish Reason:      ${finishReason}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+          return apiResult;
+        },
         12000
       );
+      console.timeEnd(geminiTimerLabel);
       console.log(`[PUE-TIMER] synthesizeViaGemini: executeWithTimeout returned for model "${model}" | model elapsed: ${Date.now() - modelStart}ms | T+${Date.now() - pueViaGeminiStart}ms`);
 
       console.log(`[PUE-TIMER] synthesizeViaGemini: calling JSON.parse on response | T+${Date.now() - pueViaGeminiStart}ms`);
