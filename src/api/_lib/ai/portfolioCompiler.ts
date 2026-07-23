@@ -814,7 +814,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
 `;
 
   // gemini-1.5-flash removed — returns HTTP 404 (NOT_FOUND) on v1beta API as of 2026-07.
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+  const candidateModels = ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"];
   let lastError: any = null;
   let response: any = null;
   let usedModel = candidateModels[0];
