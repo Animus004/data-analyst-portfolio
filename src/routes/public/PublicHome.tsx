@@ -178,7 +178,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
 
           <div className="md:col-span-1">
-            <Card className="border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs p-5 space-y-4 rounded-xl">
+            <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-all duration-200 hover:shadow-md p-6 space-y-4 rounded-2xl">
               <div className="flex items-center justify-between pb-1">
                 <div className="space-y-0.5">
                   <span className="text-[9px] font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">SYSTEM METADATA</span>
@@ -273,7 +273,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search stacks, tags, industries..."
-                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-hidden focus:ring-4 focus:ring-slate-950/5 focus:border-slate-950 hover:border-slate-350 transition-all font-sans shadow-xs"
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-hidden focus:ring-4 focus:ring-slate-950/5 focus:border-slate-950 hover:border-slate-300 transition-all duration-200 font-sans shadow-sm"
               />
             </div>
             
@@ -322,7 +322,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-6 bg-white border border-slate-200/80 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-5 shadow-xs"
+            className="p-6 bg-white border border-slate-200 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-5 shadow-sm transition-all duration-200"
           >
             {/* Tech Stack filter */}
             <div className="space-y-1.5">
@@ -383,8 +383,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             {filteredProjects.map((project) => (
               <motion.div key={project.id} variants={itemVariants}>
                 <Card 
-                  hoverable 
-                  className="group flex flex-col h-full border-slate-200/60 bg-white shadow-xs"
+                  hoverable={false} 
+                  className="group flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200 cursor-pointer overflow-hidden"
                   onClick={() => onNavigate("project", { id: project.id })}
                 >
                   <CardContent className="p-6 flex flex-col justify-between h-full space-y-6">
@@ -412,7 +412,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     </p>
 
                     {/* High-Impact Mini Dashboard Metrics */}
-                    <div className="grid grid-cols-3 gap-3 bg-slate-50/70 p-3.5 rounded-lg border border-slate-100">
+                    <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                       {(project.metrics || []).slice(0, 3).map((metric, mIdx) => {
                         const normLabel = normalizeKpiLabel(safeStr(metric.label));
                         const cleanVal = cleanKpiValue(safeStr(metric.value), normLabel);
@@ -458,7 +458,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             ))}
           </motion.div>
         ) : (
-          <div className="py-20 text-center border border-dashed border-slate-200 rounded-2xl bg-white/50 backdrop-blur-xs shadow-xs max-w-lg mx-auto p-8 space-y-4">
+          <div className="py-20 text-center border border-dashed border-slate-200 rounded-2xl bg-white/50 backdrop-blur-md shadow-sm hover:shadow-md transition-all duration-200 max-w-lg mx-auto p-8 space-y-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
               <Compass className="w-6 h-6 animate-pulse" />
             </div>
