@@ -3113,19 +3113,48 @@ ${digest}
     console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
     try {
       console.log(`[PUE-TIMER] synthesizeViaGemini: calling executeWithTimeout(12000ms) for model "${model}" | T+${Date.now() - pueViaGeminiStart}ms`);
+      const geminiTimerLabel = `[GEMINI LATENCY] Model: ${model}`;
+      console.time(geminiTimerLabel);
       const response = await executeWithTimeout(
         `Gemini PUE Model[${model}]`,
-        () => ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: PUE_RESPONSE_SCHEMA
-          }
-        }),
+        async () => {
+          const promptTokenEstimate = Math.ceil(prompt.length / 4);
+          console.log(`
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`);
+          console.log(`[GEMINI API] BEFORE ai.models.generateContent()`);
+          console.log(`[GEMINI API] Model:                ${model}`);
+          console.log(`[GEMINI API] Prompt Char Length:   ${prompt.length}`);
+          console.log(`[GEMINI API] Prompt Token Estimate: ~${promptTokenEstimate} tokens`);
+          console.log(`\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`);
+          const apiResult = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema: PUE_RESPONSE_SCHEMA
+            }
+          });
+          const promptTokens = apiResult.usageMetadata?.promptTokenCount ?? "N/A";
+          const responseTokens = apiResult.usageMetadata?.candidatesTokenCount ?? "N/A";
+          const totalTokens = apiResult.usageMetadata?.totalTokenCount ?? "N/A";
+          const finishReason = apiResult.candidates?.[0]?.finishReason ?? "N/A";
+          console.log(`
+\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`);
+          console.log(`[GEMINI API] AFTER ai.models.generateContent()`);
+          console.log(`[GEMINI API] Model:              ${model}`);
+          console.log(`[GEMINI API] Prompt Tokens:      ${promptTokens}`);
+          console.log(`[GEMINI API] Response Tokens:    ${responseTokens}`);
+          console.log(`[GEMINI API] Total Tokens:       ${totalTokens}`);
+          console.log(`[GEMINI API] Finish Reason:      ${finishReason}`);
+          console.log(`\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`);
+          return apiResult;
+        },
         12e3
       );
+      console.timeEnd(geminiTimerLabel);
       console.log(`[PUE-TIMER] synthesizeViaGemini: executeWithTimeout returned for model "${model}" | model elapsed: ${Date.now() - modelStart}ms | T+${Date.now() - pueViaGeminiStart}ms`);
       console.log(`[PUE-TIMER] synthesizeViaGemini: calling JSON.parse on response | T+${Date.now() - pueViaGeminiStart}ms`);
       const raw = JSON.parse(response.text.trim());
@@ -3623,7 +3652,9 @@ ${err.stack}
   const projectUnderstanding = await executeWithTimeout(
     "Project Understanding Engine (PUE)",
     () => getCachedOrSynthesizeUnderstanding(evidenceGraph, packageEvidenceHash, existingUnderstanding),
-    15e3
+    28e3
+    // Raised from 15000ms: live profiler measured gemini-3.5-flash takes >12,000ms (inner timer fires),
+    // then gemini-2.5-flash takes 9,674ms → total 21,692ms needed. 28,000ms = 12s+12s+4s safety margin.
   );
   const stage4Duration = Date.now() - stage4Start;
   s4.end(JSON.stringify(projectUnderstanding).length);
@@ -3724,7 +3755,10 @@ ${err.stack}
       projectArchetype,
       projectUnderstanding
     ),
-    15e3
+    4e4
+    // Raised from 15000ms: compilePortfolioWithGemini has 15,000ms inner timeouts per model (×3 models)
+    // plus a 15,000ms review pass — the outer 15,000ms always fired before any model could respond.
+    // 40,000ms = ~15s primary Gemini call + ~15s review pass + 10s margin.
   );
   const stage8Duration = Date.now() - stage8Start;
   s8.end(JSON.stringify(synthesized.structured).length);
@@ -4368,7 +4402,7 @@ async function handler(req, res) {
       const output = await executeWithTimeout(
         "Package Compiler Hard Deadline",
         () => compileProjectPackage(rawFilesToCompile, userAnswers, forceCompile, projectUnderstanding, profiler),
-        25e3
+        5e4
       );
       compileStep.end(JSON.stringify(output).length);
       rawFilesToCompile.forEach((f) => {
