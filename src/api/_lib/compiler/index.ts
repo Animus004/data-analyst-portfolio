@@ -490,7 +490,8 @@ export async function compileProjectPackage(
   const projectUnderstanding = await executeWithTimeout(
     "Project Understanding Engine (PUE)",
     () => getCachedOrSynthesizeUnderstanding(evidenceGraph, packageEvidenceHash, existingUnderstanding),
-    15000
+    28000 // Raised from 15000ms: live profiler measured gemini-3.5-flash takes >12,000ms (inner timer fires),
+          // then gemini-2.5-flash takes 9,674ms → total 21,692ms needed. 28,000ms = 12s+12s+4s safety margin.
   );
   const stage4Duration = Date.now() - stage4Start;
   s4.end(JSON.stringify(projectUnderstanding).length);
