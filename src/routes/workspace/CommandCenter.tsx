@@ -245,6 +245,29 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     setTimeout(() => setProfileSaved(false), 3000);
   };
 
+  const handleResumeFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Resume file exceeds 5MB limit. Please upload a smaller PDF or compress it.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const today = new Date().toISOString().split("T")[0];
+      setEditedProfile((prev) => ({
+        ...prev,
+        resumeUrl: result,
+        resumeFileName: file.name,
+        resumeLastUpdated: today
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Local state for JSON backup import console
   const [backupJson, setBackupJson] = useState("");
   const [backupStatus, setBackupStatus] = useState<{ type: "success" | "error" | null; msg: string }>({
@@ -2230,21 +2253,106 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                               className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
                               placeholder="https://linkedin.com/in/..."
                             />
-                            <div className="grid grid-cols-2 gap-3">
-                              <Input
-                                label="GitHub Profile URL"
-                                value={editedProfile.githubUrl || ""}
-                                onChange={(e) => setEditedProfile({ ...editedProfile, githubUrl: e.target.value })}
-                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
-                                placeholder="https://github.com/..."
-                              />
-                              <Input
-                                label="Resume Download URL"
-                                value={editedProfile.resumeUrl || ""}
-                                onChange={(e) => setEditedProfile({ ...editedProfile, resumeUrl: e.target.value })}
-                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
-                                placeholder="https://drive.google.com/..."
-                              />
+                            <Input
+                              label="GitHub Profile URL"
+                              value={editedProfile.githubUrl || ""}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, githubUrl: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="https://github.com/..."
+                            />
+
+                            {/* Resume / CV Document Management */}
+                            <div className="space-y-2 pt-2 border-t border-slate-800">
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-slate-300 block">
+                                  Resume / CV Document
+                                </label>
+                                {editedProfile.resumeUrl && editedProfile.resumeUrl !== "#" && (
+                                  <span className="text-[10px] font-mono text-emerald-400 font-medium inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    Resume Attached
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* If a resume file is uploaded or configured */}
+                              {editedProfile.resumeUrl && editedProfile.resumeUrl !== "#" ? (
+                                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2.5 overflow-hidden">
+                                    <div className="p-2 bg-indigo-950/60 text-indigo-400 rounded-lg border border-indigo-900/50 shrink-0">
+                                      <FileText className="w-4 h-4" />
+                                    </div>
+                                    <div className="overflow-hidden">
+                                      <span className="text-xs font-semibold text-slate-200 block truncate" title={editedProfile.resumeFileName || "Resume Document"}>
+                                        {editedProfile.resumeFileName || (editedProfile.resumeUrl.startsWith("data:") ? "Uploaded_Resume.pdf" : "External Cloud Resume")}
+                                      </span>
+                                      <span className="text-[10px] font-mono text-slate-500 block">
+                                        {editedProfile.resumeLastUpdated ? `Updated: ${editedProfile.resumeLastUpdated}` : (editedProfile.resumeUrl.startsWith("data:") ? "Stored in Portfolio" : "Direct Link")}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <a
+                                      href={editedProfile.resumeUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                                      title="Preview resume"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditedProfile({ ...editedProfile, resumeUrl: "", resumeFileName: "", resumeLastUpdated: "" })}
+                                      className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                      title="Remove resume"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Upload button / dropzone */
+                                <div className="relative border border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-4 bg-slate-950/60 hover:bg-slate-950 transition-all text-center cursor-pointer group">
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.docx,.doc"
+                                    onChange={handleResumeFileUpload}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  />
+                                  <div className="flex flex-col items-center justify-center gap-1.5">
+                                    <Upload className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" />
+                                    <span className="text-xs font-semibold text-slate-300 group-hover:text-white">
+                                      Upload Latest Resume File (PDF / DOCX)
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                      Click to browse or drag & drop (Auto-saved directly into your portfolio)
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Optional fallback input for Google Drive / cloud URL */}
+                              <div className="pt-1">
+                                <details className="text-[11px] text-slate-500">
+                                  <summary className="cursor-pointer hover:text-slate-400 font-mono">
+                                    Or use external URL (Google Drive, Dropbox, AWS)
+                                  </summary>
+                                  <div className="pt-2">
+                                    <Input
+                                      value={editedProfile.resumeUrl && !editedProfile.resumeUrl.startsWith("data:") ? editedProfile.resumeUrl : ""}
+                                      onChange={(e) => setEditedProfile({ 
+                                        ...editedProfile, 
+                                        resumeUrl: e.target.value,
+                                        resumeFileName: e.target.value ? "External_Resume.pdf" : ""
+                                      })}
+                                      className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                      placeholder="https://drive.google.com/..."
+                                    />
+                                  </div>
+                                </details>
+                              </div>
                             </div>
                           </div>
                         )}

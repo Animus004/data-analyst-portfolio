@@ -99,6 +99,8 @@ export interface CreatorProfile {
   timezone: string;
   email: string;
   resumeUrl?: string;
+  resumeFileName?: string;
+  resumeLastUpdated?: string;
   githubUrl?: string;
   linkedinUrl?: string;
   avatarUrl?: string;

@@ -44,6 +44,7 @@ const DiscussionModal: React.FC<DiscussionModalProps> = ({ isOpen, onClose, prof
   const emailSubject = `Opportunity Discussion - ${profile.name} Data Portfolio`;
   const emailBody = `Hi ${profile.name},\n\nI reviewed your data analyst portfolio and would like to connect regarding an opportunity.\n\nBest regards,`;
   const mailtoUrl = `mailto:${profile.email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(profile.email)}&su=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
   const handleCopyEmail = () => {
     navigator.clipboard.writeText(profile.email);
@@ -127,28 +128,43 @@ const DiscussionModal: React.FC<DiscussionModalProps> = ({ isOpen, onClose, prof
             </Button>
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          {/* Email launch buttons: Web Gmail + Desktop Mail App */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <a
+              href={gmailUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-all duration-200 group"
+            >
+              <Mail className="w-3.5 h-3.5 text-white" />
+              <span>Compose in Gmail (Web)</span>
+              <ExternalLink className="w-3 h-3 text-indigo-200 group-hover:text-white" />
+            </a>
             <a
               href={mailtoUrl}
-              className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all duration-200"
+              className="inline-flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all duration-200"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>Launch Mail Client</span>
+              <Send className="w-3.5 h-3.5 text-slate-300" />
+              <span>Desktop Mail App</span>
             </a>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+            <span className="text-[10px] font-mono text-slate-400">Quick action:</span>
             <Button
               variant="outline"
               size="sm"
               onClick={handleCopyTemplate}
-              className="text-xs gap-1.5 h-[34px] font-mono shrink-0 cursor-pointer"
+              className="text-xs gap-1.5 h-7 font-mono shrink-0 cursor-pointer"
               title="Copy message draft"
             >
               {copiedTemplate ? (
                 <>
                   <Check className="w-3 h-3 text-emerald-600" />
-                  <span className="text-emerald-600 text-[11px]">Draft Copied</span>
+                  <span className="text-emerald-600 text-[11px]">Draft Copied to Clipboard</span>
                 </>
               ) : (
-                <span className="text-[11px]">Copy Draft</span>
+                <span className="text-[11px]">Copy Pre-filled Inquiry Draft</span>
               )}
             </Button>
           </div>
@@ -190,19 +206,36 @@ const DiscussionModal: React.FC<DiscussionModalProps> = ({ isOpen, onClose, prof
               </a>
             )}
 
-            {profile.resumeUrl && (
+            {profile.resumeUrl && profile.resumeUrl !== "#" ? (
               <a
                 href={profile.resumeUrl}
+                download={profile.resumeFileName || `${profile.name.replace(/\s+/g, '_')}_Resume.pdf`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/40 text-xs font-medium text-slate-700 hover:text-emerald-900 transition-all duration-200 group sm:col-span-2"
+                className="flex items-center justify-between p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 text-xs font-medium text-emerald-900 transition-all duration-200 group sm:col-span-2"
               >
                 <div className="flex items-center gap-2">
                   <FileDown className="w-4 h-4 text-emerald-600" />
-                  <span>Download Complete Resume / CV</span>
+                  <span>
+                    Download Resume {profile.resumeFileName ? `(${profile.resumeFileName})` : "PDF"}
+                  </span>
                 </div>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600" />
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
               </a>
+            ) : (
+              <div className="flex items-center justify-between p-3 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400 sm:col-span-2">
+                <div className="flex items-center gap-2">
+                  <FileDown className="w-4 h-4 text-slate-400" />
+                  <span>Resume available upon request</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  className="text-[11px] text-indigo-600 hover:underline cursor-pointer font-medium"
+                >
+                  Request via Email
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -329,22 +362,43 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             {/* Socials & Networking */}
             <div>
-              <h4 className="font-display font-semibold text-xs text-slate-900 uppercase tracking-wider mb-3">Networking Connections</h4>
+              <h4 className="font-display font-semibold text-xs text-slate-900 uppercase tracking-wider mb-3">Networking & Credentials</h4>
               <div className="flex flex-wrap gap-2">
                 {profile.githubUrl && (
-                  <a href={profile.githubUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200">
+                  <a href={profile.githubUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-2xs hover:scale-[1.02] transition-all duration-200">
                     <Github className="w-3.5 h-3.5" /> GitHub
                   </a>
                 )}
                 {profile.linkedinUrl && (
-                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200">
+                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-2xs hover:scale-[1.02] transition-all duration-200">
                     <Linkedin className="w-3.5 h-3.5" /> LinkedIn
                   </a>
+                )}
+                {profile.resumeUrl && profile.resumeUrl !== "#" ? (
+                  <a 
+                    href={profile.resumeUrl} 
+                    download={profile.resumeFileName || `${profile.name.replace(/\s+/g, '_')}_Resume.pdf`}
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-xs text-emerald-800 hover:bg-emerald-100 hover:shadow-2xs hover:scale-[1.02] transition-all duration-200 font-medium"
+                    title={profile.resumeFileName ? `Download ${profile.resumeFileName}` : "Download Technical Resume"}
+                  >
+                    <FileDown className="w-3.5 h-3.5 text-emerald-600" /> Resume / CV
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscussionModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-2xs hover:scale-[1.02] transition-all duration-200 cursor-pointer"
+                    title="Request Resume"
+                  >
+                    <FileDown className="w-3.5 h-3.5 text-slate-400" /> Resume / CV
+                  </button>
                 )}
                 <button 
                   type="button"
                   onClick={() => setShowDiscussionModal(true)} 
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-sm hover:scale-[1.02] transition-all duration-200 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:shadow-2xs hover:scale-[1.02] transition-all duration-200 cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5 text-indigo-600" /> Email Direct
                 </button>
