@@ -16,9 +16,15 @@ import { executeWithTimeout } from "../utils/security";
 
 let aiClient: any = null;
 
+function sanitizeApiKey(raw?: string): string {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
+
 function getAiClient(): any {
   if (aiClient) return aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey(rawKey);
   if (!apiKey) {
     return null;
   }
@@ -26,7 +32,8 @@ function getAiClient(): any {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build"
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
       }
     }
   });

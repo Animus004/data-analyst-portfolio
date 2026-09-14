@@ -2,9 +2,14 @@
 // src/api/_lib/ai/index.ts
 import { GoogleGenAI, Type } from "@google/genai";
 var aiClient = null;
+function sanitizeApiKey(raw) {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
 function getAiClient() {
   if (aiClient) return aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey(rawKey);
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not defined in environment secrets.");
   }
@@ -12,7 +17,8 @@ function getAiClient() {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build"
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
       }
     }
   });

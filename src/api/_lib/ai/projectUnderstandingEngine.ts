@@ -20,13 +20,24 @@ export const PUE_SCHEMA_VERSION = "1.0.0";
 // ─── Gemini Client (lazy-init, shared singleton) ──────────────────────────────
 
 let _aiClient: any = null;
+function sanitizeApiKey(raw?: string): string {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
+
 function getPUEClient(): any {
   if (_aiClient) return _aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey(rawKey);
   if (!apiKey) return null;
   _aiClient = new GoogleGenAI({
     apiKey,
-    httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+    httpOptions: { 
+      headers: { 
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
+      } 
+    }
   });
   return _aiClient;
 }

@@ -74,9 +74,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const prepStep = logger.start("Stage 0: Payload Parsing & Storage Resolution");
       const body = req.body || {};
-      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
+      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding, evidenceGraph, rawProject, fileCoverage } = body;
 
       profiler.profileStageEnd(st1, `${Array.isArray(files) ? files.length : 0} file(s)`);
+
+      // Fast-Path: If caller provides cached evidenceGraph, skip Supabase downloads and file parsing completely!
+      if (evidenceGraph) {
+        console.log(`[ai-package-parse] Fast-Path Activated: Cached evidenceGraph supplied with ${evidenceGraph.evidenceSources?.length || 0} source(s). Skipping Stages 1, 2, and 3.`);
+        prepStep.end("Cached evidenceGraph resolved (Fast-Path)");
+
+        const compileStep = logger.start("Package Compiler Pipeline Execution (Fast-Path)");
+        const output = await executeWithTimeout(
+          "Package Compiler Hard Deadline",
+          () => compileProjectPackage(
+            [],
+            userAnswers,
+            forceCompile,
+            projectUnderstanding,
+            profiler,
+            { evidenceGraph, rawProject, fileCoverage }
+          ),
+          59000
+        );
+        compileStep.end(JSON.stringify(output).length);
+
+        const st15 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
+        const jsonOutputString = JSON.stringify(output);
+        profiler.recordAllocation("Final Output JSON String", jsonOutputString.length);
+        profiler.profileStageEnd(st15, `${jsonOutputString.length} bytes`);
+
+        const st16 = profiler.profileStageStart(16, "HTTP Response", `${jsonOutputString.length} bytes`);
+        logExecution({
+          endpoint: pathname,
+          totalDurationMs: Date.now() - startTime
+        });
+
+        handlerStep.end("200 OK Response Sent (Fast-Path)");
+        profiler.profileStageEnd(st16, "HTTP 200 OK Sent");
+
+        profiler.printFinalReport();
+        return sendSuccess(res, output);
+      }
 
       // Stage 2: Validate descriptors
       const st2 = profiler.profileStageStart(2, "Validate descriptors", `${Array.isArray(files) ? files.length : 0} descriptor(s)`);

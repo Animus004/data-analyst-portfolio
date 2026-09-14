@@ -156,7 +156,12 @@ export async function compileProjectPackage(
   userAnswers?: Record<string, string>,
   forceCompile?: boolean,
   existingUnderstanding?: ProjectUnderstanding,
-  profiler?: PipelineProfiler
+  profiler?: PipelineProfiler,
+  cachedContext?: {
+    evidenceGraph?: any;
+    rawProject?: any;
+    fileCoverage?: any;
+  }
 ): Promise<UniversalCompilerOutput> {
   const logger = createStepLogger("Compiler Pipeline");
   const pipelineStep = logger.start("Full compileProjectPackage Execution");
@@ -167,6 +172,7 @@ export async function compileProjectPackage(
   console.log(`[STAGE 8: compileProjectPackage Input]`);
   console.log(`typeof rawFiles: "${typeof rawFiles}"`);
   console.log(`Array.isArray(rawFiles): ${Array.isArray(rawFiles)}`);
+  console.log(`cachedContext supplied: ${Boolean(cachedContext?.evidenceGraph)}`);
   console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
   console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
   console.log(`RAW FILE DESCRIPTOR:\n${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: firstRaw.type, storagePath: firstRaw.storagePath, contentLength: firstRaw.content ? (typeof firstRaw.content === "string" ? firstRaw.content.length : firstRaw.content.length) : 0 } : null, null, 2)}`);
@@ -175,29 +181,42 @@ export async function compileProjectPackage(
   const pipelineStartTime = Date.now();
   let projectType = "Mixed Analytics";
 
-  // Quotas
-  const MAX_RAW_FILES = 50;
-  if (rawFiles.length > MAX_RAW_FILES) {
-    throw new Error(`Package exceeds maximum file limit (${MAX_RAW_FILES} files). Please reduce file count.`);
-  }
-
-  // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
-  const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
-  console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
-  console.log("[CHECKPOINT S1-001] Stage 1 Start Logging Completed");
-  const stage1Start = Date.now();
-  console.log("[CHECKPOINT S1-002] stage1Start Timestamp Captured");
+  let evidenceGraph: any;
+  const parsedProjects: ExtractedProject[] = [];
+  const evidenceNodes: ParserEvidenceNode[] = [];
   const allFiles: Array<{ name: string; content: string | Buffer; type: "text" | "binary"; size: number; sha256: string }> = [];
-  console.log("[CHECKPOINT S1-003] allFiles Array Initialized");
-  const fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
-  console.log("[CHECKPOINT S1-004] fileCoverage Array Initialized");
+  let fileCoverage: UniversalCompilerOutput["fileCoverage"] = [];
+  let stage1Duration = 0;
+  let stage2Duration = 0;
+  let stage3Duration = 0;
 
-  let currentFileProcessing = "None";
-  let loopIndex = 0;
+  if (cachedContext?.evidenceGraph) {
+    console.log(`[Pipeline] Fast-Path Activated: Reusing cached evidenceGraph (${cachedContext.evidenceGraph.evidenceSources?.length || 0} source(s)). Skipping Stages 1, 2, and 3.`);
+    evidenceGraph = cachedContext.evidenceGraph;
+    projectType = evidenceGraph.projectDomain || "Mixed Analytics";
+    if (cachedContext.fileCoverage) fileCoverage = cachedContext.fileCoverage;
+  } else {
+    // Quotas
+    const MAX_RAW_FILES = 50;
+    if (rawFiles.length > MAX_RAW_FILES) {
+      throw new Error(`Package exceeds maximum file limit (${MAX_RAW_FILES} files). Please reduce file count.`);
+    }
 
-  try {
-    console.log(`[CHECKPOINT S1-005] Entering rawFiles loop | Total rawFiles: ${rawFiles.length}`);
-    for (const file of rawFiles) {
+    // Stage 1: File Detection, SHA-256 Checksums, Signature Validation & ZIP Unpacking
+    const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
+    console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
+    console.log("[CHECKPOINT S1-001] Stage 1 Start Logging Completed");
+    const stage1Start = Date.now();
+    console.log("[CHECKPOINT S1-002] stage1Start Timestamp Captured");
+    console.log("[CHECKPOINT S1-003] allFiles Array Initialized");
+    console.log("[CHECKPOINT S1-004] fileCoverage Array Initialized");
+
+    let currentFileProcessing = "None";
+    let loopIndex = 0;
+
+    try {
+      console.log(`[CHECKPOINT S1-005] Entering rawFiles loop | Total rawFiles: ${rawFiles.length}`);
+      for (const file of rawFiles) {
       console.log(`[CHECKPOINT S1-006] Loop iteration ${loopIndex} start`);
       currentFileProcessing = file.name;
       console.log(`[CHECKPOINT S1-007] Processing file '${file.name}'`);
@@ -444,7 +463,7 @@ export async function compileProjectPackage(
     }
     fileIndex++;
   }
-  const stage2Duration = Date.now() - stage2Start;
+  stage2Duration = Date.now() - stage2Start;
   s2.end(`${evidenceNodes.length} evidence node(s) extracted`);
   console.log(`[Pipeline] Stage 2 Complete (${stage2Duration}ms)`);
 
@@ -462,7 +481,6 @@ export async function compileProjectPackage(
   const s3 = logger.start("Stage 3: Building Canonical Evidence Graph");
   console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
   const stage3Start = Date.now();
-  let evidenceGraph: any;
   try {
     evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
     evidenceGraph.projectDomain = projectType;
@@ -470,22 +488,24 @@ export async function compileProjectPackage(
     if (profiler && st8) profiler.profileStageEnd(st8, "0 bytes", "FAILED", err.message);
     throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
   }
-  const stage3Duration = Date.now() - stage3Start;
+  stage3Duration = Date.now() - stage3Start;
   s3.end(JSON.stringify(evidenceGraph).length);
   if (profiler && st8) {
     profiler.recordAllocation("Evidence Graph Object", JSON.stringify(evidenceGraph).length);
     profiler.profileStageEnd(st8, `${JSON.stringify(evidenceGraph).length} bytes`);
   }
   console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
+  }
 
   // Stage 4: Project Understanding Engine
   const st9 = profiler ? profiler.profileStageStart(9, "Project Understanding Engine", "Evidence Graph") : null;
   const s4 = logger.start("Stage 4: Project Understanding Engine (PUE)");
   console.log("[Pipeline] Stage 4 Start: Project Understanding Engine (PUE)");
   const stage4Start = Date.now();
-  const packageEvidenceHash = crypto.createHash("sha256")
-    .update(allFiles.map(f => f.sha256).sort().join(":"))
-    .digest("hex");
+  const packageEvidenceHash = evidenceGraph.packageEvidenceHash || (allFiles.length > 0
+    ? crypto.createHash("sha256").update(allFiles.map(f => f.sha256).sort().join(":")).digest("hex")
+    : crypto.createHash("sha256").update(JSON.stringify(evidenceGraph)).digest("hex"));
+  evidenceGraph.packageEvidenceHash = packageEvidenceHash;
 
   const projectUnderstanding = await executeWithTimeout(
     "Project Understanding Engine (PUE)",
@@ -547,7 +567,12 @@ export async function compileProjectPackage(
   s6.end(`Fully Sufficient: ${isFullySufficient}`);
   console.log(`[Pipeline] Stage 6 Complete (${stage6Duration}ms)`);
 
-  const stageTimings = [
+  const stageTimings = cachedContext?.evidenceGraph ? [
+    { stage: "Stages 1-3 (Cached Evidence Fast-Path)", durationMs: 0, status: "Completed" as const },
+    { stage: "Stage 4 (Project Understanding)", durationMs: stage4Duration, status: "Completed" as const },
+    { stage: "Stage 5 (Completeness & Conflicts)", durationMs: stage5Duration, status: "Completed" as const },
+    { stage: "Stage 6 (Decision Logic)", durationMs: stage6Duration, status: "Completed" as const }
+  ] : [
     { stage: "Stage 1 (File Prep & Unpack)", durationMs: stage1Duration, status: "Completed" as const },
     { stage: "Stage 2 (Sandboxed Parsers)", durationMs: stage2Duration, status: "Completed" as const },
     { stage: "Stage 3 (Evidence Graph)", durationMs: stage3Duration, status: "Completed" as const },
@@ -559,7 +584,9 @@ export async function compileProjectPackage(
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
     const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
-      const rawProject = mergeExtractedProjects(parsedProjects);
+      const rawProject = (cachedContext?.rawProject && Object.keys(cachedContext.rawProject).length > 0)
+        ? cachedContext.rawProject
+        : mergeExtractedProjects(parsedProjects);
       console.log(`[Timing Profile] Total Pipeline Duration (NEEDS_USER_INPUT): ${Date.now() - pipelineStartTime}ms`);
       pipelineStep.end("Terminated with NEEDS_USER_INPUT");
       return {
@@ -569,7 +596,9 @@ export async function compileProjectPackage(
         projectUnderstanding,
         rawProject: {
           ...rawProject,
-          sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
+          sourceFiles: allFiles.length > 0
+            ? Array.from(new Set(allFiles.map(f => f.name)))
+            : (cachedContext?.rawProject?.sourceFiles || Array.from(new Set(evidenceGraph.evidenceSources?.map((s: any) => s.filePath) || [])))
         },
         coverageReport,
         missingInformation,
@@ -586,7 +615,9 @@ export async function compileProjectPackage(
   const s7 = logger.start("Stage 7: Baseline Merged Raw Project Assembly");
   console.log("[Pipeline] Stage 7 Start: Baseline Merged Raw Project Assembly");
   const stage7Start = Date.now();
-  const rawProject = mergeExtractedProjects(parsedProjects);
+  const rawProject = (cachedContext?.rawProject && Object.keys(cachedContext.rawProject).length > 0)
+    ? cachedContext.rawProject
+    : mergeExtractedProjects(parsedProjects);
   const stage7Duration = Date.now() - stage7Start;
   s7.end(JSON.stringify(rawProject).length);
   console.log(`[Pipeline] Stage 7 Complete (${stage7Duration}ms)`);
@@ -667,7 +698,9 @@ export async function compileProjectPackage(
     projectUnderstanding,
     rawProject: {
       ...synthesized.raw,
-      sourceFiles: Array.from(new Set(allFiles.map(f => f.name)))
+      sourceFiles: allFiles.length > 0
+        ? Array.from(new Set(allFiles.map(f => f.name)))
+        : (cachedContext?.rawProject?.sourceFiles || Array.from(new Set(evidenceGraph.evidenceSources?.map((s: any) => s.filePath) || [])))
     },
     coverageReport,
     recruiterAudit,
@@ -682,10 +715,10 @@ export async function compileProjectPackage(
     linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: new Date().toISOString(),
-      parserVersions: "Portfolio OS AI Intelligence Engine v4.1 (PUE-Cached + Evidence Intelligence + Recruiter Audit + Gemini)",
+      parserVersions: "Portfolio OS AI Intelligence Engine v4.2 (PUE-Cached + Evidence Fast-Path + Recruiter Audit + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v4.1",
-      totalFilesProcessed: allFiles.length,
+      projectVersion: "v4.2",
+      totalFilesProcessed: allFiles.length > 0 ? allFiles.length : (cachedContext?.fileCoverage?.length || evidenceGraph.evidenceSources?.length || 1),
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     },
     stageTimings

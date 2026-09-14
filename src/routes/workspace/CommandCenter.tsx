@@ -22,6 +22,7 @@ import {
 import { storageService } from "../../services/storageService";
 import { uploadProjectPackage, validatePackageFileDescriptors } from "../../services/packageUploadService";
 import { authenticatedFetch, safeParseJsonResponse, getOwnerKey, setOwnerKey } from "../../services/apiClient";
+import { SystemHealthBar } from "../../components/shared/SystemHealthBar";
 import { generateId } from "../../utils";
 import { 
   Plus, 
@@ -637,6 +638,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   const [missingInformation, setMissingInformation] = useState<any[]>([]);
   const [recruiterAudit, setRecruiterAudit] = useState<any>(null);
   const [uploadedFileMetas, setUploadedFileMetas] = useState<any[]>([]);
+  const [evidenceGraph, setEvidenceGraph] = useState<any>(null);
+  const [rawProject, setRawProject] = useState<any>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [resolvedConflictFields, setResolvedConflictFields] = useState<Record<string, boolean>>({});
   const unresolvedConflictsCount = conflicts.filter(c => !resolvedConflictFields[c.field]).length;
@@ -778,7 +781,16 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         throw new Error(uploadRes.error || "Failed to upload project package files to storage.");
       }
 
-      setUploadedFileMetas(uploadRes.uploadedFiles || []);
+      // Strip heavy fallbackContent from files that have a valid storagePath to prevent 4.5MB Vercel payload limits
+      const sanitizedFiles = (uploadRes.uploadedFiles || []).map(f => {
+        if (f.storagePath) {
+          const { fallbackContent, ...rest } = f;
+          return rest;
+        }
+        return f;
+      });
+
+      setUploadedFileMetas(sanitizedFiles);
       setUploadProgressText("Parsing Excel, SQL & PDF Workbooks...");
 
       const progressInterval = setInterval(() => {
@@ -795,16 +807,16 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       try {
         const payloadToSerialize = { 
           packageId, 
-          files: uploadRes.uploadedFiles, 
+          files: sanitizedFiles, 
           evidenceOnlyMode 
         };
 
-        const firstFile = uploadRes.uploadedFiles && uploadRes.uploadedFiles[0] ? uploadRes.uploadedFiles[0] : null;
+        const firstFile = sanitizedFiles && sanitizedFiles[0] ? sanitizedFiles[0] : null;
 
         console.log(`\n----------------------------------------------------------`);
         console.log(`[STAGE 3: CommandCenter.tsx Request Payload Assembly]`);
         console.log(`typeof payload: "${typeof payloadToSerialize}"`);
-        console.log(`Array.isArray(files): ${Array.isArray(uploadRes.uploadedFiles)}`);
+        console.log(`Array.isArray(files): ${Array.isArray(sanitizedFiles)}`);
         console.log(`Object.keys(payload): [${Object.keys(payloadToSerialize).join(", ")}]`);
         console.log(`Object.keys(firstFile): [${firstFile ? Object.keys(firstFile).join(", ") : ""}]`);
         console.log(`FIRST FILE DESCRIPTOR:\n${JSON.stringify(firstFile, null, 2)}`);
@@ -823,6 +835,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           if (projectPayload) {
             setAiParsedResult(projectPayload);
             setProjectUnderstanding(data.projectUnderstanding || null);
+            if (data.evidenceGraph) setEvidenceGraph(data.evidenceGraph);
+            if (data.rawProject) setRawProject(data.rawProject);
             setMissingInformation(data.missingInformation || []);
             setRecruiterAudit(data.recruiterAudit || null);
             setProjectType(data.projectType);
@@ -876,9 +890,11 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           packageId,
-          files: uploadedFileMetas,
+          files: uploadedFileMetas.map(f => f.storagePath ? { ...f, fallbackContent: undefined } : f),
           userAnswers,
           projectUnderstanding,
+          evidenceGraph,
+          rawProject,
           forceCompile: true,
           evidenceOnlyMode
         })
@@ -891,6 +907,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         if (projectPayload) {
           setAiParsedResult(projectPayload);
           if (data.projectUnderstanding) setProjectUnderstanding(data.projectUnderstanding);
+          if (data.evidenceGraph) setEvidenceGraph(data.evidenceGraph);
+          if (data.rawProject) setRawProject(data.rawProject);
           setMissingInformation(data.missingInformation || []);
           if (data.recruiterAudit) setRecruiterAudit(data.recruiterAudit);
           if (data.sourceAttributions) setSourceAttributions(data.sourceAttributions);
@@ -1664,6 +1682,9 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </Button>
       </div>
 
+      {/* ─── 🩺 SYSTEM HEALTH & ENGINE DIAGNOSTICS BAR ─── */}
+      <SystemHealthBar />
+
       {/* ─── 🎯 PRIMARY OWNER WORKFLOW CARD (1. Upload → 2. AI Understanding → 3. AI Generated Portfolio → 4. Clarify → 5. Save) ─── */}
       <Card className="bg-slate-900 rounded-2xl border border-slate-800 text-slate-100 shadow-sm transition-all duration-200 hover:border-slate-700 hover:shadow-md overflow-hidden">
         <CardHeader className="border-b border-slate-800 bg-slate-950/80 p-4">
@@ -1691,13 +1712,29 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
           {/* Error Banner inside Primary Workflow Card */}
           {aiParseError && (
             <div className="mb-4 p-3.5 rounded-lg bg-rose-950/40 border border-rose-800 text-rose-300 text-xs font-mono flex items-start justify-between gap-3 animate-fade-in">
-              <div className="flex items-start gap-2.5">
+              <div className="flex items-start gap-2.5 flex-1">
                 <AlertTriangle className="w-4.5 h-4.5 text-rose-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-left">
+                <div className="space-y-1.5 text-left w-full">
                   <strong className="block text-rose-200 font-bold uppercase tracking-wider text-[10px]">
                     Action Required / Execution Error
                   </strong>
-                  <span className="text-[11px] leading-relaxed block">{aiParseError}</span>
+                  <span className="text-[11px] leading-relaxed block break-words">{aiParseError}</span>
+                  {/(UNAUTHENTICATED|401|ACCESS_TOKEN_TYPE_UNSUPPORTED|invalid authentication credentials)/i.test(aiParseError) && (
+                    <div className="mt-2 p-3 rounded-xl bg-amber-950/70 border border-amber-800 text-amber-200 text-xs font-sans space-y-1.5">
+                      <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <span>🔑</span> Gemini API Authentication Remediation
+                      </p>
+                      <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                        Google's API rejected the key format (reason: <code className="font-mono bg-amber-900/50 px-1 rounded">ACCESS_TOKEN_TYPE_UNSUPPORTED</code>).
+                      </p>
+                      <ol className="list-decimal list-inside space-y-1 text-amber-200/90 text-[11px]">
+                        <li>In your Vercel project dashboard, navigate to <strong>Settings &gt; Environment Variables</strong>.</li>
+                        <li>Check <strong>GEMINI_API_KEY</strong>: Make sure the value has <strong>no quotation marks</strong> around it (paste <code className="font-mono bg-amber-900/50 px-1 rounded text-emerald-300">AIzaSy...</code>, not <code className="font-mono bg-amber-900/50 px-1 rounded text-rose-300">"AIzaSy..."</code>) and no leading/trailing spaces.</li>
+                        <li>If you need a fresh key, generate one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline text-indigo-300 font-semibold">Google AI Studio</a>.</li>
+                        <li>Trigger a <strong>Redeploy</strong> in Vercel to propagate the updated environment variables.</li>
+                      </ol>
+                    </div>
+                  )}
                 </div>
               </div>
               <button

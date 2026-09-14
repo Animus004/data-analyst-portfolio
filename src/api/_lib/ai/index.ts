@@ -9,9 +9,15 @@ import { ExtractedProject } from "../types/index";
 // Setup lazy loading for Gemini client to prevent crashes
 let aiClient: any = null;
 
+function sanitizeApiKey(raw?: string): string {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
+
 export function getAiClient(): any {
   if (aiClient) return aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey(rawKey);
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not defined in environment secrets.");
   }
@@ -20,6 +26,7 @@ export function getAiClient(): any {
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
+        'x-goog-api-key': apiKey
       }
     }
   });

@@ -1406,9 +1406,14 @@ function detectEvidenceConflicts(graph) {
 // src/api/_lib/ai/portfolioCompiler.ts
 import { GoogleGenAI, Type } from "@google/genai";
 var aiClient = null;
+function sanitizeApiKey(raw) {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
 function getAiClient() {
   if (aiClient) return aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey(rawKey);
   if (!apiKey) {
     return null;
   }
@@ -1416,7 +1421,8 @@ function getAiClient() {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build"
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
       }
     }
   });
@@ -2717,13 +2723,23 @@ function runRecruiterAuditEngine(portfolio, graph, conflicts, understanding) {
 import { GoogleGenAI as GoogleGenAI2, Type as Type2 } from "@google/genai";
 var PUE_SCHEMA_VERSION = "1.0.0";
 var _aiClient = null;
+function sanitizeApiKey2(raw) {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
 function getPUEClient() {
   if (_aiClient) return _aiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey2(rawKey);
   if (!apiKey) return null;
   _aiClient = new GoogleGenAI2({
     apiKey,
-    httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
+      }
+    }
   });
   return _aiClient;
 }
@@ -3227,7 +3243,7 @@ function mergeExtractedProjects(projects) {
   });
   return merged;
 }
-async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existingUnderstanding, profiler) {
+async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existingUnderstanding, profiler, cachedContext) {
   const logger = createStepLogger("Compiler Pipeline");
   const pipelineStep = logger.start("Full compileProjectPackage Execution");
   const firstRaw = Array.isArray(rawFiles) && rawFiles[0] ? rawFiles[0] : null;
@@ -3236,6 +3252,7 @@ async function compileProjectPackage(rawFiles, userAnswers, forceCompile, existi
   console.log(`[STAGE 8: compileProjectPackage Input]`);
   console.log(`typeof rawFiles: "${typeof rawFiles}"`);
   console.log(`Array.isArray(rawFiles): ${Array.isArray(rawFiles)}`);
+  console.log(`cachedContext supplied: ${Boolean(cachedContext?.evidenceGraph)}`);
   console.log(`Object.keys(rawFiles): [${rawFiles ? Object.keys(rawFiles).join(", ") : ""}]`);
   console.log(`Object.keys(firstFile): [${firstRaw ? Object.keys(firstRaw).join(", ") : ""}]`);
   console.log(`RAW FILE DESCRIPTOR:
@@ -3244,166 +3261,178 @@ ${JSON.stringify(firstRaw ? { name: firstRaw.name, size: firstRaw.size, type: fi
 `);
   const pipelineStartTime = Date.now();
   let projectType = "Mixed Analytics";
-  const MAX_RAW_FILES = 50;
-  if (rawFiles.length > MAX_RAW_FILES) {
-    throw new Error(`Package exceeds maximum file limit (${MAX_RAW_FILES} files). Please reduce file count.`);
-  }
-  const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
-  console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
-  console.log("[CHECKPOINT S1-001] Stage 1 Start Logging Completed");
-  const stage1Start = Date.now();
-  console.log("[CHECKPOINT S1-002] stage1Start Timestamp Captured");
+  let evidenceGraph;
+  const parsedProjects = [];
+  const evidenceNodes = [];
   const allFiles = [];
-  console.log("[CHECKPOINT S1-003] allFiles Array Initialized");
-  const fileCoverage = [];
-  console.log("[CHECKPOINT S1-004] fileCoverage Array Initialized");
-  let currentFileProcessing = "None";
-  let loopIndex = 0;
-  try {
-    console.log(`[CHECKPOINT S1-005] Entering rawFiles loop | Total rawFiles: ${rawFiles.length}`);
-    for (const file of rawFiles) {
-      console.log(`[CHECKPOINT S1-006] Loop iteration ${loopIndex} start`);
-      currentFileProcessing = file.name;
-      console.log(`[CHECKPOINT S1-007] Processing file '${file.name}'`);
-      console.log(`[CHECKPOINT S1-008] Resolving extension for '${file.name}'`);
-      const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      console.log(`[CHECKPOINT S1-009] Extension resolved to '.${ext}'`);
-      console.log(`[CHECKPOINT S1-010] Entering computeSha256 for '${file.name}'`);
-      let fileHash;
-      try {
-        console.log(`[CHECKPOINT S1-010A] computeSha256: typeof file.content = "${typeof file.content}" | Buffer.isBuffer = ${Buffer.isBuffer(file.content)} | length = ${typeof file.content === "string" ? file.content.length : file.content.length}`);
-        const sha256Buf = typeof file.content === "string" ? (console.log(`[CHECKPOINT S1-010B] computeSha256: calling Buffer.from(content, "base64") \u2014 string length: ${file.content.length}`), Buffer.from(file.content, "base64")) : (console.log(`[CHECKPOINT S1-010B] computeSha256: content is already a Buffer \u2014 byteLength: ${file.content.byteLength}`), file.content);
-        console.log(`[CHECKPOINT S1-010C] computeSha256: Buffer.from/passthrough complete \u2014 sha256Buf.length: ${sha256Buf.length}`);
-        const sha256Hash = crypto2.createHash("sha256");
-        console.log(`[CHECKPOINT S1-010D] computeSha256: crypto.createHash("sha256") created`);
-        sha256Hash.update(sha256Buf);
-        console.log(`[CHECKPOINT S1-010E] computeSha256: hash.update(buffer) complete`);
-        fileHash = sha256Hash.digest("hex");
-        console.log(`[CHECKPOINT S1-010F] computeSha256: hash.digest("hex") complete \u2014 hash prefix: ${fileHash.slice(0, 12)}`);
-      } catch (sha256Err) {
-        console.error(`[STAGE1 FAILURE] computeSha256 threw at '${file.name}':`, sha256Err?.message);
-        console.error(sha256Err?.stack);
-        throw sha256Err;
-      }
-      console.log(`[CHECKPOINT S1-011] computeSha256 completed for '${file.name}' | SHA256: ${fileHash.slice(0, 12)}...`);
-      console.log(`[CHECKPOINT S1-012] Entering validateFileSignature for '${file.name}'`);
-      const sigCheck = validateFileSignature(file.name, file.content);
-      console.log(`[CHECKPOINT S1-013] validateFileSignature completed for '${file.name}' | isValid: ${sigCheck.isValid}`);
-      if (!sigCheck.isValid) {
-        console.log(`[CHECKPOINT S1-014] Signature check failed for '${file.name}'`);
-        fileCoverage.push({
-          fileName: file.name,
-          status: "Failed",
-          reason: sigCheck.error || "Magic byte file signature mismatch.",
-          size: file.size,
-          sha256: fileHash
-        });
-        loopIndex++;
-        continue;
-      }
-      if (ext === "zip") {
-        console.log(`[CHECKPOINT S1-015] Setting projectType to ZIP Package`);
-        projectType = "ZIP Package";
-        console.log(`[CHECKPOINT S1-016] BEFORE await unpackZipFile for '${file.name}'`);
-        const unpacked = await unpackZipFile(file.content);
-        console.log(`[CHECKPOINT S1-017] AFTER await unpackZipFile for '${file.name}' | Unpacked count: ${unpacked.length}`);
-        let unpackIdx = 0;
-        unpacked.forEach((u) => {
-          console.log(`[CHECKPOINT S1-018] Processing unpacked file ${unpackIdx}: '${u.name}'`);
-          const uHash = computeSha256(u.content);
-          allFiles.push({
-            name: u.name,
-            content: u.content,
-            type: u.type,
-            size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
-            sha256: uHash
-          });
-          unpackIdx++;
-        });
-        console.log(`[CHECKPOINT S1-019] Pushing ZIP fileCoverage for '${file.name}'`);
-        fileCoverage.push({
-          fileName: file.name,
-          status: "Used",
-          reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
-          size: file.size,
-          sha256: fileHash
-        });
-      } else {
-        console.log(`[CHECKPOINT S1-020] Checking text extension for '${file.name}'`);
-        const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
-        console.log(`[CHECKPOINT S1-021] isText: ${isText} for '${file.name}'`);
-        console.log(`[CHECKPOINT S1-022] Pushing raw file '${file.name}' to allFiles array`);
-        allFiles.push({
-          name: file.name,
-          content: file.content,
-          type: isText ? "text" : "binary",
-          size: file.size,
-          sha256: fileHash
-        });
-        console.log(`[CHECKPOINT S1-023] Pushed raw file '${file.name}' to allFiles array`);
-      }
-      loopIndex++;
+  let fileCoverage = [];
+  let stage1Duration = 0;
+  let stage2Duration = 0;
+  let stage3Duration = 0;
+  if (cachedContext?.evidenceGraph) {
+    console.log(`[Pipeline] Fast-Path Activated: Reusing cached evidenceGraph (${cachedContext.evidenceGraph.evidenceSources?.length || 0} source(s)). Skipping Stages 1, 2, and 3.`);
+    evidenceGraph = cachedContext.evidenceGraph;
+    projectType = evidenceGraph.projectDomain || "Mixed Analytics";
+    if (cachedContext.fileCoverage) fileCoverage = cachedContext.fileCoverage;
+  } else {
+    const MAX_RAW_FILES = 50;
+    if (rawFiles.length > MAX_RAW_FILES) {
+      throw new Error(`Package exceeds maximum file limit (${MAX_RAW_FILES} files). Please reduce file count.`);
     }
-    console.log(`[CHECKPOINT S1-024] Exited rawFiles loop successfully`);
-  } catch (stage1Err) {
-    console.error(`[CHECKPOINT S1-ERROR] Stage 1 Exception in file '${currentFileProcessing}':`, stage1Err?.message);
-    throw stage1Err;
-  }
-  console.log(`[CHECKPOINT S1-025] Finishing Stage 1 logging & metrics`);
-  const stage1Duration = Date.now() - stage1Start;
-  s1.end(`${allFiles.length} file(s) prepared`);
-  console.log(`[Pipeline] Stage 1 Complete (${stage1Duration}ms)`);
-  console.log(`----------------------------------------
+    const s1 = logger.start("Stage 1: File Detection, Signature Validation & ZIP Unpacking");
+    console.log("[Pipeline] Stage 1 Start: File Detection, Signature Validation & ZIP Unpacking");
+    console.log("[CHECKPOINT S1-001] Stage 1 Start Logging Completed");
+    const stage1Start = Date.now();
+    console.log("[CHECKPOINT S1-002] stage1Start Timestamp Captured");
+    console.log("[CHECKPOINT S1-003] allFiles Array Initialized");
+    console.log("[CHECKPOINT S1-004] fileCoverage Array Initialized");
+    let currentFileProcessing = "None";
+    let loopIndex = 0;
+    try {
+      console.log(`[CHECKPOINT S1-005] Entering rawFiles loop | Total rawFiles: ${rawFiles.length}`);
+      for (const file of rawFiles) {
+        console.log(`[CHECKPOINT S1-006] Loop iteration ${loopIndex} start`);
+        currentFileProcessing = file.name;
+        console.log(`[CHECKPOINT S1-007] Processing file '${file.name}'`);
+        console.log(`[CHECKPOINT S1-008] Resolving extension for '${file.name}'`);
+        const ext = file.name.split(".").pop()?.toLowerCase() || "";
+        console.log(`[CHECKPOINT S1-009] Extension resolved to '.${ext}'`);
+        console.log(`[CHECKPOINT S1-010] Entering computeSha256 for '${file.name}'`);
+        let fileHash;
+        try {
+          console.log(`[CHECKPOINT S1-010A] computeSha256: typeof file.content = "${typeof file.content}" | Buffer.isBuffer = ${Buffer.isBuffer(file.content)} | length = ${typeof file.content === "string" ? file.content.length : file.content.length}`);
+          const sha256Buf = typeof file.content === "string" ? (console.log(`[CHECKPOINT S1-010B] computeSha256: calling Buffer.from(content, "base64") \u2014 string length: ${file.content.length}`), Buffer.from(file.content, "base64")) : (console.log(`[CHECKPOINT S1-010B] computeSha256: content is already a Buffer \u2014 byteLength: ${file.content.byteLength}`), file.content);
+          console.log(`[CHECKPOINT S1-010C] computeSha256: Buffer.from/passthrough complete \u2014 sha256Buf.length: ${sha256Buf.length}`);
+          const sha256Hash = crypto2.createHash("sha256");
+          console.log(`[CHECKPOINT S1-010D] computeSha256: crypto.createHash("sha256") created`);
+          sha256Hash.update(sha256Buf);
+          console.log(`[CHECKPOINT S1-010E] computeSha256: hash.update(buffer) complete`);
+          fileHash = sha256Hash.digest("hex");
+          console.log(`[CHECKPOINT S1-010F] computeSha256: hash.digest("hex") complete \u2014 hash prefix: ${fileHash.slice(0, 12)}`);
+        } catch (sha256Err) {
+          console.error(`[STAGE1 FAILURE] computeSha256 threw at '${file.name}':`, sha256Err?.message);
+          console.error(sha256Err?.stack);
+          throw sha256Err;
+        }
+        console.log(`[CHECKPOINT S1-011] computeSha256 completed for '${file.name}' | SHA256: ${fileHash.slice(0, 12)}...`);
+        console.log(`[CHECKPOINT S1-012] Entering validateFileSignature for '${file.name}'`);
+        const sigCheck = validateFileSignature(file.name, file.content);
+        console.log(`[CHECKPOINT S1-013] validateFileSignature completed for '${file.name}' | isValid: ${sigCheck.isValid}`);
+        if (!sigCheck.isValid) {
+          console.log(`[CHECKPOINT S1-014] Signature check failed for '${file.name}'`);
+          fileCoverage.push({
+            fileName: file.name,
+            status: "Failed",
+            reason: sigCheck.error || "Magic byte file signature mismatch.",
+            size: file.size,
+            sha256: fileHash
+          });
+          loopIndex++;
+          continue;
+        }
+        if (ext === "zip") {
+          console.log(`[CHECKPOINT S1-015] Setting projectType to ZIP Package`);
+          projectType = "ZIP Package";
+          console.log(`[CHECKPOINT S1-016] BEFORE await unpackZipFile for '${file.name}'`);
+          const unpacked = await unpackZipFile(file.content);
+          console.log(`[CHECKPOINT S1-017] AFTER await unpackZipFile for '${file.name}' | Unpacked count: ${unpacked.length}`);
+          let unpackIdx = 0;
+          unpacked.forEach((u) => {
+            console.log(`[CHECKPOINT S1-018] Processing unpacked file ${unpackIdx}: '${u.name}'`);
+            const uHash = computeSha256(u.content);
+            allFiles.push({
+              name: u.name,
+              content: u.content,
+              type: u.type,
+              size: Buffer.byteLength(u.content, u.type === "binary" ? "base64" : "utf-8"),
+              sha256: uHash
+            });
+            unpackIdx++;
+          });
+          console.log(`[CHECKPOINT S1-019] Pushing ZIP fileCoverage for '${file.name}'`);
+          fileCoverage.push({
+            fileName: file.name,
+            status: "Used",
+            reason: `Unpacked ZIP package archive containing ${unpacked.length} analytics files. Signature verified.`,
+            size: file.size,
+            sha256: fileHash
+          });
+        } else {
+          console.log(`[CHECKPOINT S1-020] Checking text extension for '${file.name}'`);
+          const isText = ["py", "sql", "dax", "md", "txt", "csv", "json"].includes(ext);
+          console.log(`[CHECKPOINT S1-021] isText: ${isText} for '${file.name}'`);
+          console.log(`[CHECKPOINT S1-022] Pushing raw file '${file.name}' to allFiles array`);
+          allFiles.push({
+            name: file.name,
+            content: file.content,
+            type: isText ? "text" : "binary",
+            size: file.size,
+            sha256: fileHash
+          });
+          console.log(`[CHECKPOINT S1-023] Pushed raw file '${file.name}' to allFiles array`);
+        }
+        loopIndex++;
+      }
+      console.log(`[CHECKPOINT S1-024] Exited rawFiles loop successfully`);
+    } catch (stage1Err) {
+      console.error(`[CHECKPOINT S1-ERROR] Stage 1 Exception in file '${currentFileProcessing}':`, stage1Err?.message);
+      throw stage1Err;
+    }
+    console.log(`[CHECKPOINT S1-025] Finishing Stage 1 logging & metrics`);
+    const stage1Duration2 = Date.now() - stage1Start;
+    s1.end(`${allFiles.length} file(s) prepared`);
+    console.log(`[Pipeline] Stage 1 Complete (${stage1Duration2}ms)`);
+    console.log(`----------------------------------------
 [TRACE]
 Line: 244
 Function: compileProjectPackage
 Entering: logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction")`);
-  const t244Start = Date.now();
-  const s2 = logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction");
-  console.log(`Completed: logger.start
+    const t244Start = Date.now();
+    const s2 = logger.start("Stage 2: Sandboxed Parser Selection & Evidence Extraction");
+    console.log(`Completed: logger.start
 Duration: ${Date.now() - t244Start}ms
 ----------------------------------------`);
-  console.log(`----------------------------------------
+    console.log(`----------------------------------------
 [TRACE]
 Line: 245
 Function: compileProjectPackage
 Entering: console.log Stage 2 Start`);
-  console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
-  console.log(`Completed: console.log Stage 2 Start
+    console.log("[Pipeline] Stage 2 Start: Sandboxed Parser Selection & Evidence Extraction");
+    console.log(`Completed: console.log Stage 2 Start
 ----------------------------------------`);
-  console.log(`----------------------------------------
+    console.log(`----------------------------------------
 [TRACE]
 Line: 246-248
 Function: compileProjectPackage
 Entering: Initializing parsedProjects & evidenceNodes arrays`);
-  const stage2Start = Date.now();
-  const parsedProjects = [];
-  const evidenceNodes = [];
-  console.log(`Completed: Array initializations | allFiles.length = ${allFiles.length}
+    const stage2Start = Date.now();
+    const parsedProjects2 = [];
+    const evidenceNodes2 = [];
+    console.log(`Completed: Array initializations | allFiles.length = ${allFiles.length}
 ----------------------------------------`);
-  console.log(`
-==========================================================`);
-  console.log(`[STAGE 2 FILE INVENTORY: allFiles Array Inspection]`);
-  console.log(`TotalPreparedFiles: ${allFiles.length}`);
-  allFiles.forEach((f, idx) => {
-    const ext = f.name.split(".").pop()?.toLowerCase() || "";
-    console.log(`  Index: ${idx} | Name: "${f.name}" | Ext: ".${ext}" | Type: ${f.type} | Size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | SHA256: ${f.sha256.slice(0, 12)}...`);
-  });
-  console.log(`==========================================================
-`);
-  let fileIndex = 0;
-  for (const file of allFiles) {
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const parser = PARSER_REGISTRY[ext];
     console.log(`
-================================================`);
-    console.log(`FILE INDEX: ${fileIndex}`);
-    console.log(`FILE NAME: ${file.name}`);
-    console.log(`EXTENSION: .${ext}`);
-    console.log(`SELECTED PARSER: ${parser ? parser.name : "NONE"}`);
-    console.log(`================================================
+==========================================================`);
+    console.log(`[STAGE 2 FILE INVENTORY: allFiles Array Inspection]`);
+    console.log(`TotalPreparedFiles: ${allFiles.length}`);
+    allFiles.forEach((f, idx) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() || "";
+      console.log(`  Index: ${idx} | Name: "${f.name}" | Ext: ".${ext}" | Type: ${f.type} | Size: ${f.size} bytes (${(f.size / (1024 * 1024)).toFixed(2)} MB) | SHA256: ${f.sha256.slice(0, 12)}...`);
+    });
+    console.log(`==========================================================
 `);
-    console.log(`----------------------------------------
+    let fileIndex = 0;
+    for (const file of allFiles) {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const parser = PARSER_REGISTRY[ext];
+      console.log(`
+================================================`);
+      console.log(`FILE INDEX: ${fileIndex}`);
+      console.log(`FILE NAME: ${file.name}`);
+      console.log(`EXTENSION: .${ext}`);
+      console.log(`SELECTED PARSER: ${parser ? parser.name : "NONE"}`);
+      console.log(`================================================
+`);
+      console.log(`----------------------------------------
 [TRACE]
 File: ${file.name}
 Iteration: ${fileIndex}
@@ -3412,26 +3441,26 @@ Function: compileProjectPackage
 Entering: Parser resolution check
 Completed: ext=.${ext}, parser=${parser ? parser.name : "NONE"}
 ----------------------------------------`);
-    if (parser) {
-      let stageNum = 5;
-      let stageName = `Excel parser [${file.name}]`;
-      if (ext === "pdf") {
-        stageNum = 6;
-        stageName = `PDF parser [${file.name}]`;
-      } else if (["png", "jpg", "jpeg"].includes(ext)) {
-        stageNum = 7;
-        stageName = `Image parser [${file.name}]`;
-      }
-      const st = profiler ? profiler.profileStageStart(stageNum, stageName, `${file.size} bytes`) : null;
-      try {
-        const pStart = Date.now();
-        const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
-        const adaptiveTimeoutMs = getAdaptiveParserTimeout({
-          fileName: file.name,
-          fileSize: file.size,
-          parserName: parser.name
-        });
-        console.log(`----------------------------------------
+      if (parser) {
+        let stageNum = 5;
+        let stageName = `Excel parser [${file.name}]`;
+        if (ext === "pdf") {
+          stageNum = 6;
+          stageName = `PDF parser [${file.name}]`;
+        } else if (["png", "jpg", "jpeg"].includes(ext)) {
+          stageNum = 7;
+          stageName = `Image parser [${file.name}]`;
+        }
+        const st = profiler ? profiler.profileStageStart(stageNum, stageName, `${file.size} bytes`) : null;
+        try {
+          const pStart = Date.now();
+          const parserFileStep = logger.start(`Parser Execution [${parser.name}] for '${file.name}'`);
+          const adaptiveTimeoutMs = getAdaptiveParserTimeout({
+            fileName: file.name,
+            fileSize: file.size,
+            parserName: parser.name
+          });
+          console.log(`----------------------------------------
 [TRACE]
 File: ${file.name}
 Iteration: ${fileIndex}
@@ -3439,124 +3468,125 @@ Line: 287
 Function: compileProjectPackage
 Entering: executeWithTimeout & parser.parse()
 ----------------------------------------`);
-        const memBefore = process.memoryUsage();
-        console.log(`
+          const memBefore = process.memoryUsage();
+          console.log(`
 --- BEGIN parser.parse() ---`);
-        console.log(`Target File: ${file.name}`);
-        console.log(`Parser: ${parser.name}`);
-        console.log(`Heap Before: ${(memBefore.heapUsed / (1024 * 1024)).toFixed(2)} MB`);
-        console.log(`RSS Before: ${(memBefore.rss / (1024 * 1024)).toFixed(2)} MB`);
-        const result = await executeWithTimeout(
-          `Parser[${parser.name}] for '${file.name}'`,
-          () => parser.parse(file.name, file.content, file.type),
-          adaptiveTimeoutMs
-        );
-        const memAfter = process.memoryUsage();
-        const parseElapsed = Date.now() - pStart;
-        const projSize = JSON.stringify(result.project).length;
-        const evSize = JSON.stringify(result.evidenceNode).length;
-        console.log(`--- END parser.parse() ---`);
-        console.log(`Return Type: object ({ project, evidenceNode })`);
-        console.log(`Returned Bytes: ${projSize + evSize} bytes`);
-        console.log(`Returned Project Size: ${(projSize / 1024).toFixed(2)} KB`);
-        console.log(`Returned Evidence Size: ${(evSize / 1024).toFixed(2)} KB`);
-        console.log(`Heap After: ${(memAfter.heapUsed / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.heapUsed - memBefore.heapUsed) / (1024 * 1024)).toFixed(2)} MB)`);
-        console.log(`RSS After: ${(memAfter.rss / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.rss - memBefore.rss) / (1024 * 1024)).toFixed(2)} MB)`);
-        console.log(`Elapsed Time: ${parseElapsed} ms
+          console.log(`Target File: ${file.name}`);
+          console.log(`Parser: ${parser.name}`);
+          console.log(`Heap Before: ${(memBefore.heapUsed / (1024 * 1024)).toFixed(2)} MB`);
+          console.log(`RSS Before: ${(memBefore.rss / (1024 * 1024)).toFixed(2)} MB`);
+          const result = await executeWithTimeout(
+            `Parser[${parser.name}] for '${file.name}'`,
+            () => parser.parse(file.name, file.content, file.type),
+            adaptiveTimeoutMs
+          );
+          const memAfter = process.memoryUsage();
+          const parseElapsed = Date.now() - pStart;
+          const projSize = JSON.stringify(result.project).length;
+          const evSize = JSON.stringify(result.evidenceNode).length;
+          console.log(`--- END parser.parse() ---`);
+          console.log(`Return Type: object ({ project, evidenceNode })`);
+          console.log(`Returned Bytes: ${projSize + evSize} bytes`);
+          console.log(`Returned Project Size: ${(projSize / 1024).toFixed(2)} KB`);
+          console.log(`Returned Evidence Size: ${(evSize / 1024).toFixed(2)} KB`);
+          console.log(`Heap After: ${(memAfter.heapUsed / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.heapUsed - memBefore.heapUsed) / (1024 * 1024)).toFixed(2)} MB)`);
+          console.log(`RSS After: ${(memAfter.rss / (1024 * 1024)).toFixed(2)} MB (Delta: ${((memAfter.rss - memBefore.rss) / (1024 * 1024)).toFixed(2)} MB)`);
+          console.log(`Elapsed Time: ${parseElapsed} ms
 `);
-        console.log(`----------------------------------------
+          console.log(`----------------------------------------
 [TRACE]
 File: ${file.name}
 Iteration: ${fileIndex}
 Line: 292-299
 Function: compileProjectPackage
 Entering: Pushing results to parsedProjects & evidenceNodes arrays`);
-        parsedProjects.push(result.project);
-        evidenceNodes.push(result.evidenceNode);
-        parserFileStep.end(JSON.stringify(result.evidenceNode).length);
-        if (profiler) {
-          profiler.recordAllocation(`EvidenceNode [${file.name}]`, JSON.stringify(result.evidenceNode).length);
-          profiler.profileStageEnd(st, `${JSON.stringify(result.evidenceNode).length} bytes`);
-        }
-        console.log(`Completed: Pushed results for '${file.name}' | Total Parsed: ${parsedProjects.length}
+          parsedProjects2.push(result.project);
+          evidenceNodes2.push(result.evidenceNode);
+          parserFileStep.end(JSON.stringify(result.evidenceNode).length);
+          if (profiler) {
+            profiler.recordAllocation(`EvidenceNode [${file.name}]`, JSON.stringify(result.evidenceNode).length);
+            profiler.profileStageEnd(st, `${JSON.stringify(result.evidenceNode).length} bytes`);
+          }
+          console.log(`Completed: Pushed results for '${file.name}' | Total Parsed: ${parsedProjects2.length}
 Duration: ${Date.now() - pStart}ms
 ----------------------------------------`);
-        fileCoverage.push({
-          fileName: file.name,
-          status: "Used",
-          reason: `Parsed via specialized Vercel-native ${parser.name} in ${Date.now() - pStart}ms. SHA-256 verified.`,
-          size: file.size,
-          sha256: file.sha256
-        });
-        file.content = "";
-      } catch (err) {
-        console.error(`
+          fileCoverage.push({
+            fileName: file.name,
+            status: "Used",
+            reason: `Parsed via specialized Vercel-native ${parser.name} in ${Date.now() - pStart}ms. SHA-256 verified.`,
+            size: file.size,
+            sha256: file.sha256
+          });
+          file.content = "";
+        } catch (err) {
+          console.error(`
 [PARSER EXCEPTION THROWN]`);
-        console.error(`Source File: src/api/_lib/compiler/index.ts`);
-        console.error(`Line Number: ~290`);
-        console.error(`Iteration Number: ${fileIndex}`);
-        console.error(`File Name: ${file.name}`);
-        console.error(`Parser Name: ${parser.name}`);
-        console.error(`Error Message: ${err.message}`);
-        console.error(`Stack Trace:
+          console.error(`Source File: src/api/_lib/compiler/index.ts`);
+          console.error(`Line Number: ~290`);
+          console.error(`Iteration Number: ${fileIndex}`);
+          console.error(`File Name: ${file.name}`);
+          console.error(`Parser Name: ${parser.name}`);
+          console.error(`Error Message: ${err.message}`);
+          console.error(`Stack Trace:
 ${err.stack}
 `);
-        if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
+          if (profiler && st) profiler.profileStageEnd(st, "0 bytes", "FAILED", err.message);
+          fileCoverage.push({
+            fileName: file.name,
+            status: "Failed",
+            reason: `Isolated parser error: ${err.message || "Unknown execution error"}`,
+            size: file.size,
+            sha256: file.sha256
+          });
+        }
+      } else {
+        console.log(`[STAGE 2] No parser found for extension '.${ext}' on file '${file.name}'. Skipping.`);
         fileCoverage.push({
           fileName: file.name,
-          status: "Failed",
-          reason: `Isolated parser error: ${err.message || "Unknown execution error"}`,
+          status: "Ignored",
+          reason: `Format extension (.${ext}) skipped automatically by parser router registry.`,
           size: file.size,
           sha256: file.sha256
         });
       }
-    } else {
-      console.log(`[STAGE 2] No parser found for extension '.${ext}' on file '${file.name}'. Skipping.`);
-      fileCoverage.push({
-        fileName: file.name,
-        status: "Ignored",
-        reason: `Format extension (.${ext}) skipped automatically by parser router registry.`,
-        size: file.size,
-        sha256: file.sha256
-      });
+      fileIndex++;
     }
-    fileIndex++;
+    stage2Duration = Date.now() - stage2Start;
+    s2.end(`${evidenceNodes2.length} evidence node(s) extracted`);
+    console.log(`[Pipeline] Stage 2 Complete (${stage2Duration}ms)`);
+    if (parsedProjects2.length === 1 && projectType !== "ZIP Package") {
+      const ext = rawFiles[0].name.split(".").pop()?.toLowerCase() || "";
+      if (ext === "xlsx" || ext === "xls") projectType = "Excel Analytics";
+      else if (ext === "sql") projectType = "SQL Analytics";
+      else if (ext === "py") projectType = "Python";
+      else if (ext === "ipynb") projectType = "Python";
+      else if (ext === "pbix" || ext === "dax") projectType = "Power BI";
+    }
+    const st8 = profiler ? profiler.profileStageStart(8, "Evidence Graph generation", `${evidenceNodes2.length} nodes`) : null;
+    const s3 = logger.start("Stage 3: Building Canonical Evidence Graph");
+    console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
+    const stage3Start = Date.now();
+    try {
+      evidenceGraph = mergeToEvidenceGraph(evidenceNodes2);
+      evidenceGraph.projectDomain = projectType;
+    } catch (err) {
+      if (profiler && st8) profiler.profileStageEnd(st8, "0 bytes", "FAILED", err.message);
+      throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
+    }
+    stage3Duration = Date.now() - stage3Start;
+    s3.end(JSON.stringify(evidenceGraph).length);
+    if (profiler && st8) {
+      profiler.recordAllocation("Evidence Graph Object", JSON.stringify(evidenceGraph).length);
+      profiler.profileStageEnd(st8, `${JSON.stringify(evidenceGraph).length} bytes`);
+    }
+    console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
   }
-  const stage2Duration = Date.now() - stage2Start;
-  s2.end(`${evidenceNodes.length} evidence node(s) extracted`);
-  console.log(`[Pipeline] Stage 2 Complete (${stage2Duration}ms)`);
-  if (parsedProjects.length === 1 && projectType !== "ZIP Package") {
-    const ext = rawFiles[0].name.split(".").pop()?.toLowerCase() || "";
-    if (ext === "xlsx" || ext === "xls") projectType = "Excel Analytics";
-    else if (ext === "sql") projectType = "SQL Analytics";
-    else if (ext === "py") projectType = "Python";
-    else if (ext === "ipynb") projectType = "Python";
-    else if (ext === "pbix" || ext === "dax") projectType = "Power BI";
-  }
-  const st8 = profiler ? profiler.profileStageStart(8, "Evidence Graph generation", `${evidenceNodes.length} nodes`) : null;
-  const s3 = logger.start("Stage 3: Building Canonical Evidence Graph");
-  console.log("[Pipeline] Stage 3 Start: Building Canonical Evidence Graph");
-  const stage3Start = Date.now();
-  let evidenceGraph;
-  try {
-    evidenceGraph = mergeToEvidenceGraph(evidenceNodes);
-    evidenceGraph.projectDomain = projectType;
-  } catch (err) {
-    if (profiler && st8) profiler.profileStageEnd(st8, "0 bytes", "FAILED", err.message);
-    throw new PipelineError("Evidence Graph", `Failed to construct evidence graph: ${err.message}`, err.name || "EvidenceGraphError", err);
-  }
-  const stage3Duration = Date.now() - stage3Start;
-  s3.end(JSON.stringify(evidenceGraph).length);
-  if (profiler && st8) {
-    profiler.recordAllocation("Evidence Graph Object", JSON.stringify(evidenceGraph).length);
-    profiler.profileStageEnd(st8, `${JSON.stringify(evidenceGraph).length} bytes`);
-  }
-  console.log(`[Pipeline] Stage 3 Complete (${stage3Duration}ms)`);
   const st9 = profiler ? profiler.profileStageStart(9, "Project Understanding Engine", "Evidence Graph") : null;
   const s4 = logger.start("Stage 4: Project Understanding Engine (PUE)");
   console.log("[Pipeline] Stage 4 Start: Project Understanding Engine (PUE)");
   const stage4Start = Date.now();
-  const packageEvidenceHash = crypto2.createHash("sha256").update(allFiles.map((f) => f.sha256).sort().join(":")).digest("hex");
+  const packageEvidenceHash = evidenceGraph.packageEvidenceHash || (allFiles.length > 0 ? crypto2.createHash("sha256").update(allFiles.map((f) => f.sha256).sort().join(":")).digest("hex") : crypto2.createHash("sha256").update(JSON.stringify(evidenceGraph)).digest("hex"));
+  evidenceGraph.packageEvidenceHash = packageEvidenceHash;
   const projectUnderstanding = await executeWithTimeout(
     "Project Understanding Engine (PUE)",
     () => getCachedOrSynthesizeUnderstanding(evidenceGraph, packageEvidenceHash, existingUnderstanding),
@@ -3609,7 +3639,12 @@ ${err.stack}
   const stage6Duration = Date.now() - stage6Start;
   s6.end(`Fully Sufficient: ${isFullySufficient}`);
   console.log(`[Pipeline] Stage 6 Complete (${stage6Duration}ms)`);
-  const stageTimings = [
+  const stageTimings = cachedContext?.evidenceGraph ? [
+    { stage: "Stages 1-3 (Cached Evidence Fast-Path)", durationMs: 0, status: "Completed" },
+    { stage: "Stage 4 (Project Understanding)", durationMs: stage4Duration, status: "Completed" },
+    { stage: "Stage 5 (Completeness & Conflicts)", durationMs: stage5Duration, status: "Completed" },
+    { stage: "Stage 6 (Decision Logic)", durationMs: stage6Duration, status: "Completed" }
+  ] : [
     { stage: "Stage 1 (File Prep & Unpack)", durationMs: stage1Duration, status: "Completed" },
     { stage: "Stage 2 (Sandboxed Parsers)", durationMs: stage2Duration, status: "Completed" },
     { stage: "Stage 3 (Evidence Graph)", durationMs: stage3Duration, status: "Completed" },
@@ -3620,7 +3655,7 @@ ${err.stack}
   if (!forceCompile && (!userAnswers || Object.keys(userAnswers).length === 0) && !isFullySufficient) {
     const missingInformation = generateMissingInformationRequests(coverageReport, evidenceGraph, projectUnderstanding);
     if (missingInformation.length > 0) {
-      const rawProject2 = mergeExtractedProjects(parsedProjects);
+      const rawProject2 = cachedContext?.rawProject && Object.keys(cachedContext.rawProject).length > 0 ? cachedContext.rawProject : mergeExtractedProjects(parsedProjects);
       console.log(`[Timing Profile] Total Pipeline Duration (NEEDS_USER_INPUT): ${Date.now() - pipelineStartTime}ms`);
       pipelineStep.end("Terminated with NEEDS_USER_INPUT");
       return {
@@ -3630,7 +3665,7 @@ ${err.stack}
         projectUnderstanding,
         rawProject: {
           ...rawProject2,
-          sourceFiles: Array.from(new Set(allFiles.map((f) => f.name)))
+          sourceFiles: allFiles.length > 0 ? Array.from(new Set(allFiles.map((f) => f.name))) : cachedContext?.rawProject?.sourceFiles || Array.from(new Set(evidenceGraph.evidenceSources?.map((s) => s.filePath) || []))
         },
         coverageReport,
         missingInformation,
@@ -3645,7 +3680,7 @@ ${err.stack}
   const s7 = logger.start("Stage 7: Baseline Merged Raw Project Assembly");
   console.log("[Pipeline] Stage 7 Start: Baseline Merged Raw Project Assembly");
   const stage7Start = Date.now();
-  const rawProject = mergeExtractedProjects(parsedProjects);
+  const rawProject = cachedContext?.rawProject && Object.keys(cachedContext.rawProject).length > 0 ? cachedContext.rawProject : mergeExtractedProjects(parsedProjects);
   const stage7Duration = Date.now() - stage7Start;
   s7.end(JSON.stringify(rawProject).length);
   console.log(`[Pipeline] Stage 7 Complete (${stage7Duration}ms)`);
@@ -3717,7 +3752,7 @@ ${err.stack}
     projectUnderstanding,
     rawProject: {
       ...synthesized.raw,
-      sourceFiles: Array.from(new Set(allFiles.map((f) => f.name)))
+      sourceFiles: allFiles.length > 0 ? Array.from(new Set(allFiles.map((f) => f.name))) : cachedContext?.rawProject?.sourceFiles || Array.from(new Set(evidenceGraph.evidenceSources?.map((s) => s.filePath) || []))
     },
     coverageReport,
     recruiterAudit,
@@ -3732,10 +3767,10 @@ ${err.stack}
     linkedInSummary: synthesized.structured.linkedInSummary.value,
     auditMetadata: {
       importTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      parserVersions: "Portfolio OS AI Intelligence Engine v4.1 (PUE-Cached + Evidence Intelligence + Recruiter Audit + Gemini)",
+      parserVersions: "Portfolio OS AI Intelligence Engine v4.2 (PUE-Cached + Evidence Fast-Path + Recruiter Audit + Gemini)",
       evidenceHash: packageEvidenceHash,
-      projectVersion: "v4.1",
-      totalFilesProcessed: allFiles.length,
+      projectVersion: "v4.2",
+      totalFilesProcessed: allFiles.length > 0 ? allFiles.length : cachedContext?.fileCoverage?.length || evidenceGraph.evidenceSources?.length || 1,
       debugAiContext: formatDebugAiContext(evidenceGraph, conflicts)
     },
     stageTimings
@@ -3758,9 +3793,14 @@ async function compileSourceCodeToProject(fileName, sourceCode, userAnswers, for
 // src/api/_lib/ai/index.ts
 import { GoogleGenAI as GoogleGenAI3, Type as Type3 } from "@google/genai";
 var aiClient2 = null;
+function sanitizeApiKey3(raw) {
+  if (!raw) return "";
+  return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+}
 function getAiClient2() {
   if (aiClient2) return aiClient2;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const apiKey = sanitizeApiKey3(rawKey);
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not defined in environment secrets.");
   }
@@ -3768,7 +3808,8 @@ function getAiClient2() {
     apiKey,
     httpOptions: {
       headers: {
-        "User-Agent": "aistudio-build"
+        "User-Agent": "aistudio-build",
+        "x-goog-api-key": apiKey
       }
     }
   });
@@ -4185,8 +4226,39 @@ async function handler(req, res) {
       const st1 = profiler.profileStageStart(1, "Receive request", `${JSON.stringify(req.body || {}).length} bytes`);
       const prepStep = logger.start("Stage 0: Payload Parsing & Storage Resolution");
       const body = req.body || {};
-      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding } = body;
+      const { fileName, fileDataBase64, fileType, files, userAnswers, forceCompile, projectUnderstanding, evidenceGraph, rawProject, fileCoverage } = body;
       profiler.profileStageEnd(st1, `${Array.isArray(files) ? files.length : 0} file(s)`);
+      if (evidenceGraph) {
+        console.log(`[ai-package-parse] Fast-Path Activated: Cached evidenceGraph supplied with ${evidenceGraph.evidenceSources?.length || 0} source(s). Skipping Stages 1, 2, and 3.`);
+        prepStep.end("Cached evidenceGraph resolved (Fast-Path)");
+        const compileStep2 = logger.start("Package Compiler Pipeline Execution (Fast-Path)");
+        const output2 = await executeWithTimeout(
+          "Package Compiler Hard Deadline",
+          () => compileProjectPackage(
+            [],
+            userAnswers,
+            forceCompile,
+            projectUnderstanding,
+            profiler,
+            { evidenceGraph, rawProject, fileCoverage }
+          ),
+          59e3
+        );
+        compileStep2.end(JSON.stringify(output2).length);
+        const st152 = profiler.profileStageStart(15, "Final JSON serialization", "Compiler Output Object");
+        const jsonOutputString2 = JSON.stringify(output2);
+        profiler.recordAllocation("Final Output JSON String", jsonOutputString2.length);
+        profiler.profileStageEnd(st152, `${jsonOutputString2.length} bytes`);
+        const st162 = profiler.profileStageStart(16, "HTTP Response", `${jsonOutputString2.length} bytes`);
+        logExecution({
+          endpoint: pathname,
+          totalDurationMs: Date.now() - startTime
+        });
+        handlerStep.end("200 OK Response Sent (Fast-Path)");
+        profiler.profileStageEnd(st162, "HTTP 200 OK Sent");
+        profiler.printFinalReport();
+        return sendSuccess(res, output2);
+      }
       const st2 = profiler.profileStageStart(2, "Validate descriptors", `${Array.isArray(files) ? files.length : 0} descriptor(s)`);
       console.log(`
 ==========================================================`);
