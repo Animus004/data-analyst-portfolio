@@ -160,10 +160,10 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
           </div>
 
           <Button 
-            variant="outline" 
+            variant="dark-outline" 
             size="sm" 
             onClick={() => onNavigate("home")}
-            className="w-full gap-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white border-slate-800 font-mono"
+            className="w-full gap-1.5 text-xs text-slate-300 hover:text-white font-mono"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Exit to Public

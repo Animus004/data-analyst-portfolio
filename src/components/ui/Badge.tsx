@@ -36,11 +36,11 @@ export const Badge: React.FC<BadgeProps> = ({
   } else if (variant === "status") {
     const statusLower = children.toLowerCase();
     if (statusLower === "published") {
-      styles = "bg-green-50 text-green-700 border border-green-100 text-[10px] px-2 py-0.5";
+      styles = "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-0.5 font-semibold";
     } else if (statusLower === "draft") {
-      styles = "bg-amber-50 text-amber-700 border border-amber-100 text-[10px] px-2 py-0.5";
+      styles = "bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] px-2 py-0.5 font-semibold";
     } else {
-      styles = "bg-slate-100 text-slate-600 border border-slate-200 text-[10px] px-2 py-0.5";
+      styles = "bg-slate-800 text-slate-400 border border-slate-700 text-[10px] px-2 py-0.5";
     }
   } else if (variant === "success") {
     styles = "bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] px-2 py-0.5";

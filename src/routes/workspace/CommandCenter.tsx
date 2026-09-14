@@ -62,7 +62,8 @@ import {
   Shield,
   Check,
   X,
-  ArrowRight
+  ArrowRight,
+  Save
 } from "lucide-react";
 
 interface CommandCenterProps {
@@ -220,6 +221,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   const [editedProfile, setEditedProfile] = useState<CreatorProfile>({ ...profile });
   const [profileSaved, setProfileSaved] = useState(false);
   const [skillsString, setSkillsString] = useState((profile.quickStackSkills || []).join(", "));
+  const [profileTab, setProfileTab] = useState<"identity" | "snapshot" | "contact">("identity");
 
   // Keep local editor states in sync if profile prop changes (e.g. on backup imports)
   React.useEffect(() => {
@@ -229,7 +231,16 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveProfile(editedProfile);
+    const parsedSkills = skillsString
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const updated: CreatorProfile = {
+      ...editedProfile,
+      quickStackSkills: parsedSkills.length > 0 ? parsedSkills : editedProfile.quickStackSkills
+    };
+    setEditedProfile(updated);
+    onSaveProfile(updated);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 3000);
   };
@@ -1699,10 +1710,10 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
         </div>
         
         <Button 
-          variant="primary" 
+          variant="inverted" 
           size="sm" 
           onClick={onAddNewProject}
-          className="gap-1.5 self-start bg-white text-slate-950 border-white hover:bg-slate-200"
+          className="gap-1.5 self-start font-semibold"
         >
           <Plus className="w-4 h-4" />
           Add New Case Study
@@ -2056,34 +2067,204 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                     <CardHeader className="border-b border-slate-800 bg-slate-950/60 flex flex-row items-center justify-between">
                       <div>
                         <CardTitle className="text-white text-sm uppercase tracking-wider font-mono">Creator Profile</CardTitle>
-                        <CardDescription className="text-slate-400">Owner metadata & bio</CardDescription>
+                        <CardDescription className="text-slate-400">Controls Hero section, snapshot & recruiter contacts</CardDescription>
                       </div>
                       <User className="w-5 h-5 text-slate-500" />
                     </CardHeader>
                     <CardContent className="p-5">
+                      {/* Tabs Navigation */}
+                      <div className="flex border-b border-slate-800 mb-4 text-xs font-mono">
+                        <button
+                          type="button"
+                          onClick={() => setProfileTab("identity")}
+                          className={`pb-2 px-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
+                            profileTab === "identity"
+                              ? "border-indigo-500 text-indigo-400 font-bold"
+                              : "border-transparent text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Identity & Hero
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProfileTab("snapshot")}
+                          className={`pb-2 px-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
+                            profileTab === "snapshot"
+                              ? "border-indigo-500 text-indigo-400 font-bold"
+                              : "border-transparent text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Hero Snapshot
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProfileTab("contact")}
+                          className={`pb-2 px-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
+                            profileTab === "contact"
+                              ? "border-indigo-500 text-indigo-400 font-bold"
+                              : "border-transparent text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Status & Links
+                        </button>
+                      </div>
+
                       <form onSubmit={handleSaveProfile} className="space-y-4">
-                        <Input
-                          label="Full Display Name"
-                          value={editedProfile.name}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, name: e.target.value })}
-                          className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
-                        />
-                        <Input
-                          label="Professional Headline"
-                          value={editedProfile.title}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, title: e.target.value })}
-                          className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
-                        />
-                        <TextArea
-                          label="Bio Summary"
-                          rows={3}
-                          value={editedProfile.bio}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
-                          className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
-                        />
-                        <Button type="submit" variant="primary" className="w-full text-xs font-semibold bg-white text-slate-950 border-white hover:bg-slate-200">
-                          Save Profile Settings
-                        </Button>
+                        {profileTab === "identity" && (
+                          <div className="space-y-3.5">
+                            <Input
+                              label="Full Display Name"
+                              value={editedProfile.name}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, name: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                            />
+                            <Input
+                              label="Professional Headline"
+                              value={editedProfile.title}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, title: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="e.g. Aspiring Data Analyst | Excel • SQL • Power BI"
+                            />
+                            <TextArea
+                              label="Bio Summary"
+                              rows={3}
+                              value={editedProfile.bio}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="Brief introduction displayed in the hero section..."
+                            />
+                            <div className="grid grid-cols-2 gap-3">
+                              <Input
+                                label="Location"
+                                value={editedProfile.location}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, location: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="e.g. Kolkata, India"
+                              />
+                              <Input
+                                label="Hero Button Text"
+                                value={editedProfile.heroCtaText || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, heroCtaText: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="e.g. Explore Case Studies"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {profileTab === "snapshot" && (
+                          <div className="space-y-3.5">
+                            <div className="grid grid-cols-2 gap-3">
+                              <Input
+                                label="Target Role"
+                                value={editedProfile.targetRole || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, targetRole: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="e.g. Data Analyst"
+                              />
+                              <Input
+                                label="Current Focus"
+                                value={editedProfile.currentFocus || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, currentFocus: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="e.g. Data Analytics & BI"
+                              />
+                            </div>
+                            <Input
+                              label="Currently Learning"
+                              value={editedProfile.currentlyLearning || ""}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, currentlyLearning: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="e.g. Advanced Python, PySpark, Machine Learning"
+                            />
+                            <div>
+                              <Input
+                                label="Quick Stack Skills (comma separated)"
+                                value={skillsString}
+                                onChange={(e) => setSkillsString(e.target.value)}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="Excel, SQL, Power BI, Python, Business Intelligence"
+                              />
+                              <p className="text-[10px] text-slate-500 font-mono mt-1">
+                                Controls the filter pills and Hero Core Skills tags.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {profileTab === "contact" && (
+                          <div className="space-y-3.5">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-300 block">Availability Status</label>
+                                <label className="flex items-center gap-2 p-2 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={editedProfile.lookingForJob}
+                                    onChange={(e) => setEditedProfile({ ...editedProfile, lookingForJob: e.target.checked })}
+                                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700"
+                                  />
+                                  <span className="text-xs text-slate-300">Open to Roles</span>
+                                </label>
+                              </div>
+                              <Input
+                                label="Status Badge Label"
+                                value={editedProfile.statusBadge || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, statusBadge: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="e.g. Open to Opportunities"
+                              />
+                            </div>
+                            <Input
+                              label="Primary Contact Email"
+                              type="email"
+                              value={editedProfile.email}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, email: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="e.g. sayanhalder813@gmail.com"
+                            />
+                            <Input
+                              label="LinkedIn URL"
+                              value={editedProfile.linkedinUrl || ""}
+                              onChange={(e) => setEditedProfile({ ...editedProfile, linkedinUrl: e.target.value })}
+                              className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                              placeholder="https://linkedin.com/in/..."
+                            />
+                            <div className="grid grid-cols-2 gap-3">
+                              <Input
+                                label="GitHub Profile URL"
+                                value={editedProfile.githubUrl || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, githubUrl: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="https://github.com/..."
+                              />
+                              <Input
+                                label="Resume Download URL"
+                                value={editedProfile.resumeUrl || ""}
+                                onChange={(e) => setEditedProfile({ ...editedProfile, resumeUrl: e.target.value })}
+                                className="bg-slate-950 border-slate-800 text-slate-100 text-xs"
+                                placeholder="https://drive.google.com/..."
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="w-full py-2.5 px-4 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950/20 border border-indigo-500 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+                        >
+                          {profileSaved ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-300 animate-bounce" />
+                              <span>Profile Settings Saved!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4" />
+                              <span>Save Profile Settings</span>
+                            </>
+                          )}
+                        </button>
                       </form>
                     </CardContent>
                   </Card>
