@@ -169,11 +169,15 @@ export interface PowerBiEvidence extends EvidenceMeta {
 
 export interface ReadmeEvidence extends EvidenceMeta {
   objective?: string;
+  problem?: string;
   methodology?: string;
   tools?: string[];
   dataset?: string;
+  dataCleaning?: string;
   findings?: string;
   recommendations?: string;
+  challenges?: string;
+  lessonsLearned?: string;
 }
 
 export interface DocumentEvidence extends EvidenceMeta {
@@ -284,6 +288,8 @@ export interface StructuredPortfolioProject {
   }>;
   tags: string[];
   categories: string[];
+  storyBlocks?: ExtractedStoryBlock[];
+  images?: string[];
 }
 
 export interface EvidenceCoverageReport {

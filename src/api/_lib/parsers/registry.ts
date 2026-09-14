@@ -132,7 +132,8 @@ export const SQLParser: Parser = {
       // Calculated Metric aliases (AS metric_name)
       const aliasMatch = trimmed.match(/(SUM|COUNT|AVG|MAX|MIN)\([^)]+\)\s+AS\s+([a-zA-Z0-9_]+)/i);
       if (aliasMatch && aliasMatch[2]) {
-        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: aliasMatch[1] });
+        const fullFormula = aliasMatch[0].split(/\s+AS\s+/i)[0]?.trim() || aliasMatch[1];
+        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: fullFormula });
       }
 
       // Detect comments with KPIs or business questions
@@ -408,19 +409,35 @@ export const MarkdownParser: Parser = {
       const lines = sec.split("\n");
       const title = lines[0].trim().toLowerCase();
       const body = lines.slice(1).join("\n").trim();
+      if (!body) return;
 
       if (title.includes("objective") || title.includes("goal")) {
         readmeEvidence.objective = body;
-      } else if (title.includes("problem") || title.includes("challenge")) {
-        // Business problem recorded in evidence
-      } else if (title.includes("methodology") || title.includes("architecture")) {
+        proj.objective = body;
+      } else if (title.includes("problem") || title.includes("issue")) {
+        readmeEvidence.problem = body;
+        proj.businessProblem = body;
+      } else if (title.includes("challenge") || title.includes("obstacle")) {
+        readmeEvidence.challenges = body;
+        proj.challengesText = body;
+      } else if (title.includes("cleaning") || title.includes("transform") || title.includes("preprocess")) {
+        readmeEvidence.dataCleaning = body;
+        proj.dataCleaning = body;
+      } else if (title.includes("methodology") || title.includes("architecture") || title.includes("workflow")) {
         readmeEvidence.methodology = body;
-      } else if (title.includes("finding") || title.includes("insight")) {
+        proj.methodology = body;
+      } else if (title.includes("finding") || title.includes("insight") || title.includes("discovery")) {
         readmeEvidence.findings = body;
-      } else if (title.includes("recommendation")) {
+        proj.findings = body;
+      } else if (title.includes("recommendation") || title.includes("action")) {
         readmeEvidence.recommendations = body;
-      } else if (title.includes("dataset")) {
+        proj.recommendations = body;
+      } else if (title.includes("lesson") || title.includes("takeaway") || title.includes("retrospective")) {
+        readmeEvidence.lessonsLearned = body;
+        proj.lessonsLearned = body;
+      } else if (title.includes("dataset") || title.includes("corpus") || title.includes("data source")) {
         readmeEvidence.dataset = body;
+        proj.datasetDesc = body;
       }
     });
 

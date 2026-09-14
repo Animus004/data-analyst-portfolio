@@ -159,22 +159,16 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
           });
           safeForEach(data.tables, "sql.tables", t => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
           if (Array.isArray(data.joins) && data.joins.length > 0) {
-            graph.analyticalTechniques.push({ value: `Relational Join Modeling (${data.joins.length} join criteria)`, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: "Relational Multi-Table Joins", sourceFile, parser, confidence });
           }
           if (Array.isArray(data.windowFunctions) && data.windowFunctions.length > 0) {
-            graph.analyticalTechniques.push({ value: `Advanced SQL Window Functions (${data.windowFunctions.length} window definitions)`, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: "Advanced SQL Window Aggregations", sourceFile, parser, confidence });
           }
           sourceMeta.nodesExtracted++;
         }
         safeForEach(data.calculatedMetrics, "sql.calculatedMetrics", cm => {
-          graph.metrics.push({
-            value: { label: cm.name, value: cm.formula, description: "Calculated SQL Metric" },
-            sourceFile,
-            parser,
-            confidence,
-            location
-          });
           graph.detectedMeasures.push({ value: `${cm.name} (${cm.formula})`, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: `SQL Aggregation (${cm.name})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         safeForEach(data.businessQuestions, "sql.businessQuestions", q => {
@@ -202,13 +196,6 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
           sourceMeta.nodesExtracted++;
         }
         safeForEach(data.daxMeasures, "powerbi.daxMeasures", dax => {
-          graph.metrics.push({
-            value: { label: dax.name, value: dax.expression, description: "DAX Measure" },
-            sourceFile,
-            parser,
-            confidence,
-            location
-          });
           graph.analyticalTechniques.push({ value: `DAX Calculated Measure: ${dax.name}`, sourceFile, parser, confidence });
           graph.detectedMeasures.push({ value: dax.name, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
@@ -222,9 +209,31 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
           graph.businessQuestions.push({ value: `Objective Query: ${data.objective}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
+        if (data.problem) {
+          graph.documentation.push({ value: { key: "Problem", text: data.problem }, sourceFile, parser, confidence });
+          graph.businessQuestions.push({ value: `Problem Statement: ${data.problem}`, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.challenges) {
+          graph.documentation.push({ value: { key: "Challenges", text: data.challenges }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.lessonsLearned) {
+          graph.documentation.push({ value: { key: "Lessons Learned", text: data.lessonsLearned }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.dataCleaning) {
+          graph.documentation.push({ value: { key: "Data Cleaning", text: data.dataCleaning }, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: "Data Transformation & Cleaning", sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.dataset) {
+          graph.documentation.push({ value: { key: "Dataset", text: data.dataset }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
         if (data.methodology) {
           graph.methodology.push({ value: data.methodology, sourceFile, parser, confidence });
-          graph.analyticalTechniques.push({ value: `Methodology Overview: ${data.methodology.slice(0, 100)}`, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: "Structured Analytical Methodology", sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.findings) {
@@ -305,13 +314,19 @@ export function detectEvidenceConflicts(graph: EvidenceGraph): ConflictRecord[] 
   const metricGroups = new Map<string, Array<{ value: string; sourceFile: string; confidence: number }>>();
 
   safeForEach(graph.metrics, "graph.metrics", mNode => {
+    const rawVal = String(mNode.value.value || "").trim();
+    // Skip SQL function formulas or empty values from conflict detection
+    if (!rawVal || /^(COUNT|SUM|AVG|MAX|MIN)\b/i.test(rawVal) || rawVal.includes("(") || rawVal.includes(")")) {
+      return;
+    }
+
     const label = mNode.value.label.trim();
     const normLabel = label.toLowerCase();
     if (!metricGroups.has(normLabel)) {
       metricGroups.set(normLabel, []);
     }
     metricGroups.get(normLabel)!.push({
-      value: mNode.value.value,
+      value: rawVal,
       sourceFile: mNode.sourceFile,
       confidence: mNode.confidence
     });
@@ -319,15 +334,21 @@ export function detectEvidenceConflicts(graph: EvidenceGraph): ConflictRecord[] 
 
   metricGroups.forEach((group, normLabel) => {
     if (group.length > 1) {
-      const firstVal = group[0].value;
-      const hasConflict = group.some(item => item.value !== firstVal);
+      const firstVal = group[0].value.toLowerCase();
+      const hasConflict = group.some(item => item.value.toLowerCase() !== firstVal);
 
       if (hasConflict) {
+        const fieldName = `Metric: ${group[0].value || normLabel}`;
         conflicts.push({
           id: `conflict-${normLabel}-${Date.now()}`,
-          fieldName: `Metric: ${group[0].value}`,
-          fieldLabel: `Conflicting values for KPI Metric '${group[0].value}'`,
+          field: fieldName,
+          fieldName: fieldName,
+          fieldLabel: `Conflicting values for KPI Metric '${normLabel}'`,
           conflictType: "Metric Discrepancy",
+          values: group.map(g => ({
+            value: g.value,
+            sourceFile: g.sourceFile
+          })),
           competingValues: group.map(g => ({
             sourceFile: g.sourceFile,
             value: g.value,

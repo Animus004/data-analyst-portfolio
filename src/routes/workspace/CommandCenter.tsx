@@ -929,11 +929,32 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     }
   };
 
+  const handleConflictResolve = (field: string, chosenValue: string) => {
+    setResolvedConflictFields(prev => ({ ...prev, [field]: true }));
+    if (aiParsedResult) {
+      const updated = { ...aiParsedResult };
+      if (Array.isArray(updated.metrics)) {
+        const normField = field.toLowerCase().replace(/^metric:\s*/i, "").trim();
+        updated.metrics = updated.metrics.map((m: any) => {
+          const mLabel = (typeof m.label === "string" ? m.label : m.label?.value || "").toLowerCase().trim();
+          if (mLabel === normField || field.toLowerCase().includes(mLabel)) {
+            return { ...m, value: chosenValue };
+          }
+          return m;
+        });
+      }
+      setAiParsedResult(updated);
+    }
+  };
+
   const handleApproveAiProject = () => {
     if (!aiParsedResult) return;
 
     // Deterministic validation: enforce conflict resolution before persistence
-    const unresolvedCount = conflicts.filter(c => !resolvedConflictFields[c.field]).length;
+    const unresolvedCount = conflicts.filter(c => {
+      const fieldKey = c.field || c.fieldName;
+      return fieldKey ? !resolvedConflictFields[fieldKey] : false;
+    }).length;
     if (unresolvedCount > 0) {
       setAiParseError(`You must resolve all ${unresolvedCount} conflicting data values in the Deterministic Conflict Resolution Panel below before persistence.`);
       return;
@@ -992,7 +1013,9 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       type: sb.type || "markdown",
       title: extractStr(sb.title, `Section ${idx + 1}`),
       bodyContent: extractStr(sb.bodyContent, ""),
-      language: sb.language
+      language: sb.language,
+      imageUrl: sb.imageUrl,
+      caption: sb.caption
     }));
 
     const canonicalRecord: ProjectRecord = {
@@ -1010,8 +1033,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       objective: objectiveStr,
       datasetDesc: datasetDescStr,
       methodology: methodologyStr,
+      overviewText: extractStr(aiParsedResult.overviewText || aiParsedResult.executiveSummary || aiParsedResult.summary),
       businessProblem: problemStr,
       dataCleaning: dataCleaningStr,
+      analysisText: extractStr(aiParsedResult.analysisProcess || aiParsedResult.analysisText),
       findings: findingsStr,
       recommendations: recommendationsStr,
       challengesText: extractStr(aiParsedResult.challengesText || aiParsedResult.challenges, ""),
@@ -1019,8 +1044,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
 
       tags: tagsArr,
       categories: categoriesArr,
+      skills: extractArr(aiParsedResult.skillsDemonstrated || aiParsedResult.skills, tagsArr),
       metrics: normalizedMetrics,
       storyBlocks: normalizedStoryBlocks,
+      images: Array.isArray(aiParsedResult.images) ? aiParsedResult.images : [],
 
       githubUrl: typeof aiParsedResult.githubUrl === "string" ? aiParsedResult.githubUrl : undefined,
       liveUrl: typeof aiParsedResult.liveUrl === "string" ? aiParsedResult.liveUrl : undefined,
@@ -1860,6 +1887,7 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
               }}
               onFieldEdit={handleFieldCorrection}
               onAnswersSubmit={handleAnswersAndRecompile}
+              onConflictResolve={handleConflictResolve}
             />
           )}
         </CardContent>

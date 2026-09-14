@@ -75,7 +75,8 @@ var SQLParser = {
       }
       const aliasMatch = trimmed.match(/(SUM|COUNT|AVG|MAX|MIN)\([^)]+\)\s+AS\s+([a-zA-Z0-9_]+)/i);
       if (aliasMatch && aliasMatch[2]) {
-        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: aliasMatch[1] });
+        const fullFormula = aliasMatch[0].split(/\s+AS\s+/i)[0]?.trim() || aliasMatch[1];
+        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: fullFormula });
       }
       if (trimmed.startsWith("--") || trimmed.startsWith("/*")) {
         const comment = trimmed.replace(/^(--|\/\*|\*\/)/, "").trim();

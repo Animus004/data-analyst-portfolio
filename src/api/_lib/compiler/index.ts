@@ -64,6 +64,9 @@ export function validateAndDetectConflicts(projects: ExtractedProject[]): Confli
       const valuesMap = new Map<string, typeof group>();
       group.forEach(item => {
         const normVal = item.value.toLowerCase().trim();
+        if (!normVal || /^(COUNT|SUM|AVG|MAX|MIN)\b/i.test(normVal) || normVal.includes("(") || normVal.includes(")")) {
+          return;
+        }
         if (!valuesMap.has(normVal)) {
           valuesMap.set(normVal, []);
         }

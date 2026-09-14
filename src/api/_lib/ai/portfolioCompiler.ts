@@ -129,9 +129,14 @@ export function sanitizeRecruiterTags(
     const trimmed = tag.trim();
     if (!trimmed || trimmed.length < 2) continue;
 
-    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some(pat => pat.test(trimmed));
-    if (!isForbidden && !cleanTags.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
-      cleanTags.push(trimmed);
+    // Strip trailing debug count parentheses like "(5 join criteria)" or "(3 window definitions)"
+    const sanitizedTag = trimmed.replace(/\s*\(\d+\s+[^)]+\)$/, "").trim();
+    if (!sanitizedTag || sanitizedTag.length < 2) continue;
+
+    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some(pat => pat.test(sanitizedTag)) ||
+      /^(join criteria|window definition)/i.test(sanitizedTag);
+    if (!isForbidden && !cleanTags.some(t => t.toLowerCase() === sanitizedTag.toLowerCase())) {
+      cleanTags.push(sanitizedTag);
     }
   }
 
@@ -351,7 +356,9 @@ export function buildFallbackStructuredProject(
       sourceLocation: m.location
     })),
     tags: rawBaseProject.tags.length > 0 ? rawBaseProject.tags : ["Analytics"],
-    categories: rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"]
+    categories: rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"],
+    storyBlocks: rawBaseProject.storyBlocks || [],
+    images: (rawBaseProject as any).images || []
   };
 
   const rawUpdated: ExtractedProject = {
@@ -810,6 +817,7 @@ ${puContext}
    - 2 agreeing evidence sources: ~85% confidence
    - 3+ agreeing evidence sources / user validated: ~95% confidence
 6. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
+7. **QUANTIFIED BUSINESS IMPACT**: The businessImpact field must connect extracted metrics to measurable operational outcomes (e.g., cost reduction, variance mitigation, cycle time decrease, or revenue expansion). Do not output vague filler.
 
 ### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
 ${JSON.stringify(prioritizedPayload, null, 2)}
@@ -1319,7 +1327,9 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
       parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map(t => t.value) : []),
       graph.projectDomain || parsed.industry?.value || ""
     ),
-    categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
+    categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"]),
+    storyBlocks: rawBaseProject.storyBlocks || [],
+    images: (rawBaseProject as any).images || []
   };
 
   // Task 8: Run automated internal AI Quality Review audit & refinement loop

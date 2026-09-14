@@ -381,7 +381,8 @@ var SQLParser = {
       }
       const aliasMatch = trimmed.match(/(SUM|COUNT|AVG|MAX|MIN)\([^)]+\)\s+AS\s+([a-zA-Z0-9_]+)/i);
       if (aliasMatch && aliasMatch[2]) {
-        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: aliasMatch[1] });
+        const fullFormula = aliasMatch[0].split(/\s+AS\s+/i)[0]?.trim() || aliasMatch[1];
+        sqlEvidence.calculatedMetrics.push({ name: aliasMatch[2], formula: fullFormula });
       }
       if (trimmed.startsWith("--") || trimmed.startsWith("/*")) {
         const comment = trimmed.replace(/^(--|\/\*|\*\/)/, "").trim();
@@ -608,17 +609,34 @@ var MarkdownParser = {
       const lines = sec.split("\n");
       const title = lines[0].trim().toLowerCase();
       const body = lines.slice(1).join("\n").trim();
+      if (!body) return;
       if (title.includes("objective") || title.includes("goal")) {
         readmeEvidence.objective = body;
-      } else if (title.includes("problem") || title.includes("challenge")) {
-      } else if (title.includes("methodology") || title.includes("architecture")) {
+        proj.objective = body;
+      } else if (title.includes("problem") || title.includes("issue")) {
+        readmeEvidence.problem = body;
+        proj.businessProblem = body;
+      } else if (title.includes("challenge") || title.includes("obstacle")) {
+        readmeEvidence.challenges = body;
+        proj.challengesText = body;
+      } else if (title.includes("cleaning") || title.includes("transform") || title.includes("preprocess")) {
+        readmeEvidence.dataCleaning = body;
+        proj.dataCleaning = body;
+      } else if (title.includes("methodology") || title.includes("architecture") || title.includes("workflow")) {
         readmeEvidence.methodology = body;
-      } else if (title.includes("finding") || title.includes("insight")) {
+        proj.methodology = body;
+      } else if (title.includes("finding") || title.includes("insight") || title.includes("discovery")) {
         readmeEvidence.findings = body;
-      } else if (title.includes("recommendation")) {
+        proj.findings = body;
+      } else if (title.includes("recommendation") || title.includes("action")) {
         readmeEvidence.recommendations = body;
-      } else if (title.includes("dataset")) {
+        proj.recommendations = body;
+      } else if (title.includes("lesson") || title.includes("takeaway") || title.includes("retrospective")) {
+        readmeEvidence.lessonsLearned = body;
+        proj.lessonsLearned = body;
+      } else if (title.includes("dataset") || title.includes("corpus") || title.includes("data source")) {
         readmeEvidence.dataset = body;
+        proj.datasetDesc = body;
       }
     });
     proj.storyBlocks.push({
@@ -1232,22 +1250,16 @@ function mergeToEvidenceGraph(extractedNodes) {
           });
           safeForEach(data.tables, "sql.tables", (t) => graph.businessEntities.push({ value: `Table Entity: ${t}`, sourceFile, parser, confidence }));
           if (Array.isArray(data.joins) && data.joins.length > 0) {
-            graph.analyticalTechniques.push({ value: `Relational Join Modeling (${data.joins.length} join criteria)`, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: "Relational Multi-Table Joins", sourceFile, parser, confidence });
           }
           if (Array.isArray(data.windowFunctions) && data.windowFunctions.length > 0) {
-            graph.analyticalTechniques.push({ value: `Advanced SQL Window Functions (${data.windowFunctions.length} window definitions)`, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: "Advanced SQL Window Aggregations", sourceFile, parser, confidence });
           }
           sourceMeta.nodesExtracted++;
         }
         safeForEach(data.calculatedMetrics, "sql.calculatedMetrics", (cm) => {
-          graph.metrics.push({
-            value: { label: cm.name, value: cm.formula, description: "Calculated SQL Metric" },
-            sourceFile,
-            parser,
-            confidence,
-            location
-          });
           graph.detectedMeasures.push({ value: `${cm.name} (${cm.formula})`, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: `SQL Aggregation (${cm.name})`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         });
         safeForEach(data.businessQuestions, "sql.businessQuestions", (q) => {
@@ -1274,13 +1286,6 @@ function mergeToEvidenceGraph(extractedNodes) {
           sourceMeta.nodesExtracted++;
         }
         safeForEach(data.daxMeasures, "powerbi.daxMeasures", (dax) => {
-          graph.metrics.push({
-            value: { label: dax.name, value: dax.expression, description: "DAX Measure" },
-            sourceFile,
-            parser,
-            confidence,
-            location
-          });
           graph.analyticalTechniques.push({ value: `DAX Calculated Measure: ${dax.name}`, sourceFile, parser, confidence });
           graph.detectedMeasures.push({ value: dax.name, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
@@ -1293,9 +1298,31 @@ function mergeToEvidenceGraph(extractedNodes) {
           graph.businessQuestions.push({ value: `Objective Query: ${data.objective}`, sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
+        if (data.problem) {
+          graph.documentation.push({ value: { key: "Problem", text: data.problem }, sourceFile, parser, confidence });
+          graph.businessQuestions.push({ value: `Problem Statement: ${data.problem}`, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.challenges) {
+          graph.documentation.push({ value: { key: "Challenges", text: data.challenges }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.lessonsLearned) {
+          graph.documentation.push({ value: { key: "Lessons Learned", text: data.lessonsLearned }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.dataCleaning) {
+          graph.documentation.push({ value: { key: "Data Cleaning", text: data.dataCleaning }, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: "Data Transformation & Cleaning", sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
+        if (data.dataset) {
+          graph.documentation.push({ value: { key: "Dataset", text: data.dataset }, sourceFile, parser, confidence });
+          sourceMeta.nodesExtracted++;
+        }
         if (data.methodology) {
           graph.methodology.push({ value: data.methodology, sourceFile, parser, confidence });
-          graph.analyticalTechniques.push({ value: `Methodology Overview: ${data.methodology.slice(0, 100)}`, sourceFile, parser, confidence });
+          graph.analyticalTechniques.push({ value: "Structured Analytical Methodology", sourceFile, parser, confidence });
           sourceMeta.nodesExtracted++;
         }
         if (data.findings) {
@@ -1367,27 +1394,37 @@ function detectEvidenceConflicts(graph) {
   const conflicts = [];
   const metricGroups = /* @__PURE__ */ new Map();
   safeForEach(graph.metrics, "graph.metrics", (mNode) => {
+    const rawVal = String(mNode.value.value || "").trim();
+    if (!rawVal || /^(COUNT|SUM|AVG|MAX|MIN)\b/i.test(rawVal) || rawVal.includes("(") || rawVal.includes(")")) {
+      return;
+    }
     const label = mNode.value.label.trim();
     const normLabel = label.toLowerCase();
     if (!metricGroups.has(normLabel)) {
       metricGroups.set(normLabel, []);
     }
     metricGroups.get(normLabel).push({
-      value: mNode.value.value,
+      value: rawVal,
       sourceFile: mNode.sourceFile,
       confidence: mNode.confidence
     });
   });
   metricGroups.forEach((group, normLabel) => {
     if (group.length > 1) {
-      const firstVal = group[0].value;
-      const hasConflict = group.some((item) => item.value !== firstVal);
+      const firstVal = group[0].value.toLowerCase();
+      const hasConflict = group.some((item) => item.value.toLowerCase() !== firstVal);
       if (hasConflict) {
+        const fieldName = `Metric: ${group[0].value || normLabel}`;
         conflicts.push({
           id: `conflict-${normLabel}-${Date.now()}`,
-          fieldName: `Metric: ${group[0].value}`,
-          fieldLabel: `Conflicting values for KPI Metric '${group[0].value}'`,
+          field: fieldName,
+          fieldName,
+          fieldLabel: `Conflicting values for KPI Metric '${normLabel}'`,
           conflictType: "Metric Discrepancy",
+          values: group.map((g) => ({
+            value: g.value,
+            sourceFile: g.sourceFile
+          })),
           competingValues: group.map((g) => ({
             sourceFile: g.sourceFile,
             value: g.value,
@@ -1511,9 +1548,11 @@ function sanitizeRecruiterTags(rawTags, techStack = [], techniques = [], project
     if (!tag || typeof tag !== "string") continue;
     const trimmed = tag.trim();
     if (!trimmed || trimmed.length < 2) continue;
-    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some((pat) => pat.test(trimmed));
-    if (!isForbidden && !cleanTags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) {
-      cleanTags.push(trimmed);
+    const sanitizedTag = trimmed.replace(/\s*\(\d+\s+[^)]+\)$/, "").trim();
+    if (!sanitizedTag || sanitizedTag.length < 2) continue;
+    const isForbidden = FORBIDDEN_FORMAT_TAG_PATTERNS.some((pat) => pat.test(sanitizedTag)) || /^(join criteria|window definition)/i.test(sanitizedTag);
+    if (!isForbidden && !cleanTags.some((t) => t.toLowerCase() === sanitizedTag.toLowerCase())) {
+      cleanTags.push(sanitizedTag);
     }
   }
   return cleanTags.slice(0, 8);
@@ -1782,6 +1821,7 @@ ${puContext}
    - 2 agreeing evidence sources: ~85% confidence
    - 3+ agreeing evidence sources / user validated: ~95% confidence
 6. **INSIGHT GROUNDING**: Every finding must explain *Why it matters* and *What strategic action decision-makers should take*.
+7. **QUANTIFIED BUSINESS IMPACT**: The businessImpact field must connect extracted metrics to measurable operational outcomes (e.g., cost reduction, variance mitigation, cycle time decrease, or revenue expansion). Do not output vague filler.
 
 ### PRIORITIZED SANITIZED EVIDENCE PAYLOAD (TIER 1 & TIER 2 BUSINESS EVIDENCE):
 ${JSON.stringify(prioritizedPayload, null, 2)}
@@ -2284,7 +2324,9 @@ ${parsed.executiveSummary?.value || ""}`,
       parsed.analyticalTechniques?.value || (graph.analyticalTechniques.length > 0 ? graph.analyticalTechniques.map((t) => t.value) : []),
       graph.projectDomain || parsed.industry?.value || ""
     ),
-    categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"])
+    categories: parsed.categories || (rawBaseProject.categories.length > 0 ? rawBaseProject.categories : ["Data Analysis"]),
+    storyBlocks: rawBaseProject.storyBlocks || [],
+    images: rawBaseProject.images || []
   };
   structured.businessObjective.value = sanitizeBusinessObjective(
     structured.businessObjective.value,
@@ -3171,6 +3213,9 @@ function validateAndDetectConflicts(projects) {
       const valuesMap = /* @__PURE__ */ new Map();
       group.forEach((item) => {
         const normVal = item.value.toLowerCase().trim();
+        if (!normVal || /^(COUNT|SUM|AVG|MAX|MIN)\b/i.test(normVal) || normVal.includes("(") || normVal.includes(")")) {
+          return;
+        }
         if (!valuesMap.has(normVal)) {
           valuesMap.set(normVal, []);
         }

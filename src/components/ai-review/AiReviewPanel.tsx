@@ -13,7 +13,8 @@ import {
   Sparkles, Brain, CheckCircle2, Edit3, AlertTriangle,
   ChevronDown, ChevronUp, TrendingUp, Database, Shield,
   Clock, Users, Target, Cpu, BarChart3, Zap, FileText,
-  Lock, RefreshCw, BookOpen, Wrench
+  Lock, RefreshCw, BookOpen, Wrench, Copy, Check, Code,
+  Award, Lightbulb, Image as ImageIcon, ExternalLink
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -629,6 +630,42 @@ function AiGeneratedPortfolioSection({
         sourceKey="businessImpact"
       />
 
+      {/* Data Cleaning */}
+      {extractString(project.dataCleaning) && (
+        <FieldRow
+          field="dataCleaning"
+          label="Data Cleaning & Preprocessing"
+          value={extractString(project.dataCleaning)}
+          confKey="methodology"
+          multiline
+          sourceKey="dataCleaning"
+        />
+      )}
+
+      {/* Technical Challenges */}
+      {extractString(project.challengesText || project.challenges) && (
+        <FieldRow
+          field="challengesText"
+          label="Technical Obstacles & Challenges"
+          value={extractString(project.challengesText || project.challenges)}
+          confKey="methodology"
+          multiline
+          sourceKey="challenges"
+        />
+      )}
+
+      {/* Lessons Learned */}
+      {extractString(project.lessonsLearned) && (
+        <FieldRow
+          field="lessonsLearned"
+          label="Engineering Lessons Learned"
+          value={extractString(project.lessonsLearned)}
+          confKey="methodology"
+          multiline
+          sourceKey="lessonsLearned"
+        />
+      )}
+
       {/* Metrics summary row */}
       {Array.isArray(project.metrics) && project.metrics.length > 0 && (
         <div className="space-y-1.5">
@@ -658,6 +695,246 @@ function AiGeneratedPortfolioSection({
               </span>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Section: Recruiter Asset Suite ──────────────────────────────────────────
+
+function RecruiterAssetsSection({ project }: { project: any }) {
+  const [activeTab, setActiveTab] = useState<"star" | "resume" | "linkedin" | "readme">("star");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const star = project.starStory?.value || project.starStory;
+  const resume = project.resumeBullets?.value || project.resumeBullets;
+  const linkedin = project.linkedInSummary?.value || project.linkedInSummary;
+  const readme = project.gitHubReadmeSummary?.value || project.gitHubReadmeSummary;
+
+  const hasAnyAsset = Boolean(star || (Array.isArray(resume) && resume.length > 0) || linkedin || readme);
+  if (!hasAnyAsset) return null;
+
+  const copyToClipboard = (key: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  return (
+    <div className="bg-slate-900/40 border border-slate-800/50 rounded-xl p-4 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <SectionLabel icon={Award} label="Recruiter Asset Suite" badge="ATS & Interview Ready" />
+        <div className="flex flex-wrap items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800 self-start sm:self-auto">
+          {star && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("star")}
+              className={`px-2.5 py-1 text-[10px] font-mono rounded-md font-bold transition-all cursor-pointer ${
+                activeTab === "star" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              STAR Story
+            </button>
+          )}
+          {Array.isArray(resume) && resume.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("resume")}
+              className={`px-2.5 py-1 text-[10px] font-mono rounded-md font-bold transition-all cursor-pointer ${
+                activeTab === "resume" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Resume Bullets
+            </button>
+          )}
+          {linkedin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("linkedin")}
+              className={`px-2.5 py-1 text-[10px] font-mono rounded-md font-bold transition-all cursor-pointer ${
+                activeTab === "linkedin" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              LinkedIn Post
+            </button>
+          )}
+          {readme && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("readme")}
+              className={`px-2.5 py-1 text-[10px] font-mono rounded-md font-bold transition-all cursor-pointer ${
+                activeTab === "readme" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              GitHub README
+            </button>
+          )}
+        </div>
+      </div>
+
+      {activeTab === "star" && star && (
+        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider">STAR Interview Framework</span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard("star", `Situation:\n${star.situation || ""}\n\nTask:\n${star.task || ""}\n\nAction:\n${star.action || ""}\n\nResult:\n${star.result || ""}`)}
+              className="text-[9px] font-mono flex items-center gap-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded cursor-pointer transition-colors"
+            >
+              {copiedKey === "star" ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied!</span></> : <><Copy className="w-3 h-3" /> Copy STAR Story</>}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="font-mono text-[9px] font-bold text-indigo-400 uppercase block mb-1">Situation</span>
+              <p className="text-slate-300 text-[11px] leading-relaxed">{star.situation || "N/A"}</p>
+            </div>
+            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="font-mono text-[9px] font-bold text-indigo-400 uppercase block mb-1">Task</span>
+              <p className="text-slate-300 text-[11px] leading-relaxed">{star.task || "N/A"}</p>
+            </div>
+            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="font-mono text-[9px] font-bold text-emerald-400 uppercase block mb-1">Action</span>
+              <p className="text-slate-300 text-[11px] leading-relaxed">{star.action || "N/A"}</p>
+            </div>
+            <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+              <span className="font-mono text-[9px] font-bold text-emerald-400 uppercase block mb-1">Result</span>
+              <p className="text-slate-300 text-[11px] leading-relaxed">{star.result || "N/A"}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "resume" && Array.isArray(resume) && (
+        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider">ATS Resume Bullets</span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard("resume", resume.map((b: string) => `• ${b}`).join("\n"))}
+              className="text-[9px] font-mono flex items-center gap-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded cursor-pointer transition-colors"
+            >
+              {copiedKey === "resume" ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied!</span></> : <><Copy className="w-3 h-3" /> Copy Bullets</>}
+            </button>
+          </div>
+          <ul className="space-y-2">
+            {resume.map((b: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-[11px] text-slate-200 leading-relaxed font-sans">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {activeTab === "linkedin" && linkedin && (
+        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold text-sky-400 uppercase tracking-wider">LinkedIn Announcement Post</span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard("linkedin", String(linkedin))}
+              className="text-[9px] font-mono flex items-center gap-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded cursor-pointer transition-colors"
+            >
+              {copiedKey === "linkedin" ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied!</span></> : <><Copy className="w-3 h-3" /> Copy Post</>}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-200 leading-relaxed whitespace-pre-line font-sans bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+            {String(linkedin)}
+          </p>
+        </div>
+      )}
+
+      {activeTab === "readme" && readme && (
+        <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-wider">GitHub README Summary</span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard("readme", String(readme))}
+              className="text-[9px] font-mono flex items-center gap-1 text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded cursor-pointer transition-colors"
+            >
+              {copiedKey === "readme" ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied!</span></> : <><Copy className="w-3 h-3" /> Copy README</>}
+            </button>
+          </div>
+          <pre className="text-[10px] font-mono text-slate-300 leading-relaxed max-h-48 overflow-y-auto bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+            <code>{String(readme)}</code>
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Section: Engineering Deep Dive & Rich Assets ─────────────────────────────
+
+function EngineeringDeepDiveSection({ project }: { project: any }) {
+  const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
+
+  const storyBlocks = Array.isArray(project.storyBlocks) ? project.storyBlocks : [];
+  const images = Array.isArray(project.images) ? project.images : [];
+
+  if (storyBlocks.length === 0 && images.length === 0) return null;
+
+  const copyCode = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedBlockId(id);
+    setTimeout(() => setCopiedBlockId(null), 2500);
+  };
+
+  return (
+    <div className="bg-slate-900/40 border border-slate-800/50 rounded-xl p-4 space-y-4">
+      <SectionLabel icon={Cpu} label="Engineering Assets & Code Snippets" badge={`${storyBlocks.length} code blocks`} />
+
+      {images.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Uploaded Dashboards & Visuals ({images.length})</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {images.map((img: string, idx: number) => (
+              <div key={idx} className="relative aspect-video rounded-lg overflow-hidden border border-slate-800 bg-slate-950 group">
+                <img src={img} alt={`Asset ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <span className="text-[8px] font-mono text-white font-bold uppercase">Asset #{idx + 1}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {storyBlocks.length > 0 && (
+        <div className="space-y-3">
+          <span className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Extracted Query Definitions & Code Blocks</span>
+          {storyBlocks.map((sb: any, idx: number) => {
+            const blockId = sb.id || `sb-${idx}`;
+            const isCode = sb.type === "code_snippet" || sb.language;
+            return (
+              <div key={blockId} className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950 shadow-sm">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-900/80 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-[10px] font-mono font-bold text-slate-200 uppercase">
+                      {sb.title || `Block ${idx + 1}`} {sb.language ? `(${sb.language})` : ""}
+                    </span>
+                  </div>
+                  {isCode && (
+                    <button
+                      type="button"
+                      onClick={() => copyCode(blockId, sb.bodyContent)}
+                      className="text-[9px] font-mono flex items-center gap-1 text-slate-400 hover:text-white bg-slate-800 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                    >
+                      {copiedBlockId === blockId ? <><Check className="w-2.5 h-2.5 text-emerald-400" /><span className="text-emerald-400">Copied!</span></> : <><Copy className="w-2.5 h-2.5" /> Copy Code</>}
+                    </button>
+                  )}
+                </div>
+                <pre className="p-3 text-[10px] font-mono text-slate-300 max-h-40 overflow-y-auto leading-relaxed">
+                  <code>{sb.bodyContent}</code>
+                </pre>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -792,6 +1069,7 @@ export const AiReviewPanel: React.FC<AiReviewPanelProps> = ({
   onCancel,
   onFieldEdit,
   onAnswersSubmit,
+  onConflictResolve,
 }) => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -856,14 +1134,44 @@ export const AiReviewPanel: React.FC<AiReviewPanelProps> = ({
           </p>
           {conflicts.map((c, i) => {
             const isResolved = resolvedConflictFields[c.field];
+            const valuesList: Array<{ val: string; file?: string }> = Array.isArray(c.values) && c.values.length > 0
+              ? c.values.map((v: any, idx: number) => ({
+                  val: String(v),
+                  file: Array.isArray(c.sourceFiles) ? c.sourceFiles[idx] : undefined,
+                }))
+              : [
+                  { val: String(c.valA ?? ""), file: c.sourceA },
+                  { val: String(c.valB ?? ""), file: c.sourceB },
+                ].filter(x => Boolean(x.val));
+
             return (
-              <div key={i} className={`rounded border p-2 text-[10px] space-y-1.5 ${isResolved ? "border-emerald-900/40" : "border-slate-800"}`}>
-                <div className="flex justify-between">
+              <div key={i} className={`rounded border p-2.5 text-[10px] space-y-2 ${isResolved ? "border-emerald-900/40 bg-emerald-950/10" : "border-slate-800 bg-slate-900/30"}`}>
+                <div className="flex justify-between items-center">
                   <span className="font-mono text-indigo-400 font-bold">{c.field}</span>
                   <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded ${isResolved ? "text-emerald-400 bg-emerald-950/40 border border-emerald-900" : "text-amber-400 bg-amber-950/40 border border-amber-900 animate-pulse"}`}>
                     {isResolved ? "✓ Resolved" : "⚠ Action Required"}
                   </span>
                 </div>
+                {c.message && <p className="text-[9px] text-slate-400 leading-relaxed">{c.message}</p>}
+                {valuesList.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {valuesList.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => onConflictResolve?.(c.field, item.val, c.isKpi)}
+                        className={`text-[10px] font-mono px-2.5 py-1 rounded-md border flex items-center gap-1.5 transition-all cursor-pointer ${
+                          portfolioProject?.[c.field] === item.val || (c.isKpi && portfolioProject?.kpiMetrics?.some((k: any) => k.value === item.val))
+                            ? "bg-indigo-600 text-white border-indigo-500 shadow-sm"
+                            : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500"
+                        }`}
+                      >
+                        <span className="font-semibold">{item.val}</span>
+                        {item.file && <span className="text-[8px] text-slate-400 opacity-80">({item.file})</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -888,7 +1196,13 @@ export const AiReviewPanel: React.FC<AiReviewPanelProps> = ({
         onFieldEdit={onFieldEdit}
       />
 
-      {/* Section 3: Needs Your Help */}
+      {/* Section 3: Recruiter Asset Suite (STAR story, ATS resume bullets, LinkedIn, README) */}
+      <RecruiterAssetsSection project={portfolioProject} />
+
+      {/* Section 4: Engineering Assets & Code Snippets */}
+      <EngineeringDeepDiveSection project={portfolioProject} />
+
+      {/* Section 5: Needs Your Help */}
       {(helpFocused || missingInformation.length > 0) && (
         <NeedsYourHelpSection
           items={missingInformation}
