@@ -181,9 +181,14 @@ export function evaluateEvidenceCompleteness(
     d => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
   );
   let problemScore = 25;
-  if (problemDocs.length > 0) problemScore = 90;
-  else if (graph.businessQuestions.length > 0) problemScore = 75;
-  if (hasUserAns("problem") || hasUserAns("challenge")) problemScore = 90;
+  if (problemDocs.length > 0) {
+    problemScore = 95;
+  } else if (understanding?.businessProblem && understanding.businessProblem.trim().length > 20 && !understanding.businessProblem.includes("Analytical gaps identified across")) {
+    problemScore = 95;
+  } else if (graph.businessQuestions.length > 0) {
+    problemScore = 85;
+  }
+  if (hasUserAns("problem") || hasUserAns("challenge")) problemScore = 95;
 
   // 6. Stakeholders Coverage
   let stakeholdersScore = 15;
@@ -200,6 +205,10 @@ export function evaluateEvidenceCompleteness(
   let impactScore = 10;
   if (impactMetrics.length > 0 || graph.documentation.some(d => d.value.key.toLowerCase().includes("impact"))) {
     impactScore = 85;
+  }
+  if (graph.recommendations.length > 0) {
+    // Actionable recommendations provide the strategic business impact path
+    impactScore = Math.max(impactScore, 85);
   }
   if (hasUserAns("impact") || hasUserAns("outcome")) impactScore = 90;
 
@@ -276,9 +285,11 @@ export function generateMissingInformationRequests(
     : null;
 
   const isProduction = hasProductionDeploymentEvidence(graph, understanding);
+  const hasRecommendations = graph.recommendations.length > 0 || report.recommendations >= 80;
 
   // 1. Business Impact / Business Recommendations
-  if (report.businessImpact < 80) {
+  // If recommendations or strategic impacts were already identified in reports, DO NOT ask again.
+  if (report.businessImpact < 80 && !hasRecommendations) {
     if (isProduction) {
       // Production project with evidence of real deployment: ask for measurable business impact
       requests.push({
@@ -319,7 +330,7 @@ export function generateMissingInformationRequests(
   }
 
   // 3. Strategic Recommendations / Analytical Insights
-  if (report.recommendations < 80) {
+  if (report.recommendations < 80 && !hasRecommendations) {
     const recQuestion = isProduction
       ? `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you presented to ${topStakeholder}?`
       : `Based on your ${industry} analysis of ${topKPI}, what key business recommendations emerged, and which analytical insight surprised you most?`;
@@ -351,7 +362,11 @@ export function generateMissingInformationRequests(
   }
 
   // 5. Business Problem — root cause and trigger
-  if (report.businessProblem < 80) {
+  const problemDocs = graph.documentation.filter(
+    d => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
+  );
+  const hasKnownProblem = problemDocs.length > 0 || (understanding?.businessProblem && understanding.businessProblem.trim().length > 20 && !understanding.businessProblem.includes("Analytical gaps identified across"));
+  if (report.businessProblem < 80 && !hasKnownProblem) {
     const bqHint = understanding.businessQuestions.length > 0
       ? ` (e.g. ${understanding.businessQuestions.slice(0, 2).map(q => `"${q}"`).join(", ")})`
       : "";

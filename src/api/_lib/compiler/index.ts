@@ -126,8 +126,13 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
   }
 
   const base = projects[0];
+  const bestTitle = projects.find(p => p.title && p.title.trim().length > 3 && !p.title.includes("."))?.title
+    || base.title
+    || "Consolidated Project Report";
+
   const merged: ExtractedProject = {
     ...base,
+    title: bestTitle,
     tags: Array.from(new Set(projects.flatMap(p => p.tags))),
     categories: Array.from(new Set(projects.flatMap(p => p.categories))),
     metrics: projects.flatMap(p => p.metrics),
@@ -135,16 +140,23 @@ export function mergeExtractedProjects(projects: ExtractedProject[]): ExtractedP
     sourceFiles: Array.from(new Set(projects.flatMap(p => p.sourceFiles)))
   };
 
+  const appendIfNew = (curr: string, next?: string): string => {
+    if (!next || !next.trim()) return curr;
+    if (!curr || !curr.trim()) return next.trim();
+    if (curr.includes(next.trim())) return curr;
+    return `${curr.trim()}\n\n${next.trim()}`;
+  };
+
   projects.slice(1).forEach(p => {
-    if (p.objective && p.objective !== base.objective) merged.objective += "\n" + p.objective;
-    if (p.businessProblem && p.businessProblem !== base.businessProblem) merged.businessProblem += "\n" + p.businessProblem;
-    if (p.methodology && p.methodology !== base.methodology) merged.methodology += "\n" + p.methodology;
-    if (p.datasetDesc && p.datasetDesc !== base.datasetDesc) merged.datasetDesc += "\n" + p.datasetDesc;
-    if (p.dataCleaning && p.dataCleaning !== base.dataCleaning) merged.dataCleaning += "\n" + p.dataCleaning;
-    if (p.findings && p.findings !== base.findings) merged.findings += "\n" + p.findings;
-    if (p.recommendations && p.recommendations !== base.recommendations) merged.recommendations += "\n" + p.recommendations;
-    if (p.challengesText && p.challengesText !== base.challengesText) merged.challengesText += "\n" + p.challengesText;
-    if (p.lessonsLearned && p.lessonsLearned !== base.lessonsLearned) merged.lessonsLearned += "\n" + p.lessonsLearned;
+    merged.objective = appendIfNew(merged.objective, p.objective);
+    merged.businessProblem = appendIfNew(merged.businessProblem, p.businessProblem);
+    merged.methodology = appendIfNew(merged.methodology, p.methodology);
+    merged.datasetDesc = appendIfNew(merged.datasetDesc, p.datasetDesc);
+    merged.dataCleaning = appendIfNew(merged.dataCleaning, p.dataCleaning);
+    merged.findings = appendIfNew(merged.findings, p.findings);
+    merged.recommendations = appendIfNew(merged.recommendations, p.recommendations);
+    merged.challengesText = appendIfNew(merged.challengesText, p.challengesText);
+    merged.lessonsLearned = appendIfNew(merged.lessonsLearned, p.lessonsLearned);
   });
 
   return merged;

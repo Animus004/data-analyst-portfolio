@@ -2,6 +2,7 @@
 // src/api/_lib/parsers/registry.ts
 import mammoth from "mammoth";
 import JSZip2 from "jszip";
+import zlib from "zlib";
 
 // src/api/_lib/parsers/streamExcel.ts
 import JSZip from "jszip";
@@ -590,6 +591,221 @@ var PowerBIParser = {
     };
   }
 };
+function extractPdfStreamText(buffer) {
+  const textChunks = [];
+  let pos = 0;
+  const streamMarker = Buffer.from("stream");
+  const endStreamMarker = Buffer.from("endstream");
+  while (pos < buffer.length) {
+    const sIdx = buffer.indexOf(streamMarker, pos);
+    if (sIdx === -1) break;
+    let contentStart = sIdx + 6;
+    while (contentStart < buffer.length && (buffer[contentStart] === 10 || buffer[contentStart] === 13)) {
+      contentStart++;
+    }
+    const eIdx = buffer.indexOf(endStreamMarker, contentStart);
+    if (eIdx === -1) break;
+    const streamSlice = buffer.subarray(contentStart, eIdx);
+    pos = eIdx + 9;
+    let decompressed = null;
+    try {
+      decompressed = zlib.inflateSync(streamSlice);
+    } catch {
+      try {
+        decompressed = zlib.inflateRawSync(streamSlice);
+      } catch {
+      }
+    }
+    const raw = (decompressed || streamSlice).toString("latin1");
+    const matches = raw.matchAll(/\(([^)]+)\)\s*(?:Tj|'|")/g);
+    for (const m of matches) {
+      if (m[1] && m[1].length > 1) {
+        textChunks.push(m[1].replace(/\\([()\\])/g, "$1"));
+      }
+    }
+    const tjMatches = raw.matchAll(/\[([^\]]+)\]\s*TJ/g);
+    for (const tm of tjMatches) {
+      const sub = tm[1].matchAll(/\(([^)]+)\)/g);
+      const joined = Array.from(sub).map((s) => s[1].replace(/\\([()\\])/g, "$1")).join("");
+      if (joined.length > 1) {
+        textChunks.push(joined);
+      }
+    }
+  }
+  return textChunks.join(" ");
+}
+async function extractPdfText(buffer) {
+  try {
+    const pdfModule = await import("pdf-parse");
+    const PDFParse = pdfModule.PDFParse || pdfModule.default?.PDFParse || pdfModule.default;
+    if (typeof PDFParse === "function") {
+      try {
+        const parser = new PDFParse({ data: buffer });
+        const textResult = await parser.getText();
+        await parser.destroy?.();
+        if (textResult) {
+          const extracted = typeof textResult === "string" ? textResult : textResult.text || (Array.isArray(textResult.pages) ? textResult.pages.map((p) => p.text).join("\n") : "");
+          if (extracted && extracted.trim().length > 0) {
+            return extracted;
+          }
+        }
+      } catch {
+        const res = await PDFParse(buffer);
+        if (res?.text && res.text.trim().length > 0) return res.text;
+      }
+    }
+  } catch (err) {
+    console.warn("[PDFParser] pdf-parse library error, falling back to stream extraction:", err);
+  }
+  return extractPdfStreamText(buffer);
+}
+function extractStructuredReportSections(fileName, rawText, proj, docEvidence, readmeEvidence) {
+  if (!rawText || rawText.trim().length === 0) return;
+  const rawLines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (rawLines.length > 0) {
+    const firstLine = rawLines[0].replace(/^#+\s*/, "").replace(/^\*+|\*+$/g, "").trim();
+    if (firstLine.length > 5 && firstLine.length < 90 && !/^(report|project|summary|document|table of contents|index)$/i.test(firstLine)) {
+      proj.title = firstLine;
+      if (docEvidence) docEvidence.title = firstLine;
+    }
+  }
+  const sectionKeywordsRegex = /^(?:business problem|problem statement|problem|operational challenge|issue|bottleneck|recommendations?|strategic recommendations?|business recommendations?|action items?|next steps?|priorities|management priorities|key findings|findings|key insights|insights|results|analysis results|discoveries|project objectives?|business objectives?|objectives?|goals?|purpose|methodology|approach|analytical approach|workflow|process|architecture|challenges?|roadblocks?|obstacles?|limitations?|constraints?|data cleaning|data preparation|preprocessing|transformations?|etl|lessons? learned|key takeaways?|retrospective|conclusions?|dataset(?: description)?|data sources?|executive summary|overview|background)$/i;
+  const sections = [];
+  let currentHeading = "Overview";
+  let currentLines = [];
+  for (const line of rawText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentLines.length > 0) currentLines.push("");
+      continue;
+    }
+    let detectedHeading = null;
+    const mdMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (mdMatch) {
+      detectedHeading = mdMatch[1].trim();
+    }
+    if (!detectedHeading) {
+      const boldMatch = trimmed.match(/^\*{2}(.+?)\*{2}:?$/);
+      if (boldMatch) {
+        detectedHeading = boldMatch[1].trim();
+      }
+    }
+    if (!detectedHeading) {
+      const numMatch = trimmed.match(/^\d+[\.\)]\s+([A-Za-z\s]{3,40}):?$/);
+      if (numMatch && sectionKeywordsRegex.test(numMatch[1].trim())) {
+        detectedHeading = numMatch[1].trim();
+      }
+    }
+    if (!detectedHeading && trimmed.length < 50) {
+      const cleaned = trimmed.replace(/:$/, "").trim();
+      if (sectionKeywordsRegex.test(cleaned)) {
+        detectedHeading = cleaned;
+      }
+    }
+    if (detectedHeading) {
+      if (currentLines.length > 0) {
+        sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+        currentLines = [];
+      }
+      currentHeading = detectedHeading;
+    } else {
+      currentLines.push(trimmed);
+    }
+  }
+  if (currentLines.length > 0) {
+    sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+  }
+  for (const sec of sections) {
+    const h = sec.heading.toLowerCase();
+    const b = sec.body;
+    if (!b || b.length < 5) continue;
+    if (h.includes("problem") || h.includes("issue") || h.includes("bottleneck") || h.includes("operational challenge")) {
+      proj.businessProblem = proj.businessProblem ? `${proj.businessProblem}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.problem = proj.businessProblem;
+      if (docEvidence) docEvidence.sections.push({ heading: "Business Problem", content: b });
+    } else if (h.includes("recommend") || h.includes("action") || h.includes("next step") || h.includes("priorit")) {
+      proj.recommendations = proj.recommendations ? `${proj.recommendations}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.recommendations = proj.recommendations;
+      if (docEvidence) docEvidence.sections.push({ heading: "Strategic Recommendations", content: b });
+    } else if (h.includes("finding") || h.includes("insight") || h.includes("result") || h.includes("discover")) {
+      proj.findings = proj.findings ? `${proj.findings}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.findings = proj.findings;
+      if (docEvidence) docEvidence.sections.push({ heading: "Key Findings", content: b });
+    } else if (h.includes("objective") || h.includes("goal") || h.includes("purpose")) {
+      proj.objective = proj.objective ? `${proj.objective}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.objective = proj.objective;
+      if (docEvidence) docEvidence.sections.push({ heading: "Business Objective", content: b });
+    } else if (h.includes("methodology") || h.includes("approach") || h.includes("workflow") || h.includes("process") || h.includes("architecture")) {
+      proj.methodology = proj.methodology ? `${proj.methodology}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.methodology = proj.methodology;
+      if (docEvidence) docEvidence.sections.push({ heading: "Methodology", content: b });
+    } else if (h.includes("challenge") || h.includes("roadblock") || h.includes("obstacle") || h.includes("limitation")) {
+      proj.challengesText = proj.challengesText ? `${proj.challengesText}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.challenges = proj.challengesText;
+      if (docEvidence) docEvidence.sections.push({ heading: "Challenges", content: b });
+    } else if (h.includes("cleaning") || h.includes("prep") || h.includes("transform") || h.includes("etl")) {
+      proj.dataCleaning = proj.dataCleaning ? `${proj.dataCleaning}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.dataCleaning = proj.dataCleaning;
+      if (docEvidence) docEvidence.sections.push({ heading: "Data Cleaning", content: b });
+    } else if (h.includes("lesson") || h.includes("takeaway") || h.includes("retrospective") || h.includes("conclusion")) {
+      proj.lessonsLearned = proj.lessonsLearned ? `${proj.lessonsLearned}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.lessonsLearned = proj.lessonsLearned;
+      if (docEvidence) docEvidence.sections.push({ heading: "Lessons Learned", content: b });
+    } else if (h.includes("dataset") || h.includes("data source") || h.includes("corpus")) {
+      proj.datasetDesc = proj.datasetDesc ? `${proj.datasetDesc}
+
+${b}` : b;
+      if (readmeEvidence) readmeEvidence.dataset = proj.datasetDesc;
+      if (docEvidence) docEvidence.sections.push({ heading: "Dataset Description", content: b });
+    } else if (h.includes("summary") || h.includes("overview") || h.includes("background")) {
+      proj.summary = proj.summary ? `${proj.summary}
+
+${b}` : b;
+      if (docEvidence) docEvidence.sections.push({ heading: "Executive Summary", content: b });
+    } else {
+      if (docEvidence) docEvidence.sections.push({ heading: sec.heading, content: b });
+    }
+  }
+  if (!proj.businessProblem || !proj.recommendations) {
+    const paragraphs = rawText.split(/\n\s*\n/).map((p) => p.trim()).filter((p) => p.length > 40);
+    for (const p of paragraphs) {
+      const lower = p.toLowerCase();
+      if (!proj.businessProblem && (lower.includes("problem") || lower.includes("challenge") || lower.includes("bottleneck") || lower.includes("issue"))) {
+        proj.businessProblem = p;
+        if (readmeEvidence) readmeEvidence.problem = p;
+        if (docEvidence) docEvidence.sections.push({ heading: "Business Problem", content: p });
+      }
+      if (!proj.recommendations && (lower.includes("recommend") || lower.includes("we recommend") || lower.includes("key recommendation") || lower.includes("should prioritize") || lower.includes("action items"))) {
+        proj.recommendations = p;
+        if (readmeEvidence) readmeEvidence.recommendations = p;
+        if (docEvidence) docEvidence.sections.push({ heading: "Strategic Recommendations", content: p });
+      }
+    }
+  }
+  proj.storyBlocks.push({
+    id: `report-sb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: "markdown",
+    title: `Report: ${fileName}`,
+    bodyContent: rawText.slice(0, 1e4),
+    sourceFile: fileName
+  });
+}
 var MarkdownParser = {
   name: "MarkdownParser",
   extensions: ["md", "txt"],
@@ -604,48 +820,7 @@ var MarkdownParser = {
       confidence: 95,
       tools: ["Markdown", "Git"]
     };
-    const sections = text.split(/\n#+\s+/);
-    sections.forEach((sec) => {
-      const lines = sec.split("\n");
-      const title = lines[0].trim().toLowerCase();
-      const body = lines.slice(1).join("\n").trim();
-      if (!body) return;
-      if (title.includes("objective") || title.includes("goal")) {
-        readmeEvidence.objective = body;
-        proj.objective = body;
-      } else if (title.includes("problem") || title.includes("issue")) {
-        readmeEvidence.problem = body;
-        proj.businessProblem = body;
-      } else if (title.includes("challenge") || title.includes("obstacle")) {
-        readmeEvidence.challenges = body;
-        proj.challengesText = body;
-      } else if (title.includes("cleaning") || title.includes("transform") || title.includes("preprocess")) {
-        readmeEvidence.dataCleaning = body;
-        proj.dataCleaning = body;
-      } else if (title.includes("methodology") || title.includes("architecture") || title.includes("workflow")) {
-        readmeEvidence.methodology = body;
-        proj.methodology = body;
-      } else if (title.includes("finding") || title.includes("insight") || title.includes("discovery")) {
-        readmeEvidence.findings = body;
-        proj.findings = body;
-      } else if (title.includes("recommendation") || title.includes("action")) {
-        readmeEvidence.recommendations = body;
-        proj.recommendations = body;
-      } else if (title.includes("lesson") || title.includes("takeaway") || title.includes("retrospective")) {
-        readmeEvidence.lessonsLearned = body;
-        proj.lessonsLearned = body;
-      } else if (title.includes("dataset") || title.includes("corpus") || title.includes("data source")) {
-        readmeEvidence.dataset = body;
-        proj.datasetDesc = body;
-      }
-    });
-    proj.storyBlocks.push({
-      id: `md-sb-${Date.now()}`,
-      type: "markdown",
-      title: `Document Section: ${fileName}`,
-      bodyContent: text,
-      sourceFile: fileName
-    });
+    extractStructuredReportSections(fileName, text, proj, void 0, readmeEvidence);
     return {
       project: proj,
       evidenceNode: { type: "readme", data: readmeEvidence }
@@ -670,15 +845,10 @@ var WordParser = {
     try {
       const buffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
       const extractionResult = await mammoth.extractRawText({ buffer });
-      const text = extractionResult.value;
-      docEvidence.sections.push({ heading: "Full Document Content", content: text.slice(0, 4e3) });
-      proj.storyBlocks.push({
-        id: `word-sb-${Date.now()}`,
-        type: "markdown",
-        title: `Document extraction: ${fileName}`,
-        bodyContent: text,
-        sourceFile: fileName
-      });
+      const text = extractionResult.value || "";
+      if (text.trim().length > 0) {
+        extractStructuredReportSections(fileName, text, proj, docEvidence);
+      }
     } catch (err) {
       console.error("WordParser Error:", err);
     }
@@ -740,18 +910,34 @@ var CSVParser = {
 var PDFParser = {
   name: "PDFParser",
   extensions: ["pdf"],
-  async parse(fileName) {
+  async parse(fileName, content, type) {
     const proj = createEmptyProject2(fileName, "PDFParser");
-    proj.tags = ["Data Extraction", "Business Reporting", "Documentation"];
+    proj.tags = ["Business Analysis", "Executive Reporting", "Documentation"];
     proj.categories = ["Data Extract", "Reporting"];
     const docEvidence = {
       sourceFile: fileName,
       parser: "PDFParser",
-      confidence: 85,
+      confidence: 90,
       title: fileName,
-      sections: [{ heading: "Document Analysis", content: "Extracted document section for business evaluation." }],
-      extractedTerms: ["Document"]
+      sections: [],
+      extractedTerms: ["Document", "Report", "PDF Analysis"]
     };
+    try {
+      const buffer = typeof content === "string" ? type === "text" ? Buffer.from(content, "utf-8") : Buffer.from(content, "base64") : content;
+      if (buffer && buffer.length > 0) {
+        const extractedText = await extractPdfText(buffer);
+        if (extractedText && extractedText.trim().length > 0) {
+          extractStructuredReportSections(fileName, extractedText, proj, docEvidence);
+        } else {
+          docEvidence.sections.push({
+            heading: "PDF File Reference",
+            content: `Uploaded PDF report: ${fileName} (${buffer.length} bytes)`
+          });
+        }
+      }
+    } catch (err) {
+      console.error("PDFParser Error:", err);
+    }
     return {
       project: proj,
       evidenceNode: { type: "document", data: docEvidence }
@@ -1347,8 +1533,29 @@ function mergeToEvidenceGraph(extractedNodes) {
         }
         safeForEach(data.sections, "document.sections", (s) => {
           graph.documentation.push({ value: { key: s.heading, text: s.content }, sourceFile, parser, confidence, location: s.heading });
-          if (s.heading.toLowerCase().includes("question") || s.heading.toLowerCase().includes("objective")) {
-            graph.businessQuestions.push({ value: s.content.slice(0, 150), sourceFile, parser, confidence, location: s.heading });
+          const headingLower = s.heading.toLowerCase();
+          if (headingLower.includes("recommend") || headingLower.includes("action") || headingLower.includes("priority")) {
+            graph.recommendations.push({ value: s.content, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("problem") || headingLower.includes("challenge") || headingLower.includes("issue") || headingLower.includes("bottleneck")) {
+            graph.documentation.push({ value: { key: "Problem", text: s.content }, sourceFile, parser, confidence });
+            graph.businessQuestions.push({ value: `Problem Statement: ${s.content.slice(0, 200)}`, sourceFile, parser, confidence, location: s.heading });
+          }
+          if (headingLower.includes("objective") || headingLower.includes("goal") || headingLower.includes("question")) {
+            graph.businessQuestions.push({ value: s.content.slice(0, 200), sourceFile, parser, confidence, location: s.heading });
+          }
+          if (headingLower.includes("methodology") || headingLower.includes("approach") || headingLower.includes("workflow")) {
+            graph.methodology.push({ value: s.content, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: `Documented Methodology (${s.heading})`, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("finding") || headingLower.includes("insight") || headingLower.includes("result")) {
+            graph.dashboardInsights.push({ value: `Document Insight: ${s.content.slice(0, 150)}`, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("cleaning") || headingLower.includes("transform") || headingLower.includes("preprocess")) {
+            graph.analyticalTechniques.push({ value: "Data Transformation & Cleaning", sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("impact") || headingLower.includes("outcome")) {
+            graph.detectedKPIs.push({ value: { name: "Reported Business Impact", actual: s.content.slice(0, 100) }, sourceFile, parser, confidence });
           }
           sourceMeta.nodesExtracted++;
         });
@@ -2507,9 +2714,14 @@ function evaluateEvidenceCompleteness(graph, userAnswers, understanding) {
     (d) => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
   );
   let problemScore = 25;
-  if (problemDocs.length > 0) problemScore = 90;
-  else if (graph.businessQuestions.length > 0) problemScore = 75;
-  if (hasUserAns("problem") || hasUserAns("challenge")) problemScore = 90;
+  if (problemDocs.length > 0) {
+    problemScore = 95;
+  } else if (understanding?.businessProblem && understanding.businessProblem.trim().length > 20 && !understanding.businessProblem.includes("Analytical gaps identified across")) {
+    problemScore = 95;
+  } else if (graph.businessQuestions.length > 0) {
+    problemScore = 85;
+  }
+  if (hasUserAns("problem") || hasUserAns("challenge")) problemScore = 95;
   let stakeholdersScore = 15;
   if (graph.stakeholderIndicators.length > 0 || understanding && understanding.likelyStakeholders.length > 0) stakeholdersScore = 85;
   if (hasUserAns("stakeholder") || hasUserAns("audience")) stakeholdersScore = 90;
@@ -2520,6 +2732,9 @@ function evaluateEvidenceCompleteness(graph, userAnswers, understanding) {
   let impactScore = 10;
   if (impactMetrics.length > 0 || graph.documentation.some((d) => d.value.key.toLowerCase().includes("impact"))) {
     impactScore = 85;
+  }
+  if (graph.recommendations.length > 0) {
+    impactScore = Math.max(impactScore, 85);
   }
   if (hasUserAns("impact") || hasUserAns("outcome")) impactScore = 90;
   let storyScore = 25;
@@ -2574,7 +2789,8 @@ function generateMissingInformationRequests(report, graph, understanding) {
   const topStakeholder = understanding.likelyStakeholders[0] || "executive decision-makers";
   const detectedQ = understanding.businessQuestions.length > 0 ? `"${understanding.businessQuestions[0]}"` : null;
   const isProduction = hasProductionDeploymentEvidence(graph, understanding);
-  if (report.businessImpact < 80) {
+  const hasRecommendations = graph.recommendations.length > 0 || report.recommendations >= 80;
+  if (report.businessImpact < 80 && !hasRecommendations) {
     if (isProduction) {
       requests.push({
         field: "Business Impact",
@@ -2606,7 +2822,7 @@ function generateMissingInformationRequests(report, graph, understanding) {
       recruiterImpactPriority: "High"
     });
   }
-  if (report.recommendations < 80) {
+  if (report.recommendations < 80 && !hasRecommendations) {
     const recQuestion = isProduction ? `Based on your ${industry} analysis, what are the top 2-3 strategic recommendations you presented to ${topStakeholder}?` : `Based on your ${industry} analysis of ${topKPI}, what key business recommendations emerged, and which analytical insight surprised you most?`;
     requests.push({
       field: "Strategic Recommendations",
@@ -2628,7 +2844,11 @@ function generateMissingInformationRequests(report, graph, understanding) {
       recruiterImpactPriority: "Medium"
     });
   }
-  if (report.businessProblem < 80) {
+  const problemDocs = graph.documentation.filter(
+    (d) => d.value.key.toLowerCase().includes("problem") || d.value.key.toLowerCase().includes("challenge")
+  );
+  const hasKnownProblem = problemDocs.length > 0 || understanding?.businessProblem && understanding.businessProblem.trim().length > 20 && !understanding.businessProblem.includes("Analytical gaps identified across");
+  if (report.businessProblem < 80 && !hasKnownProblem) {
     const bqHint = understanding.businessQuestions.length > 0 ? ` (e.g. ${understanding.businessQuestions.slice(0, 2).map((q) => `"${q}"`).join(", ")})` : "";
     const question = `What specific operational challenge or bottleneck in ${domain} prompted this ${archetype}?${bqHint.length > 0 ? ` Your analysis appears to address questions like${bqHint}.` : ""}`;
     requests.push({
@@ -2831,9 +3051,13 @@ function buildEvidenceDigest(graph) {
   const businessEntities = Array.from(new Set(graph.businessEntities.map((e) => e.value))).slice(0, 25);
   const businessQuestions = graph.businessQuestions.map((q) => q.value).slice(0, 10);
   const dashboardPages = graph.dashboards.flatMap((d) => d.value.pages || [d.value.name]).slice(0, 15);
-  const docs = graph.documentation.map((d) => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 10);
+  const docs = graph.documentation.map((d) => {
+    const isKey = /problem|recommend|objective|summary|finding|challenge|insight/i.test(d.value.key);
+    const limit = isKey ? 1200 : 400;
+    return `[${d.value.key}]: ${d.value.text.slice(0, limit)}`;
+  }).slice(0, 25);
   const techniques = Array.from(new Set(graph.analyticalTechniques.map((a) => a.value))).slice(0, 20);
-  const recommendations = graph.recommendations.map((r) => r.value).slice(0, 5);
+  const recommendations = graph.recommendations.map((r) => r.value.slice(0, 1e3)).slice(0, 10);
   const toolsRaw = Array.from(new Set(
     graph.businessTerms.filter((t) => t.value.startsWith("Tool:")).map((t) => t.value.replace("Tool:", "").trim())
   ));
@@ -3060,8 +3284,7 @@ ${digest}
 - projectType: The general type (e.g. "Power BI", "SQL", "Python", "Multi-Source").
 - projectArchetype: Specific analytical archetype (e.g. "Power BI / DAX Business Intelligence Dashboard", "SQL Analytics & Data Relational Engine").
 - industry: The real-world industry. Infer from business terms and KPI names \u2014 NOT from parser type.
-- businessDomain: The functional business domain (e.g. "Customer Retention & Product Telemetry").
-- businessProblem: The root operational challenge. One clear sentence.
+- businessProblem: The root operational challenge. If an uploaded report file or documentation explicitly states the business problem or operational bottleneck, use that exact real context rather than generating generic text.
 - primaryObjective: The primary analytical goal. One clear sentence.
 - likelyStakeholders: 2-4 role titles.
 - businessQuestions: 3-6 specific business questions this project answers.
@@ -3267,24 +3490,34 @@ function mergeExtractedProjects(projects) {
     };
   }
   const base = projects[0];
+  const bestTitle = projects.find((p) => p.title && p.title.trim().length > 3 && !p.title.includes("."))?.title || base.title || "Consolidated Project Report";
   const merged = {
     ...base,
+    title: bestTitle,
     tags: Array.from(new Set(projects.flatMap((p) => p.tags))),
     categories: Array.from(new Set(projects.flatMap((p) => p.categories))),
     metrics: projects.flatMap((p) => p.metrics),
     storyBlocks: projects.flatMap((p) => p.storyBlocks),
     sourceFiles: Array.from(new Set(projects.flatMap((p) => p.sourceFiles)))
   };
+  const appendIfNew = (curr, next) => {
+    if (!next || !next.trim()) return curr;
+    if (!curr || !curr.trim()) return next.trim();
+    if (curr.includes(next.trim())) return curr;
+    return `${curr.trim()}
+
+${next.trim()}`;
+  };
   projects.slice(1).forEach((p) => {
-    if (p.objective && p.objective !== base.objective) merged.objective += "\n" + p.objective;
-    if (p.businessProblem && p.businessProblem !== base.businessProblem) merged.businessProblem += "\n" + p.businessProblem;
-    if (p.methodology && p.methodology !== base.methodology) merged.methodology += "\n" + p.methodology;
-    if (p.datasetDesc && p.datasetDesc !== base.datasetDesc) merged.datasetDesc += "\n" + p.datasetDesc;
-    if (p.dataCleaning && p.dataCleaning !== base.dataCleaning) merged.dataCleaning += "\n" + p.dataCleaning;
-    if (p.findings && p.findings !== base.findings) merged.findings += "\n" + p.findings;
-    if (p.recommendations && p.recommendations !== base.recommendations) merged.recommendations += "\n" + p.recommendations;
-    if (p.challengesText && p.challengesText !== base.challengesText) merged.challengesText += "\n" + p.challengesText;
-    if (p.lessonsLearned && p.lessonsLearned !== base.lessonsLearned) merged.lessonsLearned += "\n" + p.lessonsLearned;
+    merged.objective = appendIfNew(merged.objective, p.objective);
+    merged.businessProblem = appendIfNew(merged.businessProblem, p.businessProblem);
+    merged.methodology = appendIfNew(merged.methodology, p.methodology);
+    merged.datasetDesc = appendIfNew(merged.datasetDesc, p.datasetDesc);
+    merged.dataCleaning = appendIfNew(merged.dataCleaning, p.dataCleaning);
+    merged.findings = appendIfNew(merged.findings, p.findings);
+    merged.recommendations = appendIfNew(merged.recommendations, p.recommendations);
+    merged.challengesText = appendIfNew(merged.challengesText, p.challengesText);
+    merged.lessonsLearned = appendIfNew(merged.lessonsLearned, p.lessonsLearned);
   });
   return merged;
 }

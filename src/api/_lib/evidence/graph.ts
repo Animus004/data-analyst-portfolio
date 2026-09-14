@@ -259,8 +259,30 @@ export function mergeToEvidenceGraph(extractedNodes: ParserEvidenceNode[]): Evid
         }
         safeForEach(data.sections, "document.sections", s => {
           graph.documentation.push({ value: { key: s.heading, text: s.content }, sourceFile, parser, confidence, location: s.heading });
-          if (s.heading.toLowerCase().includes("question") || s.heading.toLowerCase().includes("objective")) {
-            graph.businessQuestions.push({ value: s.content.slice(0, 150), sourceFile, parser, confidence, location: s.heading });
+          const headingLower = s.heading.toLowerCase();
+
+          if (headingLower.includes("recommend") || headingLower.includes("action") || headingLower.includes("priority")) {
+            graph.recommendations.push({ value: s.content, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("problem") || headingLower.includes("challenge") || headingLower.includes("issue") || headingLower.includes("bottleneck")) {
+            graph.documentation.push({ value: { key: "Problem", text: s.content }, sourceFile, parser, confidence });
+            graph.businessQuestions.push({ value: `Problem Statement: ${s.content.slice(0, 200)}`, sourceFile, parser, confidence, location: s.heading });
+          }
+          if (headingLower.includes("objective") || headingLower.includes("goal") || headingLower.includes("question")) {
+            graph.businessQuestions.push({ value: s.content.slice(0, 200), sourceFile, parser, confidence, location: s.heading });
+          }
+          if (headingLower.includes("methodology") || headingLower.includes("approach") || headingLower.includes("workflow")) {
+            graph.methodology.push({ value: s.content, sourceFile, parser, confidence });
+            graph.analyticalTechniques.push({ value: `Documented Methodology (${s.heading})`, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("finding") || headingLower.includes("insight") || headingLower.includes("result")) {
+            graph.dashboardInsights.push({ value: `Document Insight: ${s.content.slice(0, 150)}`, sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("cleaning") || headingLower.includes("transform") || headingLower.includes("preprocess")) {
+            graph.analyticalTechniques.push({ value: "Data Transformation & Cleaning", sourceFile, parser, confidence });
+          }
+          if (headingLower.includes("impact") || headingLower.includes("outcome")) {
+            graph.detectedKPIs.push({ value: { name: "Reported Business Impact", actual: s.content.slice(0, 100) }, sourceFile, parser, confidence });
           }
           sourceMeta.nodesExtracted++;
         });

@@ -128,9 +128,13 @@ function buildEvidenceDigest(graph: EvidenceGraph): string {
   const businessEntities  = Array.from(new Set(graph.businessEntities.map(e => e.value))).slice(0, 25);
   const businessQuestions = graph.businessQuestions.map(q => q.value).slice(0, 10);
   const dashboardPages    = graph.dashboards.flatMap(d => d.value.pages || [d.value.name]).slice(0, 15);
-  const docs              = graph.documentation.map(d => `[${d.value.key}]: ${d.value.text.slice(0, 300)}`).slice(0, 10);
+  const docs = graph.documentation.map(d => {
+    const isKey = /problem|recommend|objective|summary|finding|challenge|insight/i.test(d.value.key);
+    const limit = isKey ? 1200 : 400;
+    return `[${d.value.key}]: ${d.value.text.slice(0, limit)}`;
+  }).slice(0, 25);
   const techniques        = Array.from(new Set(graph.analyticalTechniques.map(a => a.value))).slice(0, 20);
-  const recommendations   = graph.recommendations.map(r => r.value).slice(0, 5);
+  const recommendations   = graph.recommendations.map(r => r.value.slice(0, 1000)).slice(0, 10);
   const toolsRaw          = Array.from(new Set(
     graph.businessTerms
       .filter(t => t.value.startsWith("Tool:"))
@@ -426,8 +430,7 @@ async function synthesizeViaGemini(graph: EvidenceGraph): Promise<ProjectUnderst
     "- projectType: The general type (e.g. \"Power BI\", \"SQL\", \"Python\", \"Multi-Source\").\n" +
     "- projectArchetype: Specific analytical archetype (e.g. \"Power BI / DAX Business Intelligence Dashboard\", \"SQL Analytics & Data Relational Engine\").\n" +
     "- industry: The real-world industry. Infer from business terms and KPI names — NOT from parser type.\n" +
-    "- businessDomain: The functional business domain (e.g. \"Customer Retention & Product Telemetry\").\n" +
-    "- businessProblem: The root operational challenge. One clear sentence.\n" +
+    "- businessProblem: The root operational challenge. If an uploaded report file or documentation explicitly states the business problem or operational bottleneck, use that exact real context rather than generating generic text.\n" +
     "- primaryObjective: The primary analytical goal. One clear sentence.\n" +
     "- likelyStakeholders: 2-4 role titles.\n" +
     "- businessQuestions: 3-6 specific business questions this project answers.\n" +

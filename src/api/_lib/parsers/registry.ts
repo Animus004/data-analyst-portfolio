@@ -6,6 +6,7 @@
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 import JSZip from "jszip";
+import zlib from "zlib";
 import {
   ExtractedProject,
   ExtractedMetric,
@@ -383,7 +384,264 @@ export const PowerBIParser: Parser = {
 };
 
 // ----------------------------------------------------------------------
-// 6. MarkdownParser (.md / README)
+// Document Section & PDF Extraction Helpers
+// ----------------------------------------------------------------------
+
+/**
+ * Decompresses and extracts raw text strings from PDF stream blocks using built-in zlib.
+ */
+function extractPdfStreamText(buffer: Buffer): string {
+  const textChunks: string[] = [];
+  let pos = 0;
+  const streamMarker = Buffer.from("stream");
+  const endStreamMarker = Buffer.from("endstream");
+
+  while (pos < buffer.length) {
+    const sIdx = buffer.indexOf(streamMarker, pos);
+    if (sIdx === -1) break;
+
+    let contentStart = sIdx + 6;
+    while (contentStart < buffer.length && (buffer[contentStart] === 10 || buffer[contentStart] === 13)) {
+      contentStart++;
+    }
+
+    const eIdx = buffer.indexOf(endStreamMarker, contentStart);
+    if (eIdx === -1) break;
+
+    const streamSlice = buffer.subarray(contentStart, eIdx);
+    pos = eIdx + 9;
+
+    let decompressed: Buffer | null = null;
+    try {
+      decompressed = zlib.inflateSync(streamSlice);
+    } catch {
+      try {
+        decompressed = zlib.inflateRawSync(streamSlice);
+      } catch {
+        // Not compressed or already raw
+      }
+    }
+
+    const raw = (decompressed || streamSlice).toString("latin1");
+    // Extract text in PDF parentheses: (text) Tj or ' or "
+    const matches = raw.matchAll(/\(([^)]+)\)\s*(?:Tj|'|")/g);
+    for (const m of matches) {
+      if (m[1] && m[1].length > 1) {
+        textChunks.push(m[1].replace(/\\([()\\])/g, "$1"));
+      }
+    }
+    // Extract text in TJ arrays: [(text) -10 (more)] TJ
+    const tjMatches = raw.matchAll(/\[([^\]]+)\]\s*TJ/g);
+    for (const tm of tjMatches) {
+      const sub = tm[1].matchAll(/\(([^)]+)\)/g);
+      const joined = Array.from(sub).map(s => s[1].replace(/\\([()\\])/g, "$1")).join("");
+      if (joined.length > 1) {
+        textChunks.push(joined);
+      }
+    }
+  }
+
+  return textChunks.join(" ");
+}
+
+/**
+ * Universal PDF Text Extractor: uses pdf-parse with zlib stream fallback.
+ */
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const pdfModule = await import("pdf-parse");
+    const PDFParse = (pdfModule as any).PDFParse || (pdfModule as any).default?.PDFParse || (pdfModule as any).default;
+    if (typeof PDFParse === "function") {
+      try {
+        const parser = new PDFParse({ data: buffer });
+        const textResult = await parser.getText();
+        await parser.destroy?.();
+        if (textResult) {
+          const extracted = typeof textResult === "string"
+            ? textResult
+            : (textResult.text || (Array.isArray(textResult.pages) ? textResult.pages.map((p: any) => p.text).join("\n") : ""));
+          if (extracted && extracted.trim().length > 0) {
+            return extracted;
+          }
+        }
+      } catch {
+        const res = await PDFParse(buffer);
+        if (res?.text && res.text.trim().length > 0) return res.text;
+      }
+    }
+  } catch (err) {
+    console.warn("[PDFParser] pdf-parse library error, falling back to stream extraction:", err);
+  }
+
+  return extractPdfStreamText(buffer);
+}
+
+/**
+ * Universal Structured Report Section Extractor:
+ * Parses Markdown, TXT, Word (.docx), and PDF text to identify and extract
+ * Business Problem, Recommendations, Findings, Objectives, Methodology,
+ * Challenges, Data Cleaning, and Lessons Learned.
+ */
+function extractStructuredReportSections(
+  fileName: string,
+  rawText: string,
+  proj: ExtractedProject,
+  docEvidence?: DocumentEvidence,
+  readmeEvidence?: ReadmeEvidence
+): void {
+  if (!rawText || rawText.trim().length === 0) return;
+
+  // 1. Check if the top lines provide a clean project title
+  const rawLines = rawText.split("\n").map(l => l.trim()).filter(Boolean);
+  if (rawLines.length > 0) {
+    const firstLine = rawLines[0].replace(/^#+\s*/, "").replace(/^\*+|\*+$/g, "").trim();
+    if (firstLine.length > 5 && firstLine.length < 90 && !/^(report|project|summary|document|table of contents|index)$/i.test(firstLine)) {
+      proj.title = firstLine;
+      if (docEvidence) docEvidence.title = firstLine;
+    }
+  }
+
+  const sectionKeywordsRegex = /^(?:business problem|problem statement|problem|operational challenge|issue|bottleneck|recommendations?|strategic recommendations?|business recommendations?|action items?|next steps?|priorities|management priorities|key findings|findings|key insights|insights|results|analysis results|discoveries|project objectives?|business objectives?|objectives?|goals?|purpose|methodology|approach|analytical approach|workflow|process|architecture|challenges?|roadblocks?|obstacles?|limitations?|constraints?|data cleaning|data preparation|preprocessing|transformations?|etl|lessons? learned|key takeaways?|retrospective|conclusions?|dataset(?: description)?|data sources?|executive summary|overview|background)$/i;
+
+  const sections: Array<{ heading: string; body: string }> = [];
+  let currentHeading = "Overview";
+  let currentLines: string[] = [];
+
+  for (const line of rawText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentLines.length > 0) currentLines.push("");
+      continue;
+    }
+
+    let detectedHeading: string | null = null;
+
+    // Check # Markdown headers
+    const mdMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (mdMatch) {
+      detectedHeading = mdMatch[1].trim();
+    }
+
+    // Check bold headers **Header** or **Header:**
+    if (!detectedHeading) {
+      const boldMatch = trimmed.match(/^\*{2}(.+?)\*{2}:?$/);
+      if (boldMatch) {
+        detectedHeading = boldMatch[1].trim();
+      }
+    }
+
+    // Check numbered headers: 1. Business Problem or 1) Recommendations
+    if (!detectedHeading) {
+      const numMatch = trimmed.match(/^\d+[\.\)]\s+([A-Za-z\s]{3,40}):?$/);
+      if (numMatch && sectionKeywordsRegex.test(numMatch[1].trim())) {
+        detectedHeading = numMatch[1].trim();
+      }
+    }
+
+    // Check standalone short line matching keyword (e.g. "Business Problem:")
+    if (!detectedHeading && trimmed.length < 50) {
+      const cleaned = trimmed.replace(/:$/, "").trim();
+      if (sectionKeywordsRegex.test(cleaned)) {
+        detectedHeading = cleaned;
+      }
+    }
+
+    if (detectedHeading) {
+      if (currentLines.length > 0) {
+        sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+        currentLines = [];
+      }
+      currentHeading = detectedHeading;
+    } else {
+      currentLines.push(trimmed);
+    }
+  }
+
+  if (currentLines.length > 0) {
+    sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+  }
+
+  // Map captured sections to canonical project fields
+  for (const sec of sections) {
+    const h = sec.heading.toLowerCase();
+    const b = sec.body;
+    if (!b || b.length < 5) continue;
+
+    if (h.includes("problem") || h.includes("issue") || h.includes("bottleneck") || h.includes("operational challenge")) {
+      proj.businessProblem = proj.businessProblem ? `${proj.businessProblem}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.problem = proj.businessProblem;
+      if (docEvidence) docEvidence.sections.push({ heading: "Business Problem", content: b });
+    } else if (h.includes("recommend") || h.includes("action") || h.includes("next step") || h.includes("priorit")) {
+      proj.recommendations = proj.recommendations ? `${proj.recommendations}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.recommendations = proj.recommendations;
+      if (docEvidence) docEvidence.sections.push({ heading: "Strategic Recommendations", content: b });
+    } else if (h.includes("finding") || h.includes("insight") || h.includes("result") || h.includes("discover")) {
+      proj.findings = proj.findings ? `${proj.findings}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.findings = proj.findings;
+      if (docEvidence) docEvidence.sections.push({ heading: "Key Findings", content: b });
+    } else if (h.includes("objective") || h.includes("goal") || h.includes("purpose")) {
+      proj.objective = proj.objective ? `${proj.objective}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.objective = proj.objective;
+      if (docEvidence) docEvidence.sections.push({ heading: "Business Objective", content: b });
+    } else if (h.includes("methodology") || h.includes("approach") || h.includes("workflow") || h.includes("process") || h.includes("architecture")) {
+      proj.methodology = proj.methodology ? `${proj.methodology}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.methodology = proj.methodology;
+      if (docEvidence) docEvidence.sections.push({ heading: "Methodology", content: b });
+    } else if (h.includes("challenge") || h.includes("roadblock") || h.includes("obstacle") || h.includes("limitation")) {
+      proj.challengesText = proj.challengesText ? `${proj.challengesText}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.challenges = proj.challengesText;
+      if (docEvidence) docEvidence.sections.push({ heading: "Challenges", content: b });
+    } else if (h.includes("cleaning") || h.includes("prep") || h.includes("transform") || h.includes("etl")) {
+      proj.dataCleaning = proj.dataCleaning ? `${proj.dataCleaning}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.dataCleaning = proj.dataCleaning;
+      if (docEvidence) docEvidence.sections.push({ heading: "Data Cleaning", content: b });
+    } else if (h.includes("lesson") || h.includes("takeaway") || h.includes("retrospective") || h.includes("conclusion")) {
+      proj.lessonsLearned = proj.lessonsLearned ? `${proj.lessonsLearned}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.lessonsLearned = proj.lessonsLearned;
+      if (docEvidence) docEvidence.sections.push({ heading: "Lessons Learned", content: b });
+    } else if (h.includes("dataset") || h.includes("data source") || h.includes("corpus")) {
+      proj.datasetDesc = proj.datasetDesc ? `${proj.datasetDesc}\n\n${b}` : b;
+      if (readmeEvidence) readmeEvidence.dataset = proj.datasetDesc;
+      if (docEvidence) docEvidence.sections.push({ heading: "Dataset Description", content: b });
+    } else if (h.includes("summary") || h.includes("overview") || h.includes("background")) {
+      proj.summary = proj.summary ? `${proj.summary}\n\n${b}` : b;
+      if (docEvidence) docEvidence.sections.push({ heading: "Executive Summary", content: b });
+    } else {
+      if (docEvidence) docEvidence.sections.push({ heading: sec.heading, content: b });
+    }
+  }
+
+  // Narrative Fallback: If problem or recommendations were not caught by explicit headers,
+  // scan paragraphs for problem and recommendation sentences
+  if (!proj.businessProblem || !proj.recommendations) {
+    const paragraphs = rawText.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 40);
+    for (const p of paragraphs) {
+      const lower = p.toLowerCase();
+      if (!proj.businessProblem && (lower.includes("problem") || lower.includes("challenge") || lower.includes("bottleneck") || lower.includes("issue"))) {
+        proj.businessProblem = p;
+        if (readmeEvidence) readmeEvidence.problem = p;
+        if (docEvidence) docEvidence.sections.push({ heading: "Business Problem", content: p });
+      }
+      if (!proj.recommendations && (lower.includes("recommend") || lower.includes("we recommend") || lower.includes("key recommendation") || lower.includes("should prioritize") || lower.includes("action items"))) {
+        proj.recommendations = p;
+        if (readmeEvidence) readmeEvidence.recommendations = p;
+        if (docEvidence) docEvidence.sections.push({ heading: "Strategic Recommendations", content: p });
+      }
+    }
+  }
+
+  // Preserve report storyBlock
+  proj.storyBlocks.push({
+    id: `report-sb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: "markdown",
+    title: `Report: ${fileName}`,
+    bodyContent: rawText.slice(0, 10000),
+    sourceFile: fileName
+  });
+}
+
+// ----------------------------------------------------------------------
+// 6. MarkdownParser (.md / README / .txt reports)
 // ----------------------------------------------------------------------
 export const MarkdownParser: Parser = {
   name: "MarkdownParser",
@@ -404,50 +662,7 @@ export const MarkdownParser: Parser = {
       tools: ["Markdown", "Git"]
     };
 
-    const sections = text.split(/\n#+\s+/);
-    sections.forEach(sec => {
-      const lines = sec.split("\n");
-      const title = lines[0].trim().toLowerCase();
-      const body = lines.slice(1).join("\n").trim();
-      if (!body) return;
-
-      if (title.includes("objective") || title.includes("goal")) {
-        readmeEvidence.objective = body;
-        proj.objective = body;
-      } else if (title.includes("problem") || title.includes("issue")) {
-        readmeEvidence.problem = body;
-        proj.businessProblem = body;
-      } else if (title.includes("challenge") || title.includes("obstacle")) {
-        readmeEvidence.challenges = body;
-        proj.challengesText = body;
-      } else if (title.includes("cleaning") || title.includes("transform") || title.includes("preprocess")) {
-        readmeEvidence.dataCleaning = body;
-        proj.dataCleaning = body;
-      } else if (title.includes("methodology") || title.includes("architecture") || title.includes("workflow")) {
-        readmeEvidence.methodology = body;
-        proj.methodology = body;
-      } else if (title.includes("finding") || title.includes("insight") || title.includes("discovery")) {
-        readmeEvidence.findings = body;
-        proj.findings = body;
-      } else if (title.includes("recommendation") || title.includes("action")) {
-        readmeEvidence.recommendations = body;
-        proj.recommendations = body;
-      } else if (title.includes("lesson") || title.includes("takeaway") || title.includes("retrospective")) {
-        readmeEvidence.lessonsLearned = body;
-        proj.lessonsLearned = body;
-      } else if (title.includes("dataset") || title.includes("corpus") || title.includes("data source")) {
-        readmeEvidence.dataset = body;
-        proj.datasetDesc = body;
-      }
-    });
-
-    proj.storyBlocks.push({
-      id: `md-sb-${Date.now()}`,
-      type: "markdown",
-      title: `Document Section: ${fileName}`,
-      bodyContent: text,
-      sourceFile: fileName
-    });
+    extractStructuredReportSections(fileName, text, proj, undefined, readmeEvidence);
 
     return {
       project: proj,
@@ -479,17 +694,11 @@ export const WordParser: Parser = {
     try {
       const buffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
       const extractionResult = await mammoth.extractRawText({ buffer });
-      const text = extractionResult.value;
+      const text = extractionResult.value || "";
 
-      docEvidence.sections.push({ heading: "Full Document Content", content: text.slice(0, 4000) });
-
-      proj.storyBlocks.push({
-        id: `word-sb-${Date.now()}`,
-        type: "markdown",
-        title: `Document extraction: ${fileName}`,
-        bodyContent: text,
-        sourceFile: fileName
-      });
+      if (text.trim().length > 0) {
+        extractStructuredReportSections(fileName, text, proj, docEvidence);
+      }
     } catch (err) {
       console.error("WordParser Error:", err);
     }
@@ -566,19 +775,39 @@ export const CSVParser: Parser = {
 export const PDFParser: Parser = {
   name: "PDFParser",
   extensions: ["pdf"],
-  async parse(fileName) {
+  async parse(fileName, content, type) {
     const proj = createEmptyProject(fileName, "PDFParser");
-    proj.tags = ["Data Extraction", "Business Reporting", "Documentation"];
+    proj.tags = ["Business Analysis", "Executive Reporting", "Documentation"];
     proj.categories = ["Data Extract", "Reporting"];
 
     const docEvidence: DocumentEvidence = {
       sourceFile: fileName,
       parser: "PDFParser",
-      confidence: 85,
+      confidence: 90,
       title: fileName,
-      sections: [{ heading: "Document Analysis", content: "Extracted document section for business evaluation." }],
-      extractedTerms: ["Document"]
+      sections: [],
+      extractedTerms: ["Document", "Report", "PDF Analysis"]
     };
+
+    try {
+      const buffer = typeof content === "string"
+        ? (type === "text" ? Buffer.from(content, "utf-8") : Buffer.from(content, "base64"))
+        : content;
+
+      if (buffer && buffer.length > 0) {
+        const extractedText = await extractPdfText(buffer);
+        if (extractedText && extractedText.trim().length > 0) {
+          extractStructuredReportSections(fileName, extractedText, proj, docEvidence);
+        } else {
+          docEvidence.sections.push({
+            heading: "PDF File Reference",
+            content: `Uploaded PDF report: ${fileName} (${buffer.length} bytes)`
+          });
+        }
+      }
+    } catch (err) {
+      console.error("PDFParser Error:", err);
+    }
 
     return {
       project: proj,
