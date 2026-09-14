@@ -397,7 +397,7 @@ ${JSON.stringify((portfolio.projects || []).slice(0, 5), null, 2)}
 `;
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;
@@ -438,7 +438,7 @@ Provide the response in structured JSON containing fields: "headlines", "aboutSe
 `;
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json"
@@ -480,7 +480,7 @@ Include sections:
 `;
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;

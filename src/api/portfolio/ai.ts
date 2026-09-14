@@ -278,9 +278,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(500).json({
         success: false,
+        error: err.message || "An unhandled pipeline error occurred",
+        message: err.message || "An unhandled pipeline error occurred",
         stage,
         errorType,
-        message: err.message || "An unhandled pipeline error occurred",
         stack,
         timestamp,
         requestId,
@@ -336,7 +337,7 @@ Return only the refined text output without conversational filler.
 
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;

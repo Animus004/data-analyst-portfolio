@@ -414,7 +414,7 @@ Return refined executive JSON matching the specified schema properties.
     const response = await executeWithTimeout(
       "Gemini Portfolio Compiler",
       () => ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: reviewPrompt,
         config: {
           systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
@@ -449,7 +449,7 @@ Return refined executive JSON matching the specified schema properties.
           }
         }
       }),
-      20000 // Raised from 15000ms: review pass uses gemini-3.5-flash which also runs slow on larger prompts.
+      20000 // Raised from 15000ms: review pass uses gemini-2.5-flash which also runs slow on larger prompts.
     );
 
     const refined = JSON.parse((response as any).text.trim());
@@ -813,9 +813,8 @@ ${JSON.stringify(conflicts, null, 2)}
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
 
-  // Prioritizing Gemini 3 Flash Live as requested by the user, followed by a fast lite model 
-  // to ensure we don't breach the strict 30s Stage 8 limit if the primary models run slowly.
-  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
+  // Supported text generation models for Gemini API compiler pipeline
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
   let lastError: any = null;
   let response: any = null;
   let usedModel = candidateModels[0];

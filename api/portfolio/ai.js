@@ -1785,7 +1785,7 @@ ${JSON.stringify(conflicts, null, 2)}
 
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
-  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
   let lastError = null;
   let response = null;
   let usedModel = candidateModels[0];
@@ -3015,7 +3015,7 @@ ${digest}
 - suggestedSummaries: 1-2 executive summary paragraph suggestions.
 - confidence: Your overall confidence in this synthesis (0-100).
 `;
-  const candidateModels = ["gemini-3.1-flash-live-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
   for (const model of candidateModels) {
     const modelStart = Date.now();
     console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
@@ -3679,7 +3679,7 @@ ${err.stack}
   const stage9Start = Date.now();
   const recruiterAudit = runRecruiterAuditEngine(synthesized.structured, evidenceGraph, conflicts, projectUnderstanding);
   const stage9Duration = Date.now() - stage9Start;
-  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallScore}`);
+  if (profiler && st14) profiler.profileStageEnd(st14, `Overall Score: ${recruiterAudit.overallQualityScore}`);
   console.log(`[Pipeline] Stage 9 Complete (${stage9Duration}ms)`);
   stageTimings.push({ stage: "Stage 9 (Recruiter Audit Engine)", durationMs: stage9Duration, status: "Completed" });
   const totalDuration = Date.now() - pipelineStartTime;
@@ -4350,9 +4350,10 @@ ${stack}`);
       console.error("==========================================================\n");
       return res.status(500).json({
         success: false,
+        error: err.message || "An unhandled pipeline error occurred",
+        message: err.message || "An unhandled pipeline error occurred",
         stage,
         errorType,
-        message: err.message || "An unhandled pipeline error occurred",
         stack,
         timestamp,
         requestId,
@@ -4399,7 +4400,7 @@ Return only the refined text output without conversational filler.
 `;
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;

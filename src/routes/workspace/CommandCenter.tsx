@@ -842,10 +842,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
             setConflicts(data.conflicts || []);
             setResolvedConflictFields({});
           } else {
-            setAiParseError(data.error || "Failed to parse project package. Please verify your files and try again.");
+            setAiParseError(data?.error || data?.message || "Failed to parse project package. Please verify your files and try again.");
           }
         } else {
-          setAiParseError(data.error || "Server error occurred during package analysis.");
+          setAiParseError(data?.error || data?.message || "Server error occurred during package analysis.");
         }
       } finally {
         clearInterval(progressInterval);
@@ -897,10 +897,10 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
           if (data.confidenceScores) setConfidenceScores(data.confidenceScores);
           if (data.fileCoverageReport || data.fileCoverage) setFileCoverageReport(data.fileCoverageReport || data.fileCoverage);
         } else {
-          setAiParseError(data.error || "Failed to re-evaluate portfolio.");
+          setAiParseError(data?.error || data?.message || "Failed to re-evaluate portfolio.");
         }
       } else {
-        setAiParseError(data.error || "Server error occurred during re-evaluation.");
+        setAiParseError(data?.error || data?.message || "Server error occurred during re-evaluation.");
       }
     } catch (err: any) {
       console.error("Re-compile error:", err);

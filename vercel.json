@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     { "source": "/api/portfolio/save", "destination": "/api/portfolio/index" },
     { "source": "/api/portfolio/load", "destination": "/api/portfolio/index" },
