@@ -31,8 +31,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       keyPrefix: sanitizedKey ? `${sanitizedKey.slice(0, 6)}...` : null,
       hasQuotesWarning: hasQuotes,
       hasBearerWarning: hasBearer,
-      activeModel: "gemini-2.5-flash",
-      fallbackModels: ["gemini-2.0-flash", "gemini-1.5-flash"]
+      activeModel: "gemini-3.6-flash",
+      fallbackModels: ["gemini-2.5-flash", "gemini-2.0-flash"]
     },
     supabase: {
       configured: Boolean(supabaseUrl && supabaseKey),
@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       });
       const testRes = await client.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents: "Reply with the single word: READY"
       });
       responseData.geminiTest = {
