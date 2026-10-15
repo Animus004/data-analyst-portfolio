@@ -969,6 +969,172 @@ var ImageParser = {
     };
   }
 };
+var TableauParser = {
+  name: "TableauParser",
+  extensions: ["twb", "twbx"],
+  async parse(fileName, content, type) {
+    const proj = createEmptyProject2(fileName, "TableauParser");
+    proj.tags = ["Tableau", "Data Visualization", "Worksheet Analytics", "Calculated Fields"];
+    proj.categories = ["Business Intelligence", "Data Visualization"];
+    proj.role = "BI Specialist";
+    let xmlText = "";
+    if (fileName.toLowerCase().endsWith(".twbx")) {
+      try {
+        const zipBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
+        const zip = new JSZip2();
+        const zipData = await zip.loadAsync(zipBuffer);
+        const twbEntry = Object.keys(zipData.files).find((k) => k.toLowerCase().endsWith(".twb"));
+        if (twbEntry) {
+          xmlText = await zipData.files[twbEntry].async("string");
+        }
+      } catch (twbxErr) {
+        console.warn("[TableauParser] TWBX zip extraction warning:", twbxErr);
+      }
+    } else {
+      xmlText = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
+    }
+    const worksheets = [];
+    const dashboards = [];
+    const calculatedMeasures = [];
+    if (xmlText) {
+      const wsRegex = /<worksheet\s+name=['"]([^'"]+)['"]/g;
+      let wsMatch;
+      while ((wsMatch = wsRegex.exec(xmlText)) !== null) {
+        if (!worksheets.includes(wsMatch[1])) worksheets.push(wsMatch[1]);
+      }
+      const dbRegex = /<dashboard\s+name=['"]([^'"]+)['"]/g;
+      let dbMatch;
+      while ((dbMatch = dbRegex.exec(xmlText)) !== null) {
+        if (!dashboards.includes(dbMatch[1])) dashboards.push(dbMatch[1]);
+      }
+      const colRegex = /<column\s+caption=['"]([^'"]+)['"][^>]*>[\s\S]*?<calculation\s+class=['"]tableau['"]\s+formula=['"]([^'"]+)['"]/g;
+      let colMatch;
+      while ((colMatch = colRegex.exec(xmlText)) !== null) {
+        const name = colMatch[1];
+        const formula = colMatch[2];
+        calculatedMeasures.push({ name, expression: formula });
+        proj.metrics.push({
+          id: `tab-calc-${proj.metrics.length}-${Date.now()}`,
+          label: name,
+          value: "Calculated Field",
+          description: `Formula: ${formula}`,
+          iconName: "TrendingUp",
+          sourceFile: fileName,
+          sourceLocation: "Calculated measure definitions"
+        });
+      }
+      if (worksheets.length > 0) {
+        proj.datasetDesc = `Tableau Workbook contains worksheets: ${worksheets.join(", ")}.`;
+      }
+      if (dashboards.length > 0) {
+        proj.findings = `Workbook publishes dashboards: ${dashboards.join(", ")}.`;
+      }
+      proj.storyBlocks.push({
+        id: `tab-sb-${Date.now()}`,
+        type: "markdown",
+        title: `Tableau Workbook: ${fileName}`,
+        bodyContent: `### Extracted Tableau Worksheets
+${worksheets.map((w) => `- **${w}**`).join("\n") || "No worksheets found."}
+
+### Extracted Dashboards
+${dashboards.map((d) => `- **${d}**`).join("\n") || "No dashboards found."}`,
+        sourceFile: fileName
+      });
+    }
+    const pbiEvidence = {
+      sourceFile: fileName,
+      parser: "TableauParser",
+      confidence: 92,
+      visuals: dashboards.length > 0 ? dashboards.map((d) => ({ title: d, type: "Dashboard" })) : worksheets.map((w) => ({ title: w, type: "Worksheet" })),
+      daxMeasures: calculatedMeasures,
+      pages: dashboards.length > 0 ? dashboards : worksheets.length > 0 ? worksheets : ["Tableau Analytics"],
+      relationships: [],
+      kpis: []
+    };
+    return {
+      project: proj,
+      evidenceNode: { type: "powerbi", data: pbiEvidence }
+    };
+  }
+};
+var RParser = {
+  name: "RParser",
+  extensions: ["r", "rmd"],
+  async parse(fileName, content, type) {
+    const proj = createEmptyProject2(fileName, "RParser");
+    proj.tags = ["R", "ggplot2", "Statistical Modeling", "Exploratory Data Analysis"];
+    proj.categories = ["Statistical Analysis", "Data Science"];
+    proj.role = "Statistical Data Analyst";
+    const text = typeof content === "string" ? type === "text" ? content : Buffer.from(content, "base64").toString("utf-8") : content.toString("utf-8");
+    const lines = text.split(/\r?\n/);
+    let inRChunk = false;
+    let chunkCode = "";
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("```{r")) {
+        inRChunk = true;
+        chunkCode = "";
+        return;
+      }
+      if (trimmed.startsWith("```") && inRChunk) {
+        inRChunk = false;
+        if (chunkCode.trim()) {
+          proj.storyBlocks.push({
+            id: `r-chunk-${idx}-${Date.now()}`,
+            type: "code_snippet",
+            title: `R Markdown Chunk (Line ${idx})`,
+            bodyContent: chunkCode,
+            language: "r",
+            sourceFile: fileName
+          });
+        }
+        return;
+      }
+      if (inRChunk) {
+        chunkCode += line + "\n";
+      }
+      if (trimmed.startsWith("#")) {
+        const comment = trimmed.slice(1).trim();
+        const lower = comment.toLowerCase();
+        if (lower.startsWith("kpi:") || lower.startsWith("metric:")) {
+          const parts = comment.substring(comment.indexOf(":") + 1).split("=");
+          if (parts.length >= 2) {
+            proj.metrics.push({
+              id: `r-metric-${proj.metrics.length}-${Date.now()}`,
+              label: parts[0].trim(),
+              value: parts[1].trim(),
+              description: `Extracted from R source ${fileName}`,
+              iconName: "Activity",
+              sourceFile: fileName,
+              sourceLocation: `Line ${idx + 1}`
+            });
+          }
+        }
+      }
+    });
+    if (!fileName.toLowerCase().endsWith(".rmd") && text.trim()) {
+      proj.storyBlocks.push({
+        id: `r-script-${Date.now()}`,
+        type: "code_snippet",
+        title: `R Script: ${fileName}`,
+        bodyContent: text.slice(0, 5e3),
+        language: "r",
+        sourceFile: fileName
+      });
+    }
+    const docEvidence = {
+      sourceFile: fileName,
+      parser: "RParser",
+      confidence: 90,
+      sections: [{ heading: "R Statistical Analysis", content: text.slice(0, 3e3) }],
+      extractedTerms: ["R", "ggplot2", "dplyr", "Statistical Analysis"]
+    };
+    return {
+      project: proj,
+      evidenceNode: { type: "document", data: docEvidence }
+    };
+  }
+};
 var PARSER_REGISTRY = {
   xlsx: ExcelParser,
   xls: ExcelParser,
@@ -984,7 +1150,11 @@ var PARSER_REGISTRY = {
   pdf: PDFParser,
   png: ImageParser,
   jpg: ImageParser,
-  jpeg: ImageParser
+  jpeg: ImageParser,
+  twb: TableauParser,
+  twbx: TableauParser,
+  r: RParser,
+  rmd: RParser
 };
 async function unpackZipFile(base64Content) {
   const extractedFiles = [];
@@ -1091,7 +1261,7 @@ function validateFileSignature(fileName, base64OrBuffer) {
   if (buf.length === 0) {
     return { isValid: false, error: `File '${fileName}' is empty (0 bytes).` };
   }
-  const textExtensions = ["sql", "py", "ipynb", "md", "txt", "csv", "dax", "json"];
+  const textExtensions = ["sql", "py", "ipynb", "md", "txt", "csv", "dax", "json", "r", "rmd", "twb"];
   if (textExtensions.includes(ext)) {
     if (buf.length >= 2 && buf[0] === 77 && buf[1] === 90) {
       return { isValid: false, error: `File '${fileName}' contains an executable binary header (MZ) disguised as text.` };
@@ -1101,7 +1271,7 @@ function validateFileSignature(fileName, base64OrBuffer) {
     }
     return { isValid: true, detectedType: "Text/Script Source" };
   }
-  if (["zip", "xlsx", "docx", "pbix"].includes(ext)) {
+  if (["zip", "xlsx", "docx", "pbix", "twbx"].includes(ext)) {
     if (buf.length >= 4 && buf[0] === 80 && buf[1] === 75) {
       return { isValid: true, detectedType: "ZIP Archive / OpenXML Document" };
     }
@@ -1142,7 +1312,7 @@ function validateFileBuffer(buffer, fileName) {
 }
 function isAllowedFileType(fileName) {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  const allowed = ["zip", "pbit", "pbix", "xlsx", "xls", "docx", "pdf", "py", "ipynb", "sql", "dax", "csv", "json", "md", "txt", "png", "jpg", "jpeg"];
+  const allowed = ["zip", "pbit", "pbix", "xlsx", "xls", "docx", "pdf", "py", "ipynb", "sql", "dax", "csv", "json", "md", "txt", "png", "jpg", "jpeg", "twb", "twbx", "r", "rmd"];
   return allowed.includes(ext);
 }
 function createStepLogger(scope) {
@@ -4181,7 +4351,28 @@ var seedProjects = [
     "visibility": "public",
     "datasetDesc": "Relational transactional database containing dark store master records, product catalog, inventory snapshots, stock-out events, replenishment logs, and customer order items.",
     "methodology": "Executed four structured SQL analytical modules (SQ1\u2013SQ4) leveraging relational multi-table joins, date/time aggregations, and advanced LAG window functions across inventory snapshots, replenishment logs, order items, and store master entities to pinpoint stock-out drivers, calculate duration metrics, and evaluate supplier fill rates.",
-    "storyBlocks": [],
+    "storyBlocks": [
+      {
+        "id": "blinkit-sb-architecture",
+        "type": "markdown",
+        "title": "Power BI & SQL Dual-Architecture Implementation",
+        "bodyContent": "This analytics framework combines an enterprise SQL diagnostic pipeline with an interactive Power BI operational dashboard. SQL performs high-cardinality multi-table joins and temporal LAG window functions over raw inventory event tables, while the Power BI Star Schema visualizes store burden rankings, hourly stock-out curves, and supplier SLA fill rate compliance across 12 Kolkata fulfillment hubs."
+      },
+      {
+        "id": "blinkit-sb-sql-query",
+        "type": "code_snippet",
+        "language": "sql",
+        "title": "SQL Diagnostic: Store Stock-Out Concentration & Hourly Windowing",
+        "bodyContent": "-- SQL Analytical Module: Peak Hourly Stock-Out Incidents & Cumulative Loss Duration\nWITH hourly_stockouts AS (\n    SELECT \n        d.store_id,\n        d.store_name,\n        p.category,\n        EXTRACT(HOUR FROM s.start_time) AS hour_of_day,\n        COUNT(s.stockout_id) AS incident_count,\n        SUM(TIMESTAMPDIFF(MINUTE, s.start_time, s.end_time)) / 60.0 AS duration_hours\n    FROM stockout_events s\n    JOIN dark_stores d ON s.store_id = d.store_id\n    JOIN products p ON s.product_id = p.product_id\n    WHERE s.start_time >= '2026-05-01' AND s.start_time <= '2026-08-31'\n    GROUP BY d.store_id, d.store_name, p.category, EXTRACT(HOUR FROM s.start_time)\n)\nSELECT \n    store_name,\n    hour_of_day,\n    SUM(incident_count) AS total_incidents,\n    ROUND(SUM(duration_hours), 1) AS total_hours_lost,\n    ROUND(100.0 * SUM(duration_hours) / SUM(SUM(duration_hours)) OVER(), 2) AS network_stockout_share_pct\nFROM hourly_stockouts\nGROUP BY store_name, hour_of_day\nORDER BY total_incidents DESC\nLIMIT 10;"
+      },
+      {
+        "id": "blinkit-sb-dax-measures",
+        "type": "code_snippet",
+        "language": "sql",
+        "title": "Power BI DAX Measures: Store Burden Share & Supplier Fill Rate",
+        "bodyContent": '// Power BI DAX Formulas: Operations Diagnostic Engine\n\n// 1. Dark Store DS002 Network Stock-Out Burden Share %\nDS002 Stock-Out Share % = \nVAR TotalNetworkStockouts = CALCULATE([Total Stock-Out Incidents], ALL(DarkStores))\nVAR StoreStockouts = CALCULATE([Total Stock-Out Incidents], DarkStores[Store_ID] = "DS002")\nRETURN\nDIVIDE(StoreStockouts, TotalNetworkStockouts, 0)\n\n// 2. Evening Peak Failure Volume (19:00 - 22:00 Window)\nEvening Surge Incidents = \nCALCULATE(\n    [Total Stock-Out Incidents],\n    FILTER(\n        DimTime,\n        DimTime[Hour] >= 19 && DimTime[Hour] <= 22\n    )\n)\n\n// 3. Replenishment Fulfillment Rate %\nSupplier SLA Fill Rate % = \nDIVIDE(\n    SUM(ReplenishmentLogs[Quantity_Delivered]),\n    SUM(ReplenishmentLogs[Quantity_Requested]),\n    0\n)'
+      }
+    ],
     "analysisText": "1. Multi-Table Integration: Joined inventory snapshots, dark store master, stock-out events, replenishment logs, and order items.\n2. Store Burden Analysis: Aggregated stock-out incidence and calculated percentage contribution per location.\n3. Temporal Trend Evaluation: Extracted hourly stock-out counts to establish peak concentration windows.\n4. SKU & Category Diagnostics: Calculated cumulative stock-out hours, repeat out-of-stock frequency, and replenishment request intervals using window functions.\n5. Benchmark Assessment: Assessed top-performing stores based on fill rate compliance, storage utilization, and reorder threshold breaches.",
     "dataCleaning": "Standardized timestamp diff records, corrected stock-out observation end times, unified product category mapping across transactional tables, and handled missing replenishment logs.",
     "overviewText": "This strategic analytics initiative evaluated micro-fulfillment store operational performance across Kolkata's dark store network. empirical SQL analysis revealed extreme variance: New Town Dark Store (DS002) alone accounted for 26.58% of network stock-outs and accumulated 12,617 cumulative stock-out hours. Operations experience acute temporal vulnerability between 7:00 PM and 10:00 PM, with stock-outs peaking at 10:00 PM (780 incidents). Perishable categories\u2014Dairy and Fresh Produce\u2014represent over 50% of all stock-outs. Conversely, top-performing benchmark stores such as Alipore (DS012) and Barasat (DS011) maintained high operational stability with supplier fill rates exceeding 80%.",

@@ -119,7 +119,28 @@ export const seedProjects: ProjectRecord[] = [
     "visibility": "public",
     "datasetDesc": "Relational transactional database containing dark store master records, product catalog, inventory snapshots, stock-out events, replenishment logs, and customer order items.",
     "methodology": "Executed four structured SQL analytical modules (SQ1–SQ4) leveraging relational multi-table joins, date/time aggregations, and advanced LAG window functions across inventory snapshots, replenishment logs, order items, and store master entities to pinpoint stock-out drivers, calculate duration metrics, and evaluate supplier fill rates.",
-    "storyBlocks": [],
+    "storyBlocks": [
+      {
+        "id": "blinkit-sb-architecture",
+        "type": "markdown",
+        "title": "Power BI & SQL Dual-Architecture Implementation",
+        "bodyContent": "This analytics framework combines an enterprise SQL diagnostic pipeline with an interactive Power BI operational dashboard. SQL performs high-cardinality multi-table joins and temporal LAG window functions over raw inventory event tables, while the Power BI Star Schema visualizes store burden rankings, hourly stock-out curves, and supplier SLA fill rate compliance across 12 Kolkata fulfillment hubs."
+      },
+      {
+        "id": "blinkit-sb-sql-query",
+        "type": "code_snippet",
+        "language": "sql",
+        "title": "SQL Diagnostic: Store Stock-Out Concentration & Hourly Windowing",
+        "bodyContent": "-- SQL Analytical Module: Peak Hourly Stock-Out Incidents & Cumulative Loss Duration\nWITH hourly_stockouts AS (\n    SELECT \n        d.store_id,\n        d.store_name,\n        p.category,\n        EXTRACT(HOUR FROM s.start_time) AS hour_of_day,\n        COUNT(s.stockout_id) AS incident_count,\n        SUM(TIMESTAMPDIFF(MINUTE, s.start_time, s.end_time)) / 60.0 AS duration_hours\n    FROM stockout_events s\n    JOIN dark_stores d ON s.store_id = d.store_id\n    JOIN products p ON s.product_id = p.product_id\n    WHERE s.start_time >= '2026-05-01' AND s.start_time <= '2026-08-31'\n    GROUP BY d.store_id, d.store_name, p.category, EXTRACT(HOUR FROM s.start_time)\n)\nSELECT \n    store_name,\n    hour_of_day,\n    SUM(incident_count) AS total_incidents,\n    ROUND(SUM(duration_hours), 1) AS total_hours_lost,\n    ROUND(100.0 * SUM(duration_hours) / SUM(SUM(duration_hours)) OVER(), 2) AS network_stockout_share_pct\nFROM hourly_stockouts\nGROUP BY store_name, hour_of_day\nORDER BY total_incidents DESC\nLIMIT 10;"
+      },
+      {
+        "id": "blinkit-sb-dax-measures",
+        "type": "code_snippet",
+        "language": "sql",
+        "title": "Power BI DAX Measures: Store Burden Share & Supplier Fill Rate",
+        "bodyContent": "// Power BI DAX Formulas: Operations Diagnostic Engine\n\n// 1. Dark Store DS002 Network Stock-Out Burden Share %\nDS002 Stock-Out Share % = \nVAR TotalNetworkStockouts = CALCULATE([Total Stock-Out Incidents], ALL(DarkStores))\nVAR StoreStockouts = CALCULATE([Total Stock-Out Incidents], DarkStores[Store_ID] = \"DS002\")\nRETURN\nDIVIDE(StoreStockouts, TotalNetworkStockouts, 0)\n\n// 2. Evening Peak Failure Volume (19:00 - 22:00 Window)\nEvening Surge Incidents = \nCALCULATE(\n    [Total Stock-Out Incidents],\n    FILTER(\n        DimTime,\n        DimTime[Hour] >= 19 && DimTime[Hour] <= 22\n    )\n)\n\n// 3. Replenishment Fulfillment Rate %\nSupplier SLA Fill Rate % = \nDIVIDE(\n    SUM(ReplenishmentLogs[Quantity_Delivered]),\n    SUM(ReplenishmentLogs[Quantity_Requested]),\n    0\n)"
+      }
+    ],
     "analysisText": "1. Multi-Table Integration: Joined inventory snapshots, dark store master, stock-out events, replenishment logs, and order items.\n2. Store Burden Analysis: Aggregated stock-out incidence and calculated percentage contribution per location.\n3. Temporal Trend Evaluation: Extracted hourly stock-out counts to establish peak concentration windows.\n4. SKU & Category Diagnostics: Calculated cumulative stock-out hours, repeat out-of-stock frequency, and replenishment request intervals using window functions.\n5. Benchmark Assessment: Assessed top-performing stores based on fill rate compliance, storage utilization, and reorder threshold breaches.",
     "dataCleaning": "Standardized timestamp diff records, corrected stock-out observation end times, unified product category mapping across transactional tables, and handled missing replenishment logs.",
     "overviewText": "This strategic analytics initiative evaluated micro-fulfillment store operational performance across Kolkata's dark store network. empirical SQL analysis revealed extreme variance: New Town Dark Store (DS002) alone accounted for 26.58% of network stock-outs and accumulated 12,617 cumulative stock-out hours. Operations experience acute temporal vulnerability between 7:00 PM and 10:00 PM, with stock-outs peaking at 10:00 PM (780 incidents). Perishable categories—Dairy and Fresh Produce—represent over 50% of all stock-outs. Conversely, top-performing benchmark stores such as Alipore (DS012) and Barasat (DS011) maintained high operational stability with supplier fill rates exceeding 80%.",

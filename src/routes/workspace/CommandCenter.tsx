@@ -716,6 +716,12 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
     if (ext === 'csv') {
       return 'CSV Tabular Dataset';
     }
+    if (ext === 'twb' || ext === 'twbx') {
+      return 'Tableau Workbook';
+    }
+    if (ext === 'r' || ext === 'rmd') {
+      return 'R Analytics / Markdown';
+    }
     if (ext === 'pdf' || mimeType.includes('pdf')) {
       if (lowerName.includes('dashboard') || lowerName.includes('viz') || lowerName.includes('chart')) {
         return 'PDF Dashboard';
@@ -1824,11 +1830,11 @@ Your output must be a single, raw, copy-pasteable JSON object matching this sche
                     multiple
                     onChange={handleFileUpload}
                     className="hidden"
-                    accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.zip,.sql,.py,.pbix,.dax,.ipynb"
+                    accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.zip,.sql,.py,.pbix,.dax,.ipynb,.twb,.twbx,.r,.rmd"
                   />
                   <Upload className="w-8 h-8 text-indigo-400 group-hover:scale-110 mb-2 transition-all" />
                   <span className="text-sm font-semibold text-slate-200">Drag & drop project folder or files here</span>
-                  <span className="text-[11px] text-slate-400 mt-1">Accepts Excel, CSV, SQL, Python, Power BI, PDF, Word, ZIP, Images</span>
+                  <span className="text-[11px] text-slate-400 mt-1">Accepts Excel, CSV, SQL, Python, Power BI, Tableau, R, PDF, Word, ZIP, Images</span>
                 </label>
               </div>
 

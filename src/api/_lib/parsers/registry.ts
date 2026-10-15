@@ -873,6 +873,198 @@ export const GitHubParser: Parser = {
   }
 };
 
+
+// ----------------------------------------------------------------------
+// 12. TableauParser (.twb, .twbx)
+// ----------------------------------------------------------------------
+export const TableauParser: Parser = {
+  name: "TableauParser",
+  extensions: ["twb", "twbx"],
+  async parse(fileName, content, type) {
+    const proj = createEmptyProject(fileName, "TableauParser");
+    proj.tags = ["Tableau", "Data Visualization", "Worksheet Analytics", "Calculated Fields"];
+    proj.categories = ["Business Intelligence", "Data Visualization"];
+    proj.role = "BI Specialist";
+
+    let xmlText = "";
+    if (fileName.toLowerCase().endsWith(".twbx")) {
+      try {
+        const zipBuffer = typeof content === "string" ? Buffer.from(content, "base64") : content;
+        const zip = new JSZip();
+        const zipData = await zip.loadAsync(zipBuffer);
+        const twbEntry = Object.keys(zipData.files).find(k => k.toLowerCase().endsWith(".twb"));
+        if (twbEntry) {
+          xmlText = await zipData.files[twbEntry].async("string");
+        }
+      } catch (twbxErr) {
+        console.warn("[TableauParser] TWBX zip extraction warning:", twbxErr);
+      }
+    } else {
+      xmlText = typeof content === "string"
+        ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+        : content.toString("utf-8");
+    }
+
+    const worksheets: string[] = [];
+    const dashboards: string[] = [];
+    const calculatedMeasures: Array<{ name: string; expression: string }> = [];
+
+    if (xmlText) {
+      const wsRegex = /<worksheet\s+name=['"]([^'"]+)['"]/g;
+      let wsMatch;
+      while ((wsMatch = wsRegex.exec(xmlText)) !== null) {
+        if (!worksheets.includes(wsMatch[1])) worksheets.push(wsMatch[1]);
+      }
+
+      const dbRegex = /<dashboard\s+name=['"]([^'"]+)['"]/g;
+      let dbMatch;
+      while ((dbMatch = dbRegex.exec(xmlText)) !== null) {
+        if (!dashboards.includes(dbMatch[1])) dashboards.push(dbMatch[1]);
+      }
+
+      const colRegex = /<column\s+caption=['"]([^'"]+)['"][^>]*>[\s\S]*?<calculation\s+class=['"]tableau['"]\s+formula=['"]([^'"]+)['"]/g;
+      let colMatch;
+      while ((colMatch = colRegex.exec(xmlText)) !== null) {
+        const name = colMatch[1];
+        const formula = colMatch[2];
+        calculatedMeasures.push({ name, expression: formula });
+        proj.metrics.push({
+          id: `tab-calc-${proj.metrics.length}-${Date.now()}`,
+          label: name,
+          value: "Calculated Field",
+          description: `Formula: ${formula}`,
+          iconName: "TrendingUp",
+          sourceFile: fileName,
+          sourceLocation: "Calculated measure definitions"
+        });
+      }
+
+      if (worksheets.length > 0) {
+        proj.datasetDesc = `Tableau Workbook contains worksheets: ${worksheets.join(", ")}.`;
+      }
+      if (dashboards.length > 0) {
+        proj.findings = `Workbook publishes dashboards: ${dashboards.join(", ")}.`;
+      }
+
+      proj.storyBlocks.push({
+        id: `tab-sb-${Date.now()}`,
+        type: "markdown",
+        title: `Tableau Workbook: ${fileName}`,
+        bodyContent: `### Extracted Tableau Worksheets\n${worksheets.map(w => `- **${w}**`).join("\n") || "No worksheets found."}\n\n### Extracted Dashboards\n${dashboards.map(d => `- **${d}**`).join("\n") || "No dashboards found."}`,
+        sourceFile: fileName
+      });
+    }
+
+    const pbiEvidence: PowerBiEvidence = {
+      sourceFile: fileName,
+      parser: "TableauParser",
+      confidence: 92,
+      visuals: dashboards.length > 0 ? dashboards.map(d => ({ title: d, type: "Dashboard" })) : worksheets.map(w => ({ title: w, type: "Worksheet" })),
+      daxMeasures: calculatedMeasures,
+      pages: dashboards.length > 0 ? dashboards : (worksheets.length > 0 ? worksheets : ["Tableau Analytics"]),
+      relationships: [],
+      kpis: []
+    };
+
+    return {
+      project: proj,
+      evidenceNode: { type: "powerbi", data: pbiEvidence }
+    };
+  }
+};
+
+// ----------------------------------------------------------------------
+// 13. RParser (.r, .rmd)
+// ----------------------------------------------------------------------
+export const RParser: Parser = {
+  name: "RParser",
+  extensions: ["r", "rmd"],
+  async parse(fileName, content, type) {
+    const proj = createEmptyProject(fileName, "RParser");
+    proj.tags = ["R", "ggplot2", "Statistical Modeling", "Exploratory Data Analysis"];
+    proj.categories = ["Statistical Analysis", "Data Science"];
+    proj.role = "Statistical Data Analyst";
+
+    const text = typeof content === "string"
+      ? (type === "text" ? content : Buffer.from(content, "base64").toString("utf-8"))
+      : content.toString("utf-8");
+
+    const lines = text.split(/\r?\n/);
+    let inRChunk = false;
+    let chunkCode = "";
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("```{r")) {
+        inRChunk = true;
+        chunkCode = "";
+        return;
+      }
+      if (trimmed.startsWith("```") && inRChunk) {
+        inRChunk = false;
+        if (chunkCode.trim()) {
+          proj.storyBlocks.push({
+            id: `r-chunk-${idx}-${Date.now()}`,
+            type: "code_snippet",
+            title: `R Markdown Chunk (Line ${idx})`,
+            bodyContent: chunkCode,
+            language: "r",
+            sourceFile: fileName
+          });
+        }
+        return;
+      }
+
+      if (inRChunk) {
+        chunkCode += line + "\n";
+      }
+
+      if (trimmed.startsWith("#")) {
+        const comment = trimmed.slice(1).trim();
+        const lower = comment.toLowerCase();
+        if (lower.startsWith("kpi:") || lower.startsWith("metric:")) {
+          const parts = comment.substring(comment.indexOf(":") + 1).split("=");
+          if (parts.length >= 2) {
+            proj.metrics.push({
+              id: `r-metric-${proj.metrics.length}-${Date.now()}`,
+              label: parts[0].trim(),
+              value: parts[1].trim(),
+              description: `Extracted from R source ${fileName}`,
+              iconName: "Activity",
+              sourceFile: fileName,
+              sourceLocation: `Line ${idx + 1}`
+            });
+          }
+        }
+      }
+    });
+
+    if (!fileName.toLowerCase().endsWith(".rmd") && text.trim()) {
+      proj.storyBlocks.push({
+        id: `r-script-${Date.now()}`,
+        type: "code_snippet",
+        title: `R Script: ${fileName}`,
+        bodyContent: text.slice(0, 5000),
+        language: "r",
+        sourceFile: fileName
+      });
+    }
+
+    const docEvidence: DocumentEvidence = {
+      sourceFile: fileName,
+      parser: "RParser",
+      confidence: 90,
+      sections: [{ heading: "R Statistical Analysis", content: text.slice(0, 3000) }],
+      extractedTerms: ["R", "ggplot2", "dplyr", "Statistical Analysis"]
+    };
+
+    return {
+      project: proj,
+      evidenceNode: { type: "document", data: docEvidence }
+    };
+  }
+};
+
 // ----------------------------------------------------------------------
 // Registry Mapping & Route
 // ----------------------------------------------------------------------
@@ -891,7 +1083,11 @@ export const PARSER_REGISTRY: Record<string, Parser> = {
   pdf: PDFParser,
   png: ImageParser,
   jpg: ImageParser,
-  jpeg: ImageParser
+  jpeg: ImageParser,
+  twb: TableauParser,
+  twbx: TableauParser,
+  r: RParser,
+  rmd: RParser
 };
 
 export async function unpackZipFile(base64Content: string | Buffer): Promise<Array<{ name: string; content: string; type: "text" | "binary" }>> {

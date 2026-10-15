@@ -25,7 +25,7 @@ export function validateFileSignature(fileName: string, base64OrBuffer: string |
   }
 
   // Check 1: Executable & Binary Malware Prevention for plain text extensions
-  const textExtensions = ["sql", "py", "ipynb", "md", "txt", "csv", "dax", "json"];
+  const textExtensions = ["sql", "py", "ipynb", "md", "txt", "csv", "dax", "json", "r", "rmd", "twb"];
   if (textExtensions.includes(ext)) {
     // Check for PE executable (MZ = 0x4D 0x5A) or ELF binary (0x7F 0x45 0x4C 0x46)
     if (buf.length >= 2 && buf[0] === 0x4d && buf[1] === 0x5a) {
@@ -38,7 +38,7 @@ export function validateFileSignature(fileName: string, base64OrBuffer: string |
   }
 
   // Check 2: PKZIP-based archives (.zip, .xlsx, .docx, .pbix)
-  if (["zip", "xlsx", "docx", "pbix"].includes(ext)) {
+  if (["zip", "xlsx", "docx", "pbix", "twbx"].includes(ext)) {
     if (buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b) {
       return { isValid: true, detectedType: "ZIP Archive / OpenXML Document" };
     }
@@ -95,7 +95,7 @@ export function validateFileBuffer(buffer: Buffer, fileName: string): FileValida
 
 export function isAllowedFileType(fileName: string): boolean {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  const allowed = ["zip", "pbit", "pbix", "xlsx", "xls", "docx", "pdf", "py", "ipynb", "sql", "dax", "csv", "json", "md", "txt", "png", "jpg", "jpeg"];
+  const allowed = ["zip", "pbit", "pbix", "xlsx", "xls", "docx", "pdf", "py", "ipynb", "sql", "dax", "csv", "json", "md", "txt", "png", "jpg", "jpeg", "twb", "twbx", "r", "rmd"];
   return allowed.includes(ext);
 }
 
