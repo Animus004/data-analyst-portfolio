@@ -177,9 +177,20 @@ export const storageService = {
                 return p;
               });
 
+              // Merge in any newly introduced seed projects (such as Cyclistic)
+              const existingIds = new Set(cleanedProjects.map((p: any) => p.id || p.slug));
+              const missingSeeds = seedProjects.filter(sp => !existingIds.has(sp.id) && !existingIds.has(sp.slug));
+              const mergedProjects = [...cleanedProjects, ...missingSeeds].map((p, idx) => ({
+                ...p,
+                tier: p.tier || (p.featured ? "flagship" : "secondary"),
+                featured: p.tier === "secondary" ? false : (p.featured ?? (idx === 0)),
+                visibility: p.visibility ?? "public",
+                order: p.order ?? idx
+              })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
               this.saveProfile(cleanedProfile);
-              this.saveProjects(cleanedProjects);
-              return { profile: cleanedProfile, projects: cleanedProjects };
+              this.saveProjects(mergedProjects);
+              return { profile: cleanedProfile, projects: mergedProjects };
             }
           }
         } catch {
