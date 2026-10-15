@@ -68,6 +68,20 @@ async function handler(req, res) {
         }
       }
     });
+    let availableModels = [];
+    try {
+      const listRes = await client.models.list();
+      if (listRes && Array.isArray(listRes)) {
+        availableModels = listRes.map((m) => m.name || m.displayName || String(m)).slice(0, 15);
+      } else if (listRes && typeof listRes === "object") {
+        const items = listRes.models || listRes.page || [];
+        availableModels = items.map((m) => m.name || m.displayName || String(m)).slice(0, 15);
+      }
+      responseData.availableModels = availableModels;
+    } catch (listErr) {
+      console.warn("[Health Test] ListModels error:", listErr?.message || listErr);
+      responseData.listModelsError = listErr?.message || String(listErr);
+    }
     for (const testModel of candidateModels) {
       try {
         const testRes = await client.models.generateContent({

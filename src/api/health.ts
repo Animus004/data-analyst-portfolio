@@ -63,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let successfulModel = "";
     let replyText = "";
 
-    const client = new GoogleGenAI({
+        const client = new GoogleGenAI({
       apiKey: sanitizedKey,
       httpOptions: {
         headers: {
@@ -72,6 +72,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     });
+
+    let availableModels: string[] = [];
+    try {
+      const listRes = await client.models.list();
+      if (listRes && Array.isArray(listRes)) {
+        availableModels = listRes.map((m: any) => m.name || m.displayName || String(m)).slice(0, 15);
+      } else if (listRes && typeof listRes === "object") {
+        const items = (listRes as any).models || (listRes as any).page || [];
+        availableModels = (items as any[]).map((m: any) => m.name || m.displayName || String(m)).slice(0, 15);
+      }
+      responseData.availableModels = availableModels;
+    } catch (listErr: any) {
+      console.warn("[Health Test] ListModels error:", listErr?.message || listErr);
+      responseData.listModelsError = listErr?.message || String(listErr);
+    }
 
     for (const testModel of candidateModels) {
       try {
