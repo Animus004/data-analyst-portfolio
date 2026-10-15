@@ -7,6 +7,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenAI } from "@google/genai";
 import { sendSuccess } from "./_lib/utils/index";
 
+export const config = {
+  maxDuration: 60
+};
+
 function sanitizeApiKey(raw?: string): string {
   if (!raw) return "";
   return raw.trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
@@ -31,8 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       keyPrefix: sanitizedKey ? `${sanitizedKey.slice(0, 6)}...` : null,
       hasQuotesWarning: hasQuotes,
       hasBearerWarning: hasBearer,
-      activeModel: "gemini-flash-latest",
-      fallbackModels: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"]
+      activeModel: "gemini-2.5-flash",
+      fallbackModels: ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-pro"]
     },
     supabase: {
       configured: Boolean(supabaseUrl && supabaseKey),
@@ -58,12 +62,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const tStart = Date.now();
-    const candidateModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"];
+    const candidateModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
     let lastAiError: any = null;
     let successfulModel = "";
     let replyText = "";
 
-        const client = new GoogleGenAI({
+    const client = new GoogleGenAI({
       apiKey: sanitizedKey,
       httpOptions: {
         headers: {
@@ -73,13 +77,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     });
 
-    
     for (const testModel of candidateModels) {
       try {
-        const testRes = await client.models.generateContent({
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout testing " + testModel)), 4000));
+        const callPromise = client.models.generateContent({
           model: testModel,
           contents: "Reply with the single word: READY"
         });
+        const testRes: any = await Promise.race([callPromise, timeoutPromise]);
         replyText = testRes.text?.trim() || "READY";
         successfulModel = testModel;
         break;
@@ -107,7 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: errStr,
         details: is503 ? "CAPACITY_HIGH_DEMAND" : (isAuth ? "UNAUTHENTICATED" : "API_ERROR"),
         recommendation: is503
-          ? "Google's Gemini 2.0 servers are temporarily experiencing high demand (503). This is a temporary Google infrastructure spike. The AI synthesizer will automatically attempt backup models (2.0 Flash Lite & 1.5 Flash)."
+          ? "Google's Gemini servers are temporarily experiencing high demand (503). This is a temporary Google infrastructure spike. The AI synthesizer will automatically attempt backup models (2.5 Flash Lite & Flash Latest)."
           : (hasQuotes
             ? "Your GEMINI_API_KEY in Vercel has quotation marks around it. Remove quotes in Vercel Settings > Environment Variables."
             : "Please check your GEMINI_API_KEY at aistudio.google.com/apikey and update Vercel environment variables.")
