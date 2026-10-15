@@ -4100,187 +4100,366 @@ import { createClient } from "@supabase/supabase-js";
 // src/data/seedData.ts
 var seedProjects = [
   {
-    id: "superstore-sales",
-    title: "Superstore Sales Dashboard & Diagnostic Analysis",
-    slug: "superstore-sales-dashboard-analysis",
-    subtitle: "[Insert Subtitle / High-Level Objective (e.g., A diagnostic business intelligence dashboard analyzing multi-year retail transactions to identify unprofitable segments and optimize supply chains.)]",
-    summary: "[Insert Brief Executive Summary (e.g., Built an interactive, responsive Power BI analytical interface modeling retail orders to identify negative profit corridors, measure distribution lag, and forecast sales trends.)]",
-    industry: "[Insert Industry (e.g., E-Commerce & Retail)]",
-    role: "[Insert Your Role (e.g., Lead Business Intelligence Analyst)]",
-    duration: "[Insert Project Duration (e.g., 2 Months)]",
+    "id": "project-hhy3dlaz7",
+    "date": "2026-09-14",
+    "role": "Lead Operations & Data Analyst",
+    "slug": "dark-store-operations-stock-out-analytics-engine",
+    "tags": [
+      "SQL",
+      "Power BI",
+      "DAX",
+      "MySQL",
+      "Inventory Operations",
+      "Logistics Analytics"
+    ],
+    "order": 3,
+    "title": "Blinkit Kolkata: Dark Store Stock-Out & Operations Intelligence",
+    "images": [
+      "/images/blinkit_dashboard_1.png",
+      "/images/blinkit_dashboard_2.png"
+    ],
+    "skills": [
+      "SQL Analytics & Multi-Table Joins",
+      "Window Functions & Temporal Analysis",
+      "Operational Bottleneck Identification",
+      "Supply Chain Benchmarking",
+      "Executive Storytelling & Recommendations"
+    ],
     status: "published" /* PUBLISHED */,
+    "metrics": [
+      {
+        "id": "ai-metric-0-1789385492014",
+        "label": "DS002 Stock-Out Share",
+        "value": "26.58%",
+        "iconName": "Activity",
+        "description": "Share of overall network stock-outs contributed by New Town Dark Store"
+      },
+      {
+        "id": "ai-metric-1-1789385492014",
+        "label": "DS002 Cumulative Stock-Out Hours",
+        "value": "12,617 hrs",
+        "iconName": "Activity",
+        "description": "Total stock-out duration accumulated by New Town Dark Store"
+      },
+      {
+        "id": "ai-metric-2-1789385492014",
+        "label": "Peak Hourly Stock-Out Incidents",
+        "value": "780 incidents",
+        "iconName": "Activity",
+        "description": "Peak stock-out volume observed at 10:00 PM during late evening surge"
+      },
+      {
+        "id": "ai-metric-3-1789385492014",
+        "label": "Perishable Category Stock-Out Share",
+        "value": ">50%",
+        "iconName": "Activity",
+        "description": "Combined stock-out contribution from Dairy and Fresh Produce categories"
+      },
+      {
+        "id": "ai-metric-4-1789385492014",
+        "label": "Benchmark Store Fill Rate",
+        "value": ">80%",
+        "iconName": "Activity",
+        "description": "Supplier fill rate maintained by benchmark stores Alipore and Barasat"
+      }
+    ],
+    "summary": "This strategic analytics initiative evaluated micro-fulfillment store operational performance across Kolkata's dark store network. empirical SQL analysis revealed extreme variance: New Town Dark Store (DS002) alone accounted for 26.58% of network stock-outs and accumulated 12,617 cumulative stock-out hours. Operations experience acute temporal vulnerability between 7:00 PM and 10:00 PM, with stock-outs peaking at 10:00 PM (780 incidents). Perishable categories\u2014Dairy and Fresh Produce\u2014represent over 50% of all stock-outs. Conversely, top-performing benchmark stores such as Alipore (DS012) and Barasat (DS011) maintained high operational stability with supplier fill rates exceeding 80%.",
+    "duration": "4 Months (120-Day Network Analysis)",
+    "featured": true,
+    "findings": "1. Disproportionate Store Burden: New Town Dark Store (DS002) contributes 26.58% of total network stock-outs (12,617 hours), followed by Jadavpur (16.73%) and Rajarhat (11.88%).\n2. Temporal Spike: Stock-outs concentrate in the late evening from 7:00 PM to 10:00 PM, reaching a network peak of 780 incidents at 10:00 PM.\n3. Perishable Vulnerability: Dairy (6,790 observations, ~8.72h avg duration) and Fresh Produce (6,570 observations, ~9.04h avg duration) account for over 50% of all stock-outs.\n4. Chronic High-Velocity SKUs: Mother Dairy Toned Milk 500ml (2,023 hrs out of stock) and Apple Royal Gala 4 pcs (1,905 hrs out of stock) experience severe stock-out durations. Green Chilli 100g was out of stock on 94 out of 120 days despite restock requests every 5 hours.\n5. Benchmark Stores: Alipore (DS012) and Barasat (DS011) recorded under 500 stock-out observations and maintained supplier fill rates above 80%.",
+    "industry": "Quick-Commerce & Retail Logistics",
+    "subtitle": "An end-to-end SQL and Power BI operations intelligence case study analyzing dark store availability, chronic SKU stock-outs, peak operational failure windows, and replenishment reliability across 12 Kolkata fulfillment hubs.",
+    "createdAt": "2026-09-14T11:32:24.094Z",
+    "objective": "Systematically evaluate key operational performance indicators and transactional trends across dark store inventory snapshots and replenishment records to identify operational bottlenecks, establish benchmark standards, and formulate strategic business interventions.",
+    "updatedAt": "2026-09-14T11:32:24.094Z",
+    "categories": [
+      "Operations Intelligence",
+      "Supply Chain Analytics",
+      "SQL Diagnostics"
+    ],
     difficulty: "advanced" /* ADVANCED */,
-    objective: "[Insert Detailed Project Objective (e.g., To identify critical profit-bleeding product lines, optimize regional delivery durations, and build predictive sales models to guide upcoming inventory management strategies.)]",
-    datasetDesc: "[Insert Dataset Description (e.g., Detailed transactional data of a multi-region retail superstore spanning thousands of records, covering order dates, shipment modes, client segments, geocoordinates, product hierarchy, and sales margins.)]",
-    methodology: "1. [Insert Step 1 (e.g., Cleaned and structured transactional raw datasets using Python to resolve null values and format timestamps.)]\n2. [Insert Step 2 (e.g., Built star-schema data models in Power BI to optimize cross-report query performance.)]\n3. [Insert Step 3 (e.g., Formulated custom metrics for Year-over-Year variance, cumulative running margins, and average order latency.)]\n4. [Insert Step 4 (e.g., Designed visual matrix grids mapping regional sub-categories directly against discount thresholds.)]",
-    tags: ["Power BI", "DAX", "Python", "Pandas", "Excel", "SQL"],
-    categories: ["Business Intelligence", "Data Science"],
-    metrics: [
-      {
-        id: "ss-m1",
-        label: "[Insert Metric 1 Label (e.g., Identified Cash Bleeds)]",
-        value: "[Insert Metric 1 Value (e.g., $32,500+)]",
-        description: "[Insert Metric 1 Description (e.g., Isolated negative margin product categories such as tables and binders.)]"
-      },
-      {
-        id: "ss-m2",
-        label: "[Insert Metric 2 Label (e.g., Shipping Lag Reduction)]",
-        value: "[Insert Metric 2 Value (e.g., 22%)]",
-        description: "[Insert Metric 2 Description (e.g., Bypassed standard transit delays by highlighting regional carrier gaps.)]"
-      },
-      {
-        id: "ss-m3",
-        label: "[Insert Metric 3 Label (e.g., Sales Growth Trend)]",
-        value: "[Insert Metric 3 Value (e.g., +12.4%)]",
-        description: "[Insert Metric 3 Description (e.g., Year-over-Year revenue expansion analyzed across core consumer segments.)]"
-      }
-    ],
-    storyBlocks: [
-      {
-        id: "ss-sb1",
-        type: "markdown",
-        title: "[Insert Markdown Block Title (e.g., The Dilemma of High Volume with Low Margin)]",
-        bodyContent: "[Insert Story / Challenge / Retrospective Context. E.g., In commercial retail, high-volume sales numbers are often misleading. A cursory review of the superstore ledger showed that while overall sales were increasing, overall profit margins were shrinking. By drilling deep into sub-category structures, the diagnostics isolated a critical leak: Furniture sales had extremely high sales numbers but negative cumulative profit. This cash drain was heavily driven by high logistical shipping costs paired with excessive promotional discounts.]"
-      },
-      {
-        id: "ss-sb2",
-        type: "code_snippet",
-        title: "[Insert Code Snippet Title (e.g., Calculating Sales Margin and Profitability in DAX)]",
-        language: "typescript",
-        bodyContent: "// DAX Measure calculating pure profit margins while protecting against zero divisions\nProfit Margin % = \nDIVIDE(\n  SUM(Superstore[Profit]), \n  SUM(Superstore[Sales]), \n  0\n)\n\n// DAX Measure to evaluate the YoY Variance\nSales YoY Variance = \nVAR CurrentSales = SUM(Superstore[Sales])\nVAR PreviousSales = CALCULATE(SUM(Superstore[Sales]), SAMEPERIODLASTYEAR('Calendar'[Date]))\nRETURN\n  DIVIDE(CurrentSales - PreviousSales, PreviousSales, 0)"
-      },
-      {
-        id: "ss-sb3",
-        type: "chart_data",
-        title: "[Insert Visual Chart / Ledger Title (e.g., Profit Margins by Customer Segment (Monthly))]",
-        bodyContent: '[\n  {"name": "Corporate", "Normal": 4200, "Fraud": 120},\n  {"name": "Consumer", "Normal": 5800, "Fraud": 380},\n  {"name": "Home Office", "Normal": 2400, "Fraud": 60},\n  {"name": "Discount Retail", "Normal": 1900, "Fraud": 450}\n]'
-      }
-    ],
-    githubUrl: "https://github.com/Animus004/superstore-sales-dashboard-analysis",
-    createdAt: "2026-06-10T08:00:00Z",
-    updatedAt: "2026-07-15T12:00:00Z"
+    "visibility": "public",
+    "datasetDesc": "Relational transactional database containing dark store master records, product catalog, inventory snapshots, stock-out events, replenishment logs, and customer order items.",
+    "methodology": "Executed four structured SQL analytical modules (SQ1\u2013SQ4) leveraging relational multi-table joins, date/time aggregations, and advanced LAG window functions across inventory snapshots, replenishment logs, order items, and store master entities to pinpoint stock-out drivers, calculate duration metrics, and evaluate supplier fill rates.",
+    "storyBlocks": [],
+    "analysisText": "1. Multi-Table Integration: Joined inventory snapshots, dark store master, stock-out events, replenishment logs, and order items.\n2. Store Burden Analysis: Aggregated stock-out incidence and calculated percentage contribution per location.\n3. Temporal Trend Evaluation: Extracted hourly stock-out counts to establish peak concentration windows.\n4. SKU & Category Diagnostics: Calculated cumulative stock-out hours, repeat out-of-stock frequency, and replenishment request intervals using window functions.\n5. Benchmark Assessment: Assessed top-performing stores based on fill rate compliance, storage utilization, and reorder threshold breaches.",
+    "dataCleaning": "Standardized timestamp diff records, corrected stock-out observation end times, unified product category mapping across transactional tables, and handled missing replenishment logs.",
+    "overviewText": "This strategic analytics initiative evaluated micro-fulfillment store operational performance across Kolkata's dark store network. empirical SQL analysis revealed extreme variance: New Town Dark Store (DS002) alone accounted for 26.58% of network stock-outs and accumulated 12,617 cumulative stock-out hours. Operations experience acute temporal vulnerability between 7:00 PM and 10:00 PM, with stock-outs peaking at 10:00 PM (780 incidents). Perishable categories\u2014Dairy and Fresh Produce\u2014represent over 50% of all stock-outs. Conversely, top-performing benchmark stores such as Alipore (DS012) and Barasat (DS011) maintained high operational stability with supplier fill rates exceeding 80%.",
+    "challengesText": "Reconciling high stock-out frequencies with frequent replenishment requests required evaluating LAG intervals across timestamped inventory snapshots to separate supplier lead time delays from dark store operational bottlenecks.",
+    "lessonsLearned": "Stock-outs are rarely uniform across fulfillment networks; micro-location dynamics, shift timing, and product-specific perishability require targeted operational interventions rather than broad blanket policies.",
+    "businessProblem": "Dark Store Operations Managers face critical supply-demand imbalances during daily operations across micro-fulfillment hubs in Kolkata. Operational leadership lacks diagnostic visibility into whether availability failures are uniform or localized, when stock-outs peak throughout the day, which SKUs and categories fail most frequently, and what operational practices separate underperforming hubs from top-performing stores.",
+    "recommendations": "Immediate (0\u201330 Days): Shift secondary replenishment delivery windows from 20:00 to 16:30\u201317:30 for New Town, Jadavpur, and Rajarhat to prevent evening stock-out surges. Increase safety stock reorder thresholds by 20\u201325% on top Dairy and Fresh Produce SKUs.\nMedium Term (30\u201390 Days): Enforce supplier SLAs with a minimum 85% fill rate requirement. Standardize bin allocation and reorder execution using the Alipore/Barasat SOP playbook across high-burden stores.\nStrategic (90+ Days): Re-calibrate unit measurement formulas for dark store capacity before committing capital expenditure.",
+    "githubUrl": "https://github.com/Animus004/blinkit-dark-store-stockout-analysis"
   },
   {
-    id: "amazon-reviews",
-    title: "Amazon Product Review Sentiment Dashboard",
-    slug: "amazon-product-review-dashboard",
-    subtitle: "[Insert Subtitle / High-Level Objective (e.g., An end-to-end NLP analytics application classifying Amazon consumer feedback, rating patterns, and review helpfulness metrics.)]",
-    summary: "[Insert Brief Executive Summary (e.g., Created a Python and Power BI diagnostic dashboard parsing text-based customer reviews to extract recurring pain points, rating velocities, and sentiment indices.)]",
-    industry: "[Insert Industry (e.g., Consumer Electronics & E-Commerce)]",
-    role: "[Insert Your Role (e.g., Lead NLP & Analytics Engineer)]",
-    duration: "[Insert Project Duration (e.g., 3 Months)]",
+    "id": "project-3ei1f2x9q",
+    "role": "Product Data Analyst",
+    "slug": "amazon-customer-engagement-product-sentiment-analysis",
+    "tags": [
+      "Excel",
+      "Pivot Tables",
+      "Customer Sentiment",
+      "Data Visualization",
+      "E-Commerce"
+    ],
+    "order": 0,
+    "title": "Amazon Customer Engagement & Product Sentiment Analytics",
+    "images": [
+      "/images/amazon_dashboard.png"
+    ],
+    "skills": [
+      "Microsoft Excel",
+      "Data Cleaning",
+      "Pivot Tables",
+      "Dashboard Design",
+      "KPI Development",
+      "Business Analysis",
+      "Customer Sentiment Analysis",
+      "Stakeholder Reporting"
+    ],
     status: "published" /* PUBLISHED */,
-    difficulty: "advanced" /* ADVANCED */,
-    objective: "[Insert Detailed Project Objective (e.g., To transform raw text product feedback into structured engineering goals, allowing manufacturing and listing optimization teams to proactively address quality issues.)]",
-    datasetDesc: "[Insert Dataset Description (e.g., A robust Amazon feedback corpus spanning thousands of products, including star ratings, text comments, user locations, helpfulness counts, and verified purchaser flags.)]",
-    methodology: "1. [Insert Step 1 (e.g., Cleaned customer feedback texts with tokenization, lemmatization, and customized stop-word exclusion in Python.)]\n2. [Insert Step 2 (e.g., Developed sentiment-intensity classifiers using nltk and textblob library configurations.)]\n3. [Insert Step 3 (e.g., Formulated weighted review importance ranks by compounding raw star counts with helpfulness vote ratios.)]\n4. [Insert Step 4 (e.g., Visualized real-time topic distributions and rating shifts in a beautiful, modular UI layout.)]",
-    tags: ["Python", "NLTK", "Power BI", "Pandas", "NLP", "Scikit-Learn"],
-    categories: ["Machine Learning", "Data Science"],
-    metrics: [
+    "metrics": [
       {
-        id: "ar-m1",
-        label: "[Insert Metric 1 Label (e.g., Feedback Categorized)]",
-        value: "[Insert Metric 1 Value (e.g., 12,000+)]",
-        description: "[Insert Metric 1 Description (e.g., Textual reviews normalized, tokenized, and structured automatically.)]"
+        "id": "ai-metric-0-1784802815244",
+        "label": "Customer Engagement Volume",
+        "value": "584 Reviews",
+        "iconName": "Activity",
+        "description": "Highest review volume recorded by a single product category, used to identify the most engaged customer segment."
       },
       {
-        id: "ar-m2",
-        label: "[Insert Metric 2 Label (e.g., Keyword Extraction Ratio)]",
-        value: "[Insert Metric 2 Value (e.g., 94.2%)]",
-        description: "[Insert Metric 2 Description (e.g., Identified primary engineering bugs directly from text logs.)]"
+        "id": "ai-metric-1-1784802815244",
+        "label": "Average Customer Rating",
+        "value": "Rating4.4 / 5",
+        "iconName": "Activity",
+        "description": "Average customer satisfaction across analyzed product categories."
       },
       {
-        id: "ar-m3",
-        label: "[Insert Metric 3 Label (e.g., Review Integrity Verified)]",
-        value: "[Insert Metric 3 Value (e.g., 99.8%)]",
-        description: "[Insert Metric 3 Description (e.g., Successfully filtered out bot-generated review networks using temporal density tracking.)]"
+        "id": "metric-519taoiea",
+        "label": "Average Helpful Votes",
+        "value": "281.9 Votes",
+        "description": "Measures how useful customers found product reviews, indicating review quality and customer trust."
+      },
+      {
+        "id": "metric-mlljgb4mv",
+        "label": "Average Product Price",
+        "value": "$136",
+        "description": "Average selling price across analyzed product categories for price-performance comparison."
+      },
+      {
+        "id": "metric-pzzeze86e",
+        "label": "Highest Rated Category",
+        "value": "Fire Tablet (4.7\u2605)",
+        "description": "Category generating the highest customer interaction and review volume."
+      },
+      {
+        "id": "metric-d6vb7aa0c",
+        "label": "Highest Engagement Category",
+        "value": "Smart Home (584 Reviews)",
+        "description": "Category generating the highest customer interaction and review volume."
       }
     ],
-    storyBlocks: [
-      {
-        id: "ar-sb1",
-        type: "markdown",
-        title: "[Insert Markdown Block Title (e.g., Uncovering What Average Ratings Hide)]",
-        bodyContent: "[Insert Story / Challenge / Retrospective Context. E.g., A standard product listing score of 4.2 stars looks decent from a high level, but it can mask devastating regional engineering bugs. By isolating and applying NLP sentiment classification to 1-and-2-star reviews specifically, this analysis mapped high-frequency word occurrences. The resulting dashboard instantly highlighted recurring issues, allowing the product team to fix the manufacturing line before the rating average collapsed.]"
-      },
-      {
-        id: "ar-sb2",
-        type: "code_snippet",
-        title: "[Insert Code Snippet Title (e.g., Clean Review NLP Processing Pipeline)]",
-        language: "python",
-        bodyContent: "import re\nfrom nltk.corpus import stopwords\nfrom nltk.tokenize import word_tokenize\nfrom nltk.stem import WordNetLemmatizer\n\ndef clean_and_lemmatize(text):\n    # Lowercase & strip special characters\n    text_clean = re.sub(r'[^a-zA-Z\\s]', '', text.lower())\n    \n    # Tokenize words\n    tokens = word_tokenize(text_clean)\n    \n    # Filter stopwords and lemmatize\n    stop_words = set(stopwords.words('english'))\n    lemmatizer = WordNetLemmatizer()\n    \n    return [lemmatizer.lemmatize(w) for w in tokens if w not in stop_words]"
-      },
-      {
-        id: "ar-sb3",
-        type: "chart_data",
-        title: "[Insert Visual Chart / Ledger Title (e.g., Sentiment Ratios across Product Collections)]",
-        bodyContent: '[\n  {"name": "Electronics", "Normal": 8200, "Fraud": 1100},\n  {"name": "Home & Kitchen", "Normal": 6100, "Fraud": 950},\n  {"name": "Office Supplies", "Normal": 4500, "Fraud": 300},\n  {"name": "Automotive Parts", "Normal": 3200, "Fraud": 850}\n]'
-      }
+    "summary": "Developed an Excel-based analytics dashboard to evaluate Amazon product review trends across multiple categories. Performed customer engagement, sentiment, and category performance analysis using pivot tables, KPI reporting, and data visualization to identify investment opportunities, satisfaction gaps, and strategic business recommendations for product teams. \uE200filecite\uE202turn14file1\uE202L8-L37\uE201",
+    "duration": "2 Months",
+    "featured": true,
+    "findings": "Analysis revealed varying customer engagement and sentiment levels across product categories, identifying top-performing assets like the Fire Tablet alongside categories exhibiting lower customer ratings despite high engagement (such as Fire TV). The diagnostic also highlighted a significant decline in review activity during 2016.",
+    "industry": "E-Commerce & Consumer Electronics",
+    "subtitle": "Exploratory customer review and engagement analysis identifying high-velocity rating trends, recurring quality concerns, and product catalog prioritization signals in Excel.",
+    "createdAt": "2026-07-23T10:33:49.079Z",
+    "githubUrl": "https://github.com/Animus004/Amazon-Customer-Engagement-Product-Performance-Analysis",
+    "objective": "Analyze Amazon customer review data to identify high-performing product categories, evaluate customer engagement and sentiment trends, and generate data-driven recommendations for product strategy and marketing investment.",
+    "updatedAt": "2026-08-08T15:50:19.162Z",
+    "categories": [
+      "Customer Analytics",
+      "Product Performance"
     ],
-    githubUrl: "https://github.com/Animus004/amazon-product-review-dashboard",
-    createdAt: "2026-05-15T09:00:00Z",
-    updatedAt: "2026-07-10T15:00:00Z"
+    difficulty: "intermediate" /* INTERMEDIATE */,
+    "visibility": "public",
+    "datasetDesc": "Analyzed a structured Amazon customer review dataset containing product categories, customer ratings, review counts, helpful votes, product prices, and historical review activity spanning 2015\u20132017.",
+    "methodology": "Applied exploratory data analysis, customer sentiment analysis, category benchmarking, engagement-versus-rating comparison, and time-series trend analysis using Microsoft Excel, Pivot Tables, Pivot Charts, and KPI dashboards.",
+    "storyBlocks": [],
+    "analysisText": "No predictive models were developed. Analysis relied on descriptive analytics using Pivot Tables, Pivot Charts, calculated KPIs, comparative category benchmarking, scatter plot correlation analysis, and historical trend visualization.",
+    "dataCleaning": "Cleaned and standardized raw Amazon review data by validating category labels, formatting numerical metrics, preparing time-series fields, and organizing structured datasets for dashboard development and KPI analysis.",
+    "overviewText": "Developed an end-to-end customer engagement analytics dashboard using Amazon product review data to evaluate customer sentiment, category performance, pricing relationships, and historical engagement trends. The project transformed raw review datasets into executive-level dashboards and strategic business recommendations supporting product investment and marketing decisions.",
+    "challengesText": "Consolidating customer engagement, pricing, and sentiment metrics from multiple analytical dimensions required careful KPI selection, category benchmarking, and dashboard design to ensure meaningful business interpretation without introducing misleading conclusions.",
+    "lessonsLearned": "This project reinforced the importance of combining customer engagement metrics with sentiment analysis rather than relying on review volume alone. Future analyses would benefit from incorporating product launch timelines, lifecycle stages, and additional behavioral metrics for deeper business insights.",
+    "businessProblem": "Amazon lacked consolidated visibility into category-level customer engagement, review sentiment, and pricing performance. Without centralized analytics, decision-makers faced challenges prioritizing marketing investments, identifying high-performing products, and responding to declining customer satisfaction.",
+    "recommendations": "Increase marketing efforts for Fire Tablet due to high customer ratings and future growth potential. Investigate the reasons behind Fire TV's lower customer ratings despite high engagement. Review the significant decline in review activity during 2016 before making strategic decisions, and include product launch dates and lifecycle analysis in future studies."
   },
   {
-    id: "steam-games",
-    title: "Steam Games Market Analysis & Genre Saturation Modeling",
-    slug: "steam-games-market-analysis",
-    subtitle: "[Insert Subtitle / High-Level Objective (e.g., A commercial market intelligence pipeline mapping pricing elasticities, concurrent active players, and genre saturation parameters on Steam.)]",
-    summary: "[Insert Brief Executive Summary (e.g., Engineered a Python ETL workflow and interactive Tableau/Power BI interface studying PC game records to model successful release variables for independent game publishers.)]",
-    industry: "[Insert Industry (e.g., Gaming & Digital Media)]",
-    role: "[Insert Your Role (e.g., Lead Market Analyst & Data Engineer)]",
-    duration: "[Insert Project Duration (e.g., 3 Months)]",
+    "id": "project-g40ktfsc7",
+    "role": "Business Intelligence Analyst",
+    "slug": "superstore-profitability-margin-optimization-analytics",
+    "tags": [
+      "Excel",
+      "Pivot Charts",
+      "Profitability Modeling",
+      "KPI Development",
+      "Retail Sales"
+    ],
+    "order": 1,
+    "title": "Superstore Sales Diagnostic & Margin Optimization Dashboard",
+    "images": [
+      "/images/superstore_dashboard.png"
+    ],
+    "skills": [
+      "Microsoft Excel",
+      "Pivot Tables",
+      "Data Cleaning",
+      "KPI Development",
+      "Business Analysis",
+      "Dashboard Design",
+      "Sales Analytics",
+      "Profitability Analysis",
+      "Stakeholder Reporting"
+    ],
     status: "published" /* PUBLISHED */,
+    "metrics": [
+      {
+        "id": "ai-metric-0-1784804480944",
+        "label": "Total Sales",
+        "value": "$2.29M+",
+        "iconName": "trending-up",
+        "description": "Total revenue generated by the Superstore across analyzed periods."
+      },
+      {
+        "id": "metric-3nmemnurs",
+        "label": "Total Profit",
+        "value": "$286K+",
+        "description": "Overall profit earned after all transactions, measuring business profitability."
+      },
+      {
+        "id": "metric-4um5y7opc",
+        "label": "Highest Profit Category",
+        "value": "Technology",
+        "description": "Product category generating the highest overall profit contribution."
+      },
+      {
+        "id": "metric-ynwey67yc",
+        "label": "Lowest Profit Category",
+        "value": "Furniture",
+        "description": "High sales but comparatively weak profitability, indicating pricing or cost optimization opportunities."
+      },
+      {
+        "id": "metric-hmt52jpid",
+        "label": "Top Performing Region",
+        "value": "West Region",
+        "description": "Region contributing the highest overall sales performance."
+      },
+      {
+        "id": "metric-ez7fqopww",
+        "label": "Peak Sales Month",
+        "value": "November",
+        "description": "Strongest month for both sales and profit, supporting seasonal planning."
+      }
+    ],
+    "summary": "Developed an Excel-based sales and profitability analytics dashboard using Superstore retail data to evaluate category performance, regional profitability, customer segments, and seasonal sales trends. The project transformed raw transactional data into actionable business insights and strategic recommendations to improve pricing, inventory planning, and profitability.",
+    "duration": "2 Months",
+    "featured": true,
+    "findings": "Furniture generated strong sales revenue but suffered from low profit margins due to excessive discounting or operational inefficiencies. Technology products consistently generated stronger profit contributions. Texas showed strong sales volume but weak profitability returns, while specific table products incurred repeated losses.",
+    "industry": "Retail & Supply Chain",
+    "subtitle": "Multi-year commercial retail transaction analysis isolating negative profit corridors, carrier shipping latencies, and customer segment growth in Excel.",
+    "createdAt": "2026-07-23T11:01:34.780Z",
+    "githubUrl": "https://github.com/Animus004/superstore-sales-dashboard-analysis",
+    "objective": "Analyze sales and profitability performance across products, regions, and customer segments to identify profitable growth opportunities, optimize pricing and discount strategies, and improve inventory and marketing decisions through data-driven sales analysis.",
+    "updatedAt": "2026-07-23T11:15:02.351Z",
+    "categories": [
+      "Financial Diagnostics",
+      "Sales Intelligence"
+    ],
+    difficulty: "intermediate" /* INTERMEDIATE */,
+    "visibility": "public",
+    "datasetDesc": "Superstore transactional and operational dataset comprising sales, profit, product categories, customer segments, and regional data stored across Excel spreadsheets and Word reports.",
+    "methodology": "Applied exploratory sales analysis using Microsoft Excel, Pivot Tables, Pivot Charts, KPI reporting, profitability analysis, category benchmarking, regional comparison, and seasonal trend analysis to identify business performance patterns and improvement opportunities.",
+    "storyBlocks": [],
+    "analysisText": "No predictive or machine learning models were developed. The analysis relied on descriptive analytics using Pivot Tables, Pivot Charts, KPI calculations, category benchmarking, profitability comparison, and historical sales trend analysis.",
+    "dataCleaning": "Processed and integrated dataset sources from Excel and Word documentation to ensure consistent dimensional analysis across sales, profit, product categories, and regional geographies.",
+    "overviewText": "Built an end-to-end sales and profitability analytics dashboard using Superstore retail data to uncover profit drivers, identify underperforming business segments, and deliver actionable recommendations for pricing, inventory planning, and strategic business growth.",
+    "challengesText": "Identifying sustainable profitability was challenging because several categories generated strong revenue while delivering weak profit margins. Additional investigation was required to separate pricing, discounting, and operational factors influencing business performance.",
+    "lessonsLearned": "Top-line revenue growth can conceal underlying margin erosion; granular profitability analysis at the product and regional level is vital before expanding capital investment.",
+    "businessProblem": "Despite generating over $2.29M in sales, management lacked visibility into which product categories, customer segments, and regions were driving sustainable profitability. High sales alone were insufficient for decision-making because several categories and states demonstrated strong revenue while producing comparatively weak profit margins, causing margin erosion.",
+    "recommendations": "Investigate root causes behind high-sales but low-profit categories (such as Furniture) before scaling investment. Prioritize campaigns for high-profit customer segments and Technology products. Review underperforming states like Texas to identify operational issues. Reassess repeated-loss table products for discontinuation, supplier renegotiation, or pricing strategy changes. Plan promotions and inventory around strong seasonal months including November, September, and December."
+  },
+  {
+    "id": "project-r4gxqt836",
+    "role": "Market Intelligence Analyst",
+    "slug": "steam-marketplace-intelligence-publisher-performance-growth-strategy",
+    "tags": [
+      "Excel",
+      "Market Research",
+      "Pricing Analytics",
+      "Data Visualization",
+      "Trend Analysis"
+    ],
+    "order": 2,
+    "title": "Steam Games Market Intelligence: Publisher Growth & Pricing Strategy",
+    "images": [
+      "/images/steam_dashboard.png"
+    ],
+    "skills": [
+      "Microsoft Excel",
+      "Power Query",
+      "Pivot Tables",
+      "Dashboard Design",
+      "Market Research",
+      "Business Intelligence",
+      "Stakeholder Reporting",
+      "Data Visualization"
+    ],
+    status: "published" /* PUBLISHED */,
+    "metrics": [
+      {
+        "id": "ai-metric-0-1784805654356",
+        "label": "Target Investment Allocation",
+        "value": "$10M",
+        "iconName": "DollarSign",
+        "description": "Hypothetical capital allocation evaluated across publishers, genres, and pricing tiers."
+      },
+      {
+        "id": "ai-metric-1-1784805654356",
+        "label": "Core Investment Pillars",
+        "value": "4",
+        "iconName": "BarChart2",
+        "description": "Evaluated via Publisher Performance Index, Customer Satisfaction Score, and Player Engagement Rate."
+      },
+      {
+        "id": "metric-kmna5y6qe",
+        "label": "Publishers Evaluated",
+        "value": "11",
+        "description": "Compared publisher performance to identify consistent long-term investment opportunities."
+      },
+      {
+        "id": "metric-aij0rl3ud",
+        "label": "Market Period",
+        "value": "2015\u20132024",
+        "description": "Historical Steam marketplace analysis spanning multiple release years."
+      }
+    ],
+    "summary": "Delivered a comprehensive market intelligence analysis for Valve Corporation to optimize a hypothetical $10 million investment allocation across publishers, genres, pricing tiers, and game categories within the Steam digital PC game marketplace.",
+    "duration": "2 Months",
+    "featured": true,
+    "findings": "Identified top-performing publishers demonstrating consistent long-term success, high-engagement genres like Action, RPG, and Adventure, and the impact of pricing and monetization strategies on player retention and customer satisfaction.",
+    "industry": "Gaming & Digital Media",
+    "subtitle": "Market segment analysis across thousands of game titles evaluating demand signals, review distribution, and pricing strategy for portfolio planning.",
+    "createdAt": "2026-07-23T11:21:16.467Z",
+    "githubUrl": "https://github.com/Animus004/steam-games-market-analysis",
+    "objective": "To analyze the Steam Games dataset and deliver actionable, data-driven recommendations regarding publisher performance, genre trends, pricing strategies, and customer satisfaction.",
+    "updatedAt": "2026-07-23T11:29:48.907Z",
+    "categories": [
+      "Market Intelligence",
+      "Strategic Decision Support"
+    ],
     difficulty: "advanced" /* ADVANCED */,
-    objective: "[Insert Detailed Project Objective (e.g., To support indie gaming publishers in setting strategic launch-week price points and identify less-crowded, high-margin Steam category tags to maximize initial launch momentum.)]",
-    datasetDesc: "[Insert Dataset Description (e.g., Multi-dimensional database scraped from the official Steam Web API and active player databases, tracking historical game pricing, daily peak concurrent player grids, review percentages, and genre identifiers.)]",
-    methodology: "1. [Insert Step 1 (e.g., Developed robust Python query functions to safely retrieve pricing charts and player metrics.)]\n2. [Insert Step 2 (e.g., Normalized unstructured tag arrays and processed missing developer logs in Pandas.)]\n3. [Insert Step 3 (e.g., Designed linear regression and pricing elasticity charts to verify user demand sensitivities.)]\n4. [Insert Step 4 (e.g., Formulated a Genre Saturation Score comparing raw product density against review scores.)]",
-    tags: ["Python", "Pandas", "Tableau", "Power BI", "SQL", "Scikit-Learn"],
-    categories: ["Data Science", "Business Intelligence"],
-    metrics: [
-      {
-        id: "sg-m1",
-        label: "[Insert Metric 1 Label (e.g., Game Titles Modeled)]",
-        value: "[Insert Metric 1 Value (e.g., 40,000+)]",
-        description: "[Insert Metric 1 Description (e.g., Vast market registry processed, grouped, and indexed.)]"
-      },
-      {
-        id: "sg-m2",
-        label: "[Insert Metric 2 Label (e.g., Pricing Sweetspot)]",
-        value: "[Insert Metric 2 Value (e.g., $14.99)]",
-        description: "[Insert Metric 2 Description (e.g., Optimal price segment determined for action and RPG indie tags.)]"
-      },
-      {
-        id: "sg-m3",
-        label: "[Insert Metric 3 Label (e.g., Model Forecast Accuracy)]",
-        value: "[Insert Metric 3 Value (e.g., 95.9%)]",
-        description: "[Insert Metric 3 Description (e.g., High predictive accuracy on launch-week active player ranges.)]"
-      }
-    ],
-    storyBlocks: [
-      {
-        id: "sg-sb1",
-        type: "markdown",
-        title: "[Insert Markdown Block Title (e.g., Bypassing the Saturated Indie Cemetery)]",
-        bodyContent: "[Insert Story / Challenge / Retrospective Context. E.g., Every year, thousands of indie games release on Steam to virtually zero sales. This market saturation makes pricing and category tagging critical. The Steam Games Market Analysis demonstrated that multiplayer survival titles priced under $10 often suffered from lower initial user confidence ratings, whereas action roguelike games priced around $14.99 with solid cooperative features consistently had higher concurrent player metrics and favorable reviews.]"
-      },
-      {
-        id: "sg-sb2",
-        type: "code_snippet",
-        title: "[Insert Code Snippet Title (e.g., Genre Saturation and Value Formula Model)]",
-        language: "python",
-        bodyContent: "import pandas as pd\nimport numpy as np\n\ndef calculate_genre_viability(df_games):\n    # Calculate raw volume of games per genre\n    genre_counts = df_games['genre_tag'].value_counts()\n    \n    # Calculate median positive reviews and player peak logs\n    grouped = df_games.groupby('genre_tag').agg({\n        'positive_ratio': 'median',\n        'peak_players_30d': 'median'\n    })\n    \n    # Saturation Index: High counts with low player metrics = saturated\n    grouped['viability_index'] = (grouped['peak_players_30d'] * grouped['positive_ratio']) / genre_counts\n    return grouped.sort_values(by='viability_index', ascending=False)"
-      },
-      {
-        id: "sg-sb3",
-        type: "chart_data",
-        title: "[Insert Visual Chart / Ledger Title (e.g., Active Player Density vs Saturated Game Count)]",
-        bodyContent: '[\n  {"name": "Co-op Roguelikes", "Normal": 7200, "Fraud": 120},\n  {"name": "Multiplayer Survival", "Normal": 9500, "Fraud": 1800},\n  {"name": "Retro Platformers", "Normal": 1200, "Fraud": 3400},\n  {"name": "Cyberpunk RPGs", "Normal": 5400, "Fraud": 600}\n]'
-      }
-    ],
-    githubUrl: "https://github.com/Animus004/steam-games-market-analysis",
-    createdAt: "2026-04-10T11:00:00Z",
-    updatedAt: "2026-07-18T10:00:00Z"
+    "visibility": "public",
+    "datasetDesc": "Steam Games dataset containing publisher metrics, pricing tiers, genre classifications, user review sentiments, and player engagement statistics.",
+    "methodology": "Applied market trend analysis, publisher performance evaluation, customer sentiment analysis, pricing strategy assessment, and genre portfolio analysis on Steam Games dataset using Markdown, Git, Python, SQL, Excel, and Power BI.",
+    "storyBlocks": [],
+    "analysisText": "Applied descriptive analytics using Pivot Tables, Pivot Charts, Power Query, ranking techniques, percentage calculations, and comparative trend analysis to evaluate publisher consistency, genre performance, pricing strategies, customer sentiment, and player engagement. The analysis relied on business-driven segmentation, KPI benchmarking, and dashboard visualization rather than predictive or machine learning models.",
+    "dataCleaning": "Processed and integrated multi-source Steam dataset attributes covering engagement, pricing, publisher background, and user sentiment.",
+    "overviewText": "Developed a business intelligence dashboard to evaluate Steam market performance between 2015 and 2024 by analysing publisher consistency, genre performance, pricing strategies, customer sentiment, and player engagement. The project transformed raw market data into executive insights that support strategic investment, portfolio planning, and long-term growth decisions for Valve.",
+    "challengesText": "Lack of a consolidated analytical view to identify sustainable long-term investment opportunities or balance investment across different market segments from raw engagement, pricing, and sentiment metrics.",
+    "lessonsLearned": "Prioritizing publisher consistency and customer engagement metrics yields more reliable investment targets than relying solely on raw player volume or popularity.",
+    "businessProblem": "Valve required a structured market analysis to determine how a hypothetical $10 million investment should be allocated across publishers, genres, pricing tiers, and game categories. Although the dataset contained engagement, pricing, publisher, and sentiment metrics, there was no consolidated analytical view to identify sustainable long-term investment opportunities or balance investment across different market segments.",
+    "recommendations": "Prioritize investment in publishers demonstrating consistent long-term success, particularly CAPCOM, Electronic Arts, Ubisoft, and Rockstar Games, while expanding high-performing Action, RPG, and Adventure genres. Increase investment in Hybrid titles due to their balance of engagement and retention, and evaluate Multiplayer opportunities for future growth. Maintain Premium pricing for high-quality games rather than competing primarily on price, and investigate monetization strategies before expanding Free-to-Play investments."
   }
 ];
 
