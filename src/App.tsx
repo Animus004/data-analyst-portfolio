@@ -161,9 +161,12 @@ export default function App() {
     if (exists) {
       updated = projects.map(p => p.id === record.id ? record : p);
     } else {
-      updated = [record, ...projects];
+      updated = [...projects, record];
     }
-    handleSaveProjects(updated);
+    const normalized = updated
+      .map((p, idx) => ({ ...p, order: p.order ?? idx }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    handleSaveProjects(normalized);
     setWorkspaceTab("dashboard");
     setEditingProject(null);
   };

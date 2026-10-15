@@ -38,6 +38,7 @@ function getTagDotColor(tag: string): string {
   if (lower.includes("power bi") || lower.includes("bi")) return "bg-amber-500";
   if (lower.includes("python") || lower.includes("pandas")) return "bg-indigo-500";
   if (lower.includes("tableau")) return "bg-purple-500";
+  if (lower === "r" || lower.includes("rstudio") || lower.includes("ggplot")) return "bg-blue-600";
   if (lower.includes("cleaning") || lower.includes("etl")) return "bg-teal-500";
   if (lower.includes("machine learning") || lower.includes("ai")) return "bg-rose-500";
   return "bg-slate-400";
@@ -56,7 +57,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
   // Filter only published projects for recruiters
   const publishedProjects = useMemo(() => {
-    return (projects || []).filter(p => p && p.status === ProjectStatus.PUBLISHED);
+    return (projects || []).filter(p => p && p.status === ProjectStatus.PUBLISHED).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [projects]);
 
   // Aggregate all unique tags, industries from published projects

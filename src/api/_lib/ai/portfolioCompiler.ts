@@ -96,7 +96,7 @@ const FORBIDDEN_FORMAT_TAG_PATTERNS = [
   /^pdf$/i, /^acrobat/i, /^word$/i, /^docx$/i, /^document/i, /^flat file$/i,
   /^csv$/i, /^text$/i, /^txt$/i, /^png$/i, /^jpg$/i, /^jpeg$/i, /^images?$/i,
   /^visual assets$/i, /^markdown$/i, /^md$/i, /^zip$/i, /^archive$/i, /^file$/i,
-  /^parser$/i, /^ipynb$/i, /^pbix$/i, /^git$/i, /^github$/i
+  /^parser$/i, /^ipynb$/i, /^pbix$/i, /^twb$/i, /^twbx$/i, /^rmd$/i, /^rds$/i, /^git$/i, /^github$/i
 ];
 
 export function sanitizeRecruiterTags(
@@ -120,6 +120,12 @@ export function sanitizeRecruiterTags(
   }
   if (typeLower.includes("python") || typeLower.includes("notebook")) {
     candidatePool.push("Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis");
+  }
+  if (typeLower.includes("tableau") || typeLower.includes("twb")) {
+    candidatePool.push("Tableau", "Dashboard Design", "Data Visualization", "Visual Analytics");
+  }
+  if (typeLower.includes(" r ") || typeLower.endsWith(" r") || typeLower.startsWith("r ") || typeLower.includes("rmd") || typeLower.includes("rstudio") || typeLower.includes("ggplot")) {
+    candidatePool.push("R", "Statistical Modeling", "Exploratory Data Analysis", "ggplot2");
   }
 
   candidatePool.push("Business Intelligence", "Data Profiling", "Executive Reporting", "Business Analysis");

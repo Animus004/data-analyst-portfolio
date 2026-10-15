@@ -1901,6 +1901,10 @@ var FORBIDDEN_FORMAT_TAG_PATTERNS = [
   /^parser$/i,
   /^ipynb$/i,
   /^pbix$/i,
+  /^twb$/i,
+  /^twbx$/i,
+  /^rmd$/i,
+  /^rds$/i,
   /^git$/i,
   /^github$/i
 ];
@@ -1919,6 +1923,12 @@ function sanitizeRecruiterTags(rawTags, techStack = [], techniques = [], project
   }
   if (typeLower.includes("python") || typeLower.includes("notebook")) {
     candidatePool.push("Python", "Feature Engineering", "Statistical Analysis", "Exploratory Data Analysis");
+  }
+  if (typeLower.includes("tableau") || typeLower.includes("twb")) {
+    candidatePool.push("Tableau", "Dashboard Design", "Data Visualization", "Visual Analytics");
+  }
+  if (typeLower.includes(" r ") || typeLower.endsWith(" r") || typeLower.startsWith("r ") || typeLower.includes("rmd") || typeLower.includes("rstudio") || typeLower.includes("ggplot")) {
+    candidatePool.push("R", "Statistical Modeling", "Exploratory Data Analysis", "ggplot2");
   }
   candidatePool.push("Business Intelligence", "Data Profiling", "Executive Reporting", "Business Analysis");
   for (const tag of candidatePool) {
