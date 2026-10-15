@@ -428,7 +428,7 @@ Return refined executive JSON matching the specified schema properties.
     const response = await executeWithTimeout(
       "Gemini Portfolio Compiler",
       () => ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-flash-lite-latest",
         contents: reviewPrompt,
         config: {
           systemInstruction: "You are a Senior Data Analyst Hiring Manager auditor. Review candidate case studies, eliminate generic AI filler, and refine all narrative sections into McKinsey-caliber executive copy. Output clean JSON.",
@@ -829,7 +829,7 @@ Synthesize this Evidence Graph into schema-compliant JSON matching the specified
 `;
 
   // Supported text generation models for Gemini API compiler pipeline
-  const candidateModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"];
+  const candidateModels = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
   let lastError: any = null;
   let response: any = null;
   let usedModel = candidateModels[0];

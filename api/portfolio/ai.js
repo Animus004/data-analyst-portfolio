@@ -2208,7 +2208,7 @@ ${JSON.stringify(conflicts, null, 2)}
 
 Synthesize this Evidence Graph into schema-compliant JSON matching the specified response format.
 `;
-  const candidateModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"];
+  const candidateModels = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
   let lastError = null;
   let response = null;
   let usedModel = candidateModels[0];
@@ -3466,7 +3466,7 @@ ${digest}
 - suggestedSummaries: 1-2 executive summary paragraph suggestions.
 - confidence: Your overall confidence in this synthesis (0-100).
 `;
-  const candidateModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"];
+  const candidateModels = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
   for (const model of candidateModels) {
     const modelStart = Date.now();
     console.log(`[PUE-TIMER] synthesizeViaGemini: attempting model "${model}" | T+${Date.now() - pueViaGeminiStart}ms from PUE entry`);
@@ -5120,7 +5120,7 @@ Return only the refined text output without conversational filler.
 `;
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-flash-lite-latest",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;

@@ -34,8 +34,8 @@ async function handler(req, res) {
       keyPrefix: sanitizedKey ? `${sanitizedKey.slice(0, 6)}...` : null,
       hasQuotesWarning: hasQuotes,
       hasBearerWarning: hasBearer,
-      activeModel: "gemini-2.5-flash",
-      fallbackModels: ["gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-pro"]
+      activeModel: "gemini-flash-lite-latest",
+      fallbackModels: ["gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
     },
     supabase: {
       configured: Boolean(supabaseUrl && supabaseKey),
@@ -58,7 +58,7 @@ async function handler(req, res) {
       return sendSuccess(res, responseData);
     }
     const tStart = Date.now();
-    const candidateModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
+    const candidateModels = ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash"];
     let lastAiError = null;
     let successfulModel = "";
     let replyText = "";

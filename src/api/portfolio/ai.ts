@@ -375,7 +375,7 @@ Return only the refined text output without conversational filler.
 
       const aiStartTime = Date.now();
       const result = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-flash-lite-latest",
         contents: prompt
       });
       const aiDurationMs = Date.now() - aiStartTime;
