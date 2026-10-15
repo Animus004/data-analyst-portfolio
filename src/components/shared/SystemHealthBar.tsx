@@ -92,7 +92,7 @@ export const SystemHealthBar: React.FC = () => {
             {/* AI Model Badge */}
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-950/50 border border-indigo-800/60 text-indigo-300 font-mono text-[10px]">
               <Sparkles className="w-3 h-3 text-indigo-400" />
-              <span>{health?.gemini?.activeModel || "gemini-2.0-flash"}</span>
+              <span>{health?.gemini?.activeModel || "gemini-flash-latest"}</span>
             </div>
 
             {/* Evidence Cache P1 Badge */}
@@ -202,7 +202,7 @@ export const SystemHealthBar: React.FC = () => {
                 <span>Google Gemini Engine</span>
               </div>
               <div className="text-[11px] text-slate-300 space-y-0.5">
-                <div>Model: <span className="text-white font-mono">{health?.gemini?.activeModel || "gemini-2.0-flash"}</span></div>
+                <div>Model: <span className="text-white font-mono">{health?.gemini?.activeModel || "gemini-flash-latest"}</span></div>
                 <div>Configured: <span className="font-mono text-emerald-400">{health?.gemini?.configured ? "Yes" : "Missing Key"}</span></div>
                 <div>Prefix: <span className="font-mono text-slate-400">{health?.gemini?.keyPrefix || "None"}</span></div>
               </div>

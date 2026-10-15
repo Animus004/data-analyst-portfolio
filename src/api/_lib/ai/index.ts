@@ -88,7 +88,7 @@ ${unstructuredTexts.join("\n\n")}
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: refinementPrompt,
       config: {
         systemInstruction: "You are an elite, zero-hallucination language refinement assistant. You refine extracted text but never change numbers, metrics, dates, or invent any business facts.",
@@ -180,7 +180,7 @@ Your task is to take this unstructured input text—which could be raw notes, re
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-flash-latest",
     contents: prompt,
     config: {
       systemInstruction: "You are an elite parser and copywriter. Analyze user input and map it onto the structured Project schema. Output clean, schema-compliant JSON.",

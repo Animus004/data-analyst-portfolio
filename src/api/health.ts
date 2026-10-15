@@ -31,8 +31,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       keyPrefix: sanitizedKey ? `${sanitizedKey.slice(0, 6)}...` : null,
       hasQuotesWarning: hasQuotes,
       hasBearerWarning: hasBearer,
-      activeModel: "gemini-2.0-flash",
-      fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"]
+      activeModel: "gemini-flash-latest",
+      fallbackModels: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"]
     },
     supabase: {
       configured: Boolean(supabaseUrl && supabaseKey),
@@ -58,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const tStart = Date.now();
-    const candidateModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+    const candidateModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.5-pro"];
     let lastAiError: any = null;
     let successfulModel = "";
     let replyText = "";
