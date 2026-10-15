@@ -323,9 +323,10 @@ export default function App() {
       key="app-content"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: { duration: 0.25 } }}
-      className="min-h-screen bg-slate-900"
+      className="min-h-screen"
     >
       {renderRoute()}
     </motion.div>
   );
 }
+
