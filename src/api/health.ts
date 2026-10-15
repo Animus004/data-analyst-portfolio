@@ -31,8 +31,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       keyPrefix: sanitizedKey ? `${sanitizedKey.slice(0, 6)}...` : null,
       hasQuotesWarning: hasQuotes,
       hasBearerWarning: hasBearer,
-      activeModel: "gemini-3.6-flash",
-      fallbackModels: ["gemini-2.5-flash", "gemini-2.0-flash"]
+      activeModel: "gemini-2.0-flash",
+      fallbackModels: ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"]
     },
     supabase: {
       configured: Boolean(supabaseUrl && supabaseKey),
@@ -51,39 +51,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!sanitizedKey) {
       responseData.geminiTest = {
         success: false,
-        error: "GEMINI_API_KEY is not configured in Vercel environment variables."
+        error: "GEMINI_API_KEY is not configured in Vercel environment variables.",
+        recommendation: "Please set GEMINI_API_KEY in your Vercel Project Settings > Environment Variables."
       };
       return sendSuccess(res, responseData);
     }
 
     const tStart = Date.now();
-    try {
-      const client = new GoogleGenAI({
-        apiKey: sanitizedKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build",
-            "x-goog-api-key": sanitizedKey
-          }
+    const candidateModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+    let lastAiError: any = null;
+    let successfulModel = "";
+    let replyText = "";
+
+    const client = new GoogleGenAI({
+      apiKey: sanitizedKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+          "x-goog-api-key": sanitizedKey
         }
-      });
-      const testRes = await client.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: "Reply with the single word: READY"
-      });
+      }
+    });
+
+    for (const testModel of candidateModels) {
+      try {
+        const testRes = await client.models.generateContent({
+          model: testModel,
+          contents: "Reply with the single word: READY"
+        });
+        replyText = testRes.text?.trim() || "READY";
+        successfulModel = testModel;
+        break;
+      } catch (err: any) {
+        console.warn(`[Health Test] Model ${testModel} error:`, err?.message || err);
+        lastAiError = err;
+      }
+    }
+
+    if (successfulModel) {
       responseData.geminiTest = {
         success: true,
-        response: testRes.text?.trim() || "READY",
+        modelUsed: successfulModel,
+        response: replyText,
         latencyMs: Date.now() - tStart
       };
-    } catch (aiErr: any) {
+      responseData.gemini.activeModel = successfulModel;
+    } else {
+      const errStr = lastAiError?.message || String(lastAiError || "");
+      const is503 = errStr.includes("503") || errStr.toLowerCase().includes("high demand") || errStr.toLowerCase().includes("unavailable");
+      const isAuth = errStr.includes("401") || errStr.includes("403") || errStr.toLowerCase().includes("api_key") || errStr.toLowerCase().includes("unauthenticated");
+
       responseData.geminiTest = {
         success: false,
-        error: aiErr.message || String(aiErr),
-        details: aiErr.status || "UNAUTHENTICATED",
-        recommendation: hasQuotes
-          ? "Your GEMINI_API_KEY in Vercel has quotation marks around it. Remove quotes in Vercel Settings > Environment Variables."
-          : "Please check your GEMINI_API_KEY at aistudio.google.com/apikey and update Vercel environment variables."
+        error: errStr,
+        details: is503 ? "CAPACITY_HIGH_DEMAND" : (isAuth ? "UNAUTHENTICATED" : "API_ERROR"),
+        recommendation: is503
+          ? "Google's Gemini 2.0 servers are temporarily experiencing high demand (503). This is a temporary Google infrastructure spike. The AI synthesizer will automatically attempt backup models (2.0 Flash Lite & 1.5 Flash)."
+          : (hasQuotes
+            ? "Your GEMINI_API_KEY in Vercel has quotation marks around it. Remove quotes in Vercel Settings > Environment Variables."
+            : "Please check your GEMINI_API_KEY at aistudio.google.com/apikey and update Vercel environment variables.")
       };
     }
   }

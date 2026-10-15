@@ -92,7 +92,7 @@ export const SystemHealthBar: React.FC = () => {
             {/* AI Model Badge */}
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-950/50 border border-indigo-800/60 text-indigo-300 font-mono text-[10px]">
               <Sparkles className="w-3 h-3 text-indigo-400" />
-              <span>{health?.gemini?.activeModel || "gemini-3.6-flash"}</span>
+              <span>{health?.gemini?.activeModel || "gemini-2.0-flash"}</span>
             </div>
 
             {/* Evidence Cache P1 Badge */}
@@ -146,7 +146,7 @@ export const SystemHealthBar: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
             <div className="space-y-0.5">
               <span className="font-bold text-amber-300">
-                {hasQuotesWarning ? "API Key Warning: Surrounding Quotes Detected" : "AI Authentication Issue"}
+                {hasQuotesWarning ? "API Key Warning: Surrounding Quotes Detected" : (health?.geminiTest?.details === "CAPACITY_HIGH_DEMAND" || (health?.geminiTest?.error && health?.geminiTest?.error.includes("503")) ? "Gemini Capacity Spike (503 High Demand)" : "AI Authentication Issue")}
               </span>
               <p className="text-[11px] text-amber-200/90">
                 {hasQuotesWarning
@@ -181,7 +181,7 @@ export const SystemHealthBar: React.FC = () => {
             )}
             <span>
               {health.geminiTest.success
-                ? `Gemini 2.5 Flash Online (Latency: ${health.geminiTest.latencyMs}ms | Engine Reply: "${health.geminiTest.response}")`
+                ? `Gemini Online (Latency: ${health.geminiTest.latencyMs}ms | Engine Reply: "${health.geminiTest.response}")`
                 : `AI Ping Failed: ${health.geminiTest.error}`}
             </span>
           </div>
@@ -202,7 +202,7 @@ export const SystemHealthBar: React.FC = () => {
                 <span>Google Gemini Engine</span>
               </div>
               <div className="text-[11px] text-slate-300 space-y-0.5">
-                <div>Model: <span className="text-white font-mono">{health?.gemini?.activeModel || "gemini-3.6-flash"}</span></div>
+                <div>Model: <span className="text-white font-mono">{health?.gemini?.activeModel || "gemini-2.0-flash"}</span></div>
                 <div>Configured: <span className="font-mono text-emerald-400">{health?.gemini?.configured ? "Yes" : "Missing Key"}</span></div>
                 <div>Prefix: <span className="font-mono text-slate-400">{health?.gemini?.keyPrefix || "None"}</span></div>
               </div>
