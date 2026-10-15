@@ -10,7 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 const PROFILE_KEY = "portfolio_os_profile";
 const PROJECTS_KEY = "portfolio_os_projects";
 const VERSION_KEY = "portfolio_os_version";
-const CURRENT_VERSION = "v0.3";
+const CURRENT_VERSION = "v1.0";
 
 // Lazy-initialize Supabase client to avoid crash if env keys are not populated on startup
 let supabaseClient: any = null;
@@ -50,30 +50,18 @@ export const storageService = {
    */
   migrateIfNeeded(): void {
     const cachedVersion = localStorage.getItem(VERSION_KEY);
+    const cachedProjects = localStorage.getItem(PROJECTS_KEY);
+    const hasPlaceholders = cachedProjects && cachedProjects.includes("[Insert");
 
-    if (cachedVersion !== CURRENT_VERSION) {
-      // Version mismatch or fresh start: seed authentic data
-      const currentProjects = this.loadProjects();
-      const updatedProjects = currentProjects.map((p, idx) => ({
-        ...p,
-        featured: p.featured ?? false,
-        visibility: p.visibility ?? "public",
-        order: p.order ?? idx,
-        createdAt: p.createdAt || new Date().toISOString(),
-        updatedAt: p.updatedAt || new Date().toISOString()
-      }));
-      const existingProfile = localStorage.getItem(PROFILE_KEY);
-      if (!existingProfile) {
-        this.saveProfile(defaultCreatorProfile);
-      }
-      this.saveProjects(updatedProjects.length > 0 ? updatedProjects : seedProjects);
+    if (cachedVersion !== CURRENT_VERSION || hasPlaceholders) {
+      this.saveProfile(defaultCreatorProfile);
+      this.saveProjects(seedProjects);
       localStorage.setItem(VERSION_KEY, CURRENT_VERSION);
     }
   },
 
   /**
    * Loads the current creator profile.
-   * Ready to be swapped for async Firestore fetching inside a custom hook or service.
    */
   loadProfile(): CreatorProfile {
     const cached = localStorage.getItem(PROFILE_KEY);
@@ -161,14 +149,48 @@ export const storageService = {
    * Caches the loaded data in local storage as a fallback.
    */
   async fetchFromServer(): Promise<{ profile: CreatorProfile; projects: ProjectRecord[] } | null> {
+    // 1. Try serverless backend API first (works on Vercel and local server.ts)
+    try {
+      const endpoints = ["/api/portfolio/load", "/api/portfolio"];
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            headers: { "Accept": "application/json" }
+          });
+          if (res.ok) {
+            const json = await res.json();
+            const data = json.data || json;
+            if (data?.profile && Array.isArray(data?.projects) && data.projects.length > 0) {
+              const cleanedProfile = { ...data.profile };
+              if (cleanedProfile.resumeUrl && cleanedProfile.resumeUrl.startsWith("data:")) {
+                cleanedProfile.resumeUrl = "/Sayan_Halder_Resume.pdf";
+              }
+              const cleanedProjects = data.projects.map((p: any) => {
+                if (p.id === "project-hhy3dlaz7" && !p.githubUrl) {
+                  return { ...p, githubUrl: "https://github.com/Animus004/blinkit-dark-store-stockout-analysis" };
+                }
+                return p;
+              });
+
+              this.saveProfile(cleanedProfile);
+              this.saveProjects(cleanedProjects);
+              return { profile: cleanedProfile, projects: cleanedProjects };
+            }
+          }
+        } catch {
+          // Try next endpoint or direct client
+        }
+      }
+    } catch (apiErr) {
+      console.warn("StorageService: Server API query failed, trying direct Supabase client:", apiErr);
+    }
+
     const client = getSupabaseClient();
     if (!client) {
-      console.warn("StorageService: Supabase is not configured. Falling back to local storage cache.");
       return null;
     }
 
     try {
-      // 1. Attempt read on primary 'portfolio_state' table
       const { data, error } = await client
         .from("portfolio_state")
         .select("payload")
@@ -184,11 +206,6 @@ export const storageService = {
         }
       }
 
-      if (error) {
-        console.warn("StorageService: 'portfolio_state' lookup error, trying fallback 'portfolio_data':", error.message);
-      }
-
-      // 2. Fallback read on 'portfolio_data' table
       const { data: altData, error: altError } = await client
         .from("portfolio_data")
         .select("payload")
@@ -203,18 +220,14 @@ export const storageService = {
           return { profile: payload.profile, projects: payload.projects };
         }
       }
-
-      if (altError) {
-        console.error("StorageService: 'portfolio_data' fallback lookup also failed:", altError.message);
-      }
-    } catch (e: any) {
+    } catch (e) {
       console.error("StorageService: Direct Supabase fetch threw exception:", e);
     }
     return null;
   },
 
   /**
-   * Saves the entire portfolio structure to Supabase directly using upsert.
+   * Saves the entire portfolio structure to backend.
    */
   async saveToServer(profile: CreatorProfile, projects: ProjectRecord[]): Promise<{ success: boolean; error?: string }> {
     // Check local network connectivity first

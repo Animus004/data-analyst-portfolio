@@ -1,4 +1,4 @@
-{
+﻿{
   "functions": {
     "api/**/*.js": {
       "maxDuration": 60
@@ -22,6 +22,7 @@
     { "source": "/api/github/import", "destination": "/api/import" },
     { "source": "/api/resume/generate", "destination": "/api/generate" },
     { "source": "/api/linkedin/generate", "destination": "/api/generate" },
-    { "source": "/api/readme/generate", "destination": "/api/generate" }
+    { "source": "/api/readme/generate", "destination": "/api/generate" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

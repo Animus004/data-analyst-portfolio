@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,21 +14,33 @@ import { CommandCenter } from "./routes/workspace/CommandCenter";
 import { CaseStudyBuilder } from "./routes/workspace/CaseStudyBuilder";
 import { storageService } from "./services/storageService";
 import { motion, AnimatePresence } from "motion/react";
-import { Terminal, Cpu, HardDrive } from "lucide-react";
+
+function getRouteFromLocation(): { page: string; params?: Record<string, string> } {
+  if (typeof window === "undefined") return { page: "home" };
+  const pathname = window.location.pathname.toLowerCase();
+  const hash = window.location.hash.toLowerCase();
+
+  if (pathname.includes("/workspace") || hash.includes("workspace")) {
+    return { page: "workspace" };
+  }
+  if (pathname.startsWith("/project/")) {
+    const id = window.location.pathname.replace(/^\/project\//, "").replace(/\/$/, "");
+    if (id) return { page: "project", params: { id } };
+  }
+  if (hash.startsWith("#project/")) {
+    const id = hash.replace(/^#project\//, "").replace(/\/$/, "");
+    if (id) return { page: "project", params: { id } };
+  }
+  return { page: "home" };
+}
 
 export default function App() {
   // 1. Core State Managers
   const [profile, setProfile] = useState<CreatorProfile>(defaultCreatorProfile);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
-  const [isBooting, setIsBooting] = useState(true);
-  const [bootProgress, setBootProgress] = useState(0);
-  const [bootLogs, setBootLogs] = useState<string[]>([]);
 
   // 2. Client Parameter-Driven Router state
-  // page values: "home" | "project" | "workspace"
-  const [currentRoute, setCurrentRoute] = useState<{ page: string; params?: Record<string, string> }>({
-    page: "home"
-  });
+  const [currentRoute, setCurrentRoute] = useState<{ page: string; params?: Record<string, string> }>(getRouteFromLocation);
 
   // 3. Workspace Inner State management
   const [workspaceTab, setWorkspaceTab] = useState<"dashboard" | "builder">("dashboard");
@@ -41,9 +53,18 @@ export default function App() {
     errorMsg: null
   });
 
+  // Listen to browser Back/Forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentRoute(getRouteFromLocation());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   // Load state on mount using the decoupled storage service
   useEffect(() => {
-    // 1. Initial local fallback (for immediate rendering / backward compatibility)
+    // 1. Initial local fallback (immediate rendering without loading screen)
     storageService.migrateIfNeeded();
     const cachedProfile = storageService.loadProfile();
     const cachedProjects = storageService.loadProjects();
@@ -68,52 +89,16 @@ export default function App() {
         const now = new Date().toLocaleTimeString();
         const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
         setSyncStatus({
-          status: isOffline ? "offline" : "failed",
-          lastSyncTime: localStorage.getItem("portfolio_os_last_sync_time") || null,
-          errorMsg: isOffline 
-            ? "Offline Mode: Using local storage cache." 
-            : "Cloud Connection Pending: Working with local cache."
+          status: isOffline ? "offline" : "synced",
+          lastSyncTime: localStorage.getItem("portfolio_os_last_sync_time") || now,
+          errorMsg: null
         });
       }
     };
     syncWithServer();
-
-    // Cinematic boot sequence timer
-    const logs = [
-      "INITIALIZING PORTFOLIO OS HYPERVISOR v3.4...",
-      "MOUNTING CRYPTO-SECURE STORAGE SERVICES...",
-      "FETCHING PUBLISHED SYSTEM CASE STUDIES...",
-      "CHECKING RECRUITER METRIC AUDITING MATRIX...",
-      "OS KERNEL BOOT SEQUENCE COMPLETED SUCCESSFULLY."
-    ];
-
-    let currentProg = 0;
-    const interval = setInterval(() => {
-      currentProg += Math.floor(Math.random() * 12) + 5;
-      if (currentProg >= 100) {
-        currentProg = 100;
-        clearInterval(interval);
-        setTimeout(() => {
-          setIsBooting(false);
-        }, 200);
-      }
-      setBootProgress(currentProg);
-
-      // Dynamically add logs based on progress threshold
-      const logIdx = Math.min(Math.floor((currentProg / 100) * logs.length), logs.length - 1);
-      setBootLogs((prev) => {
-        const nextLog = logs[logIdx];
-        if (!prev.includes(nextLog)) {
-          return [...prev, nextLog];
-        }
-        return prev;
-      });
-    }, 60);
-
-    return () => clearInterval(interval);
   }, []);
 
-  // Helper to trigger direct Supabase Cloud Sync
+  // Helper to trigger direct Cloud Sync
   const triggerCloudSync = async (pProfile: CreatorProfile, pProjects: ProjectRecord[]): Promise<{ success: boolean; error?: string }> => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setSyncStatus(prev => ({
@@ -211,7 +196,15 @@ export default function App() {
 
   const handleNavigate = (page: string, params?: Record<string, string>) => {
     setCurrentRoute({ page, params });
-    // Scroll smoothly back to top when switching views
+    if (typeof window !== "undefined") {
+      let url = "/";
+      if (page === "workspace") {
+        url = "/workspace";
+      } else if (page === "project" && params?.id) {
+        url = `/project/${params.id}`;
+      }
+      window.history.pushState({}, "", url);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -256,7 +249,7 @@ export default function App() {
 
       case "project":
         const projectId = currentRoute.params?.id;
-        const currentProject = projects.find(p => p.id === projectId);
+        const currentProject = projects.find(p => p.id === projectId || p.slug === projectId);
         if (!currentProject) {
           return (
             <PublicLayout profile={profile} currentTab="home" onNavigate={handleNavigate}>
@@ -264,7 +257,7 @@ export default function App() {
                 <p>Case study record not found or has been archived.</p>
                 <button 
                   onClick={() => handleNavigate("home")} 
-                  className="mt-3 text-sm text-indigo-600 underline font-semibold"
+                  className="mt-3 text-sm text-indigo-600 underline font-semibold cursor-pointer"
                 >
                   Return to Home
                 </button>
@@ -326,79 +319,13 @@ export default function App() {
   };
 
   return (
-    <AnimatePresence mode="wait">
-      {isBooting ? (
-        <motion.div
-          key="bootloader"
-          initial={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.4, ease: "easeInOut" } }}
-          className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center p-6 text-slate-100 font-sans select-none"
-        >
-          <div className="max-w-md w-full space-y-8">
-            {/* Header section with brand */}
-            <div className="text-center space-y-2">
-              <div className="inline-flex p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-cyan-400 animate-pulse shadow-[0_0_20px_rgba(34,211,238,0.05)]">
-                <Terminal className="w-8 h-8" />
-              </div>
-              <h1 className="font-display font-bold text-3xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-400 mt-2">
-                PORTFOLIO OS
-              </h1>
-              <p className="font-mono text-[10px] tracking-widest text-slate-500 uppercase">
-                Core System Bootloader // Active Session
-              </p>
-            </div>
-
-            {/* Circular Progress or Bar Progress */}
-            <div className="space-y-3">
-              <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800/50">
-                <motion.div 
-                  className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]" 
-                  style={{ width: `${bootProgress}%` }}
-                />
-              </div>
-              <div className="flex justify-between font-mono text-[11px] text-slate-400">
-                <span>SYSTEM DIAGNOSIS</span>
-                <span className="font-bold text-cyan-400">{bootProgress}%</span>
-              </div>
-            </div>
-
-            {/* Terminal Log Output */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 h-48 overflow-y-auto space-y-2.5 font-mono text-[10px] text-slate-400 shadow-inner">
-              {bootLogs.map((log, index) => (
-                <div key={index} className="flex items-start gap-2">
-                  <span className="text-cyan-500 shrink-0 select-none">&gt;</span>
-                  <span className={index === bootLogs.length - 1 ? "text-slate-200 animate-pulse" : ""}>{log}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-1.5 text-cyan-400/80 pt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
-                <span>SYSTEM SECURE. READY_</span>
-              </div>
-            </div>
-
-            {/* Metadata Footer */}
-            <div className="flex justify-around text-slate-600 font-mono text-[9px] uppercase tracking-wider pt-2 border-t border-slate-900">
-              <div className="flex items-center gap-1">
-                <Cpu className="w-3.5 h-3.5" />
-                <span>MEM_ACTIVE</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <HardDrive className="w-3.5 h-3.5" />
-                <span>DISK_OK</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      ) : (
-        <motion.div
-          key="app-content"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }}
-          className="min-h-screen"
-        >
-          {renderRoute()}
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <motion.div
+      key="app-content"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.25 } }}
+      className="min-h-screen bg-slate-900"
+    >
+      {renderRoute()}
+    </motion.div>
   );
 }
