@@ -664,6 +664,22 @@ function extractStructuredReportSections(fileName, rawText, proj, docEvidence, r
   const rawLines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
   if (rawLines.length > 0) {
     const firstLine = rawLines[0].replace(/^#+\s*/, "").replace(/^\*+|\*+$/g, "").trim();
+    for (const line of rawLines) {
+      const trimmed = line.trim();
+      const liveMatch = trimmed.match(/(?:live(?:\s+viz)?(?:\s+url)?:?|dashboard:?)\s*(https?:\/\/[^\s\)]+)/i);
+      if (liveMatch && !proj.liveUrl) {
+        proj.liveUrl = liveMatch[1].trim();
+      }
+      const tierMatch = trimmed.match(/^(?:[-*]\s*)?tier:?\s*(.+)$/i);
+      if (tierMatch) {
+        const tierVal = tierMatch[1].toLowerCase();
+        if (tierVal.includes("sec") || tierVal.includes("found")) {
+          proj.tier = "secondary";
+        } else if (tierVal.includes("flag")) {
+          proj.tier = "flagship";
+        }
+      }
+    }
     if (firstLine.length > 5 && firstLine.length < 90 && !/^(report|project|summary|document|table of contents|index)$/i.test(firstLine)) {
       proj.title = firstLine;
       if (docEvidence) docEvidence.title = firstLine;
@@ -4293,6 +4309,7 @@ var seedProjects = [
       "Logistics Analytics"
     ],
     "order": 3,
+    "tier": "flagship",
     "title": "Blinkit Kolkata: Dark Store Stock-Out & Operations Intelligence",
     "images": [
       "/images/blinkit_dashboard_1.png",
@@ -4404,6 +4421,7 @@ var seedProjects = [
       "E-Commerce"
     ],
     "order": 0,
+    "tier": "flagship",
     "title": "Amazon Customer Engagement & Product Sentiment Analytics",
     "images": [
       "/images/amazon_dashboard.png"
@@ -4498,6 +4516,7 @@ var seedProjects = [
       "Retail Sales"
     ],
     "order": 1,
+    "tier": "flagship",
     "title": "Superstore Sales Diagnostic & Margin Optimization Dashboard",
     "images": [
       "/images/superstore_dashboard.png"
@@ -4592,6 +4611,7 @@ var seedProjects = [
       "Trend Analysis"
     ],
     "order": 2,
+    "tier": "flagship",
     "title": "Steam Games Market Intelligence: Publisher Growth & Pricing Strategy",
     "images": [
       "/images/steam_dashboard.png"
@@ -4661,6 +4681,84 @@ var seedProjects = [
     "lessonsLearned": "Prioritizing publisher consistency and customer engagement metrics yields more reliable investment targets than relying solely on raw player volume or popularity.",
     "businessProblem": "Valve required a structured market analysis to determine how a hypothetical $10 million investment should be allocated across publishers, genres, pricing tiers, and game categories. Although the dataset contained engagement, pricing, publisher, and sentiment metrics, there was no consolidated analytical view to identify sustainable long-term investment opportunities or balance investment across different market segments.",
     "recommendations": "Prioritize investment in publishers demonstrating consistent long-term success, particularly CAPCOM, Electronic Arts, Ubisoft, and Rockstar Games, while expanding high-performing Action, RPG, and Adventure genres. Increase investment in Hybrid titles due to their balance of engagement and retention, and evaluate Multiplayer opportunities for future growth. Maintain Premium pricing for high-quality games rather than competing primarily on price, and investigate monetization strategies before expanding Free-to-Play investments."
+  },
+  {
+    "id": "project-cyclistic-bike-share",
+    "tier": "secondary",
+    "featured": false,
+    "order": 4,
+    "date": "2026-10-15",
+    "role": "Data Analytics Capstone Specialist",
+    "slug": "cyclistic-bike-share-demand-fleet-utilization",
+    "title": "Cyclistic Bike-Share Demand & Fleet Utilization Analysis",
+    "subtitle": "Behavioral Segmentation & Fleet Utilization Analysis (Google Capstone)",
+    "summary": "Completed as part of the Google Data Analytics Professional Certificate capstone, analyzing historical bike-share trip logs to evaluate behavioral differences between casual riders and annual subscribers to drive membership conversion.",
+    "industry": "Transportation & Urban Mobility",
+    "status": "published" /* PUBLISHED */,
+    "difficulty": "intermediate" /* INTERMEDIATE */,
+    "visibility": "public",
+    "liveUrl": "https://public.tableau.com/app/profile/sayan.halder",
+    "tags": [
+      "Tableau Public",
+      "Spreadsheets",
+      "Data Cleaning",
+      "Customer Segmentation",
+      "Time-Series Analysis"
+    ],
+    "categories": [
+      "Behavioral & Operational Analytics",
+      "Fleet Utilization"
+    ],
+    "skills": [
+      "Tableau Dashboarding",
+      "Customer Segmentation",
+      "Time-Series Trend Analysis",
+      "Spreadsheet Modeling",
+      "Data Normalization"
+    ],
+    "objective": "Clean and structure multi-period ride-trip records to evaluate behavioral differences between casual riders and annual subscribers, formulating targeted conversion funnel recommendations.",
+    "businessProblem": "Cyclistic's revenue model depends heavily on converting casual single-ride and day-pass users into high-retention annual subscribers. The business required granular analytics to understand distinct usage patterns by day-of-week and time-of-day to direct digital marketing campaigns effectively.",
+    "datasetDesc": "Multi-period historical bike-share trip logs containing trip IDs, bike types (classic, electric, docked), start/end timestamps, station coordinates, and rider membership classification.",
+    "methodology": "Ingested and standardized trip logs across spreadsheet workbooks. Removed null station coordinates and trip duration anomalies (<60s). Engineered temporal attributes (day of week, hour of day, trip duration in minutes) and developed interactive visual analytics on Tableau Public to isolate commuter vs leisure demand.",
+    "dataCleaning": "Cleaned and structured multi-period ride-trip records, removing null station identifiers, maintenance test runs, and negative duration trip anomalies. Formatted timestamp records for granular hourly clustering.",
+    "analysisText": "1. Trip Volume Segmentation: Annual subscribers represent steady, utility-driven volume peaking during weekday commuting hours (8:00 AM & 5:00 PM).\n2. Duration Contrast: Casual riders exhibit 2.1x longer average trip duration, clustering heavily around weekend afternoons (1:00 PM - 5:00 PM) for recreation and tourism routes.\n3. Geographic Concentration: Casual trips concentrate at lakefront and park recreation docks, whereas member trips distribute across commercial and residential transit hubs.",
+    "findings": "Subscribers use Cyclistic as a reliable daily transit commuter tool on weekdays, while casual riders utilize bikes primarily for leisure on weekends with double the average ride duration. Digital conversion campaigns should specifically target high-frequency weekend casual riders.",
+    "recommendations": "1. Conversion Funnels: Introduce seasonal summer weekend bridge passes with automated upgrade credits toward annual membership.\n2. Targeted Geofencing: Deploy mobile conversion prompts at high-volume weekend recreational stations.\n3. Fleet Staging: Rebalance electric bike availability at lakefront hubs on Friday afternoons to capture premium leisure demand.",
+    "challengesText": "Managing large-scale trip logs with missing geographical coordinates and reconciling seasonal bike fleet reallocations.",
+    "lessonsLearned": "Behavioral time-series segmentation provides distinct clarity over aggregate metrics when defining customer conversion funnels.",
+    "metrics": [
+      {
+        "id": "cyc-m1",
+        "label": "Casual Trip Duration",
+        "value": "2.1x",
+        "description": "Casual riders ride twice as long as annual subscribers on weekend afternoons.",
+        "iconName": "Clock"
+      },
+      {
+        "id": "cyc-m2",
+        "label": "Peak Commute Windows",
+        "value": "8 AM & 5 PM",
+        "description": "Subscribers concentrate heavily around standard workday commuter hours.",
+        "iconName": "TrendingUp"
+      },
+      {
+        "id": "cyc-m3",
+        "label": "Conversion Upside",
+        "value": "+18%",
+        "description": "Projected annual membership conversion through targeted seasonal campaigns.",
+        "iconName": "Target"
+      }
+    ],
+    "storyBlocks": [
+      {
+        "id": "cyc-sb-1",
+        "type": "markdown",
+        "title": "Behavioral Analytics & Commuter Segmentation",
+        "bodyContent": "### The Business Task\nCyclistic marketing director Lily Moreno aimed to maximize annual memberships, which generate far greater profit margins and predictable lifetime value than casual single-ride passes.\n\n### Key Findings & Tableau Visualization\n- **Commuter Utility vs. Leisure Demand**: Annual members consistently dominate weekday ridership with sharp peaks at 8:00 AM and 5:00 PM, confirming daily work transit usage.\n- **Weekend Leisure Spikes**: Casual riders surge on Saturdays and Sundays, averaging over 24 minutes per ride compared to 11 minutes for members.\n\n[View Interactive Visualizations on Tableau Public](https://public.tableau.com/app/profile/sayan.halder)"
+      }
+    ],
+    "createdAt": "2026-10-15T11:45:00.000Z",
+    "updatedAt": "2026-10-15T11:45:00.000Z"
   }
 ];
 

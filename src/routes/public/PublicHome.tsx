@@ -57,7 +57,13 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
   // Filter only published projects for recruiters
   const publishedProjects = useMemo(() => {
-    return (projects || []).filter(p => p && p.status === ProjectStatus.PUBLISHED).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return (projects || []).filter(p => p && p.status === ProjectStatus.PUBLISHED).sort((a, b) => {
+        const aIsFlagship = a.tier === "flagship" || (a.featured && a.tier !== "secondary");
+        const bIsFlagship = b.tier === "flagship" || (b.featured && b.tier !== "secondary");
+        if (aIsFlagship && !bIsFlagship) return -1;
+        if (!aIsFlagship && bIsFlagship) return 1;
+        return (a.order ?? 0) - (b.order ?? 0);
+      });
   }, [projects]);
 
   // Aggregate all unique tags, industries from published projects

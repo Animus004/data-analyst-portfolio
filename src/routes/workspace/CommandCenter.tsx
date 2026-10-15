@@ -1097,7 +1097,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
       documentationUrl: typeof aiParsedResult.documentationUrl === "string" ? aiParsedResult.documentationUrl : undefined,
 
       date: typeof aiParsedResult.date === "string" ? aiParsedResult.date : new Date().toISOString().split("T")[0],
-      featured: typeof aiParsedResult.featured === "boolean" ? aiParsedResult.featured : true,
+      tier: (extractStr(aiParsedResult.tier || (aiParsedResult as any).rawProject?.tier).toLowerCase().includes("sec") ? "secondary" : "flagship"),
+      featured: (extractStr(aiParsedResult.tier || (aiParsedResult as any).rawProject?.tier).toLowerCase().includes("sec") ? false : (typeof aiParsedResult.featured === "boolean" ? aiParsedResult.featured : true)),
       visibility: aiParsedResult.visibility || "public",
       order: typeof aiParsedResult.order === "number" ? aiParsedResult.order : projects.length,
 

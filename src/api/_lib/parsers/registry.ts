@@ -495,6 +495,25 @@ function extractStructuredReportSections(
   const rawLines = rawText.split("\n").map(l => l.trim()).filter(Boolean);
   if (rawLines.length > 0) {
     const firstLine = rawLines[0].replace(/^#+\s*/, "").replace(/^\*+|\*+$/g, "").trim();
+    
+  // Scan raw lines for key bullet metadata (Category, Tools, Tier, Live Viz URL)
+  for (const line of rawLines) {
+    const trimmed = line.trim();
+    const liveMatch = trimmed.match(/(?:live(?:\s+viz)?(?:\s+url)?:?|dashboard:?)\s*(https?:\/\/[^\s\)]+)/i);
+    if (liveMatch && !proj.liveUrl) {
+      proj.liveUrl = liveMatch[1].trim();
+    }
+    const tierMatch = trimmed.match(/^(?:[-*]\s*)?tier:?\s*(.+)$/i);
+    if (tierMatch) {
+      const tierVal = tierMatch[1].toLowerCase();
+      if (tierVal.includes("sec") || tierVal.includes("found")) {
+        proj.tier = "secondary";
+      } else if (tierVal.includes("flag")) {
+        proj.tier = "flagship";
+      }
+    }
+  }
+
     if (firstLine.length > 5 && firstLine.length < 90 && !/^(report|project|summary|document|table of contents|index)$/i.test(firstLine)) {
       proj.title = firstLine;
       if (docEvidence) docEvidence.title = firstLine;

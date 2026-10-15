@@ -107,10 +107,15 @@ export const storageService = {
     }
     try {
       const parsed = JSON.parse(cached) as ProjectRecord[];
-      // Guarantee fields are present
-      return parsed.map((p, idx) => ({
+      // Auto-merge any newly added seed projects (like secondary case studies)
+      const existingIds = new Set(parsed.map(p => p.id || p.slug));
+      const missingSeeds = seedProjects.filter(sp => !existingIds.has(sp.id) && !existingIds.has(sp.slug));
+      const combined = [...parsed, ...missingSeeds];
+
+      return combined.map((p, idx) => ({
         ...p,
-        featured: p.featured ?? false,
+        tier: p.tier || (p.featured ? "flagship" : "secondary"),
+        featured: p.tier === "secondary" ? false : (p.featured ?? (idx === 0)),
         visibility: p.visibility ?? "public",
         order: p.order ?? idx
       })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));

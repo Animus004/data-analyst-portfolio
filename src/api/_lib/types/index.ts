@@ -78,6 +78,7 @@ export interface ExtractedStoryBlock {
 }
 
 export interface ExtractedProject {
+  tier?: string;
   title: string;
   subtitle: string;
   summary: string;
@@ -245,6 +246,7 @@ export interface FieldWithEvidence<T> {
 }
 
 export interface StructuredPortfolioProject {
+  tier?: string;
   title: FieldWithEvidence<string>;
   subtitle: FieldWithEvidence<string>;
   executiveSummary: FieldWithEvidence<string>;

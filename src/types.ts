@@ -9,6 +9,8 @@ export enum ProjectStatus {
   ARCHIVED = "archived"
 }
 
+export type ProjectTier = "flagship" | "secondary" | "foundational";
+
 export enum TechnicalDifficulty {
   BEGINNER = "beginner",
   INTERMEDIATE = "intermediate",
@@ -81,6 +83,7 @@ export interface ProjectRecord {
   timeSpent?: string;     // e.g., "12 hours"
   skills?: string[];      // e.g., ["Data Pipeline Optimization", "Linear Regression"]
   images?: string[];      // Array of image paths/URLs
+  tier?: ProjectTier;     // Tier hierarchy (flagship vs secondary)
   featured?: boolean;     // Featured on public homepage
   visibility?: "public" | "private" | "unlisted";
   order?: number;         // Sort order of the projects
